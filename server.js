@@ -41,9 +41,9 @@ io.on("connection", (socket) => {
     const { groupId, numCards, maxQuestions } = data;
     const state = states[groupId] = initState();
 
-    state.cards = shuffle([...globalCards]).slice(0, maxQuestions);
-    state.numCards = numCards;
+    state.cards = shuffle([...globalCards]); // 全体をシャッフル
     state.maxQuestions = maxQuestions;
+    state.numCards = Math.min(Math.max(5, numCards), 10); // 5～10に制限
     nextQuestion(groupId);
   });
 
@@ -84,13 +84,12 @@ io.on("connection", (socket) => {
 
       player.score += base;
       state.readingCompleted = true;
+      state.waitingNext = true;
 
       state.current.cards = state.current.cards.map(c => ({
         ...c,
         correct: c._answer || false
       }));
-
-      state.waitingNext = true;
 
       io.to(groupId).emit("state", {
         ...state,
@@ -131,7 +130,7 @@ io.on("connection", (socket) => {
     return {
       players: [],
       cards: [],
-      usedCards: [],
+      usedQuestions: [],
       numCards: 5,
       maxQuestions: 10,
       questionCount: 0,
@@ -158,19 +157,30 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const candidates = state.cards;
-    const shuffled = shuffle(candidates).slice(0, state.numCards);
-    const answerIndex = Math.floor(Math.random() * shuffled.length);
-    const answerCard = shuffled[answerIndex];
+    const remainingQuestions = state.cards.filter(q =>
+      !state.usedQuestions.includes(q.text + "|" + q.number)
+    );
+
+    if (remainingQuestions.length === 0) {
+      state.usedQuestions = [];
+    }
+
+    const selectedQuestion = shuffle(state.cards).find(q =>
+      !state.usedQuestions.includes(q.text + "|" + q.number)
+    );
+    state.usedQuestions.push(selectedQuestion.text + "|" + selectedQuestion.number);
+
+    const distractors = shuffle(globalCards.filter(q => q.text !== selectedQuestion.text)).slice(0, state.numCards - 1);
+    const allCards = shuffle([...distractors, selectedQuestion]);
 
     state.current = {
-      text: answerCard.text,
-      answer: answerCard.number,
-      cards: shuffled.map((c, i) => ({
+      text: selectedQuestion.text,
+      answer: selectedQuestion.number,
+      cards: allCards.map(c => ({
         term: c.term,
         number: c.number,
         text: c.text,
-        _answer: i === answerIndex
+        _answer: c.number === selectedQuestion.number
       }))
     };
 
