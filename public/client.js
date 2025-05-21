@@ -8,7 +8,7 @@ let numCards = 5;
 let maxQuestions = 10;
 let loadedCards = [];
 let yomifudaAnimating = false;
-let lastYomifudaKey = "";
+let lastYomifudaText = "";
 let playerNameFixed = false;
 
 function showGroupSelectUI() {
@@ -19,7 +19,7 @@ function showGroupSelectUI() {
     <br/><br/>
     <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="500" max="5000" /></label>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
     <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
     <br/><br/>
     <div id="groupButtons"></div>
@@ -84,7 +84,10 @@ function fixPlayerName() {
 }
 
 function startGame() {
-  if (!playerNameFixed) return;
+  if (!playerNameFixed) {
+    alert("プレイヤー名を決定してください");
+    return;
+  }
   readAloud = document.getElementById("readAloudCheck")?.checked || false;
   showSpeed = Number(document.getElementById("speed")?.value || 2000);
   numCards = Number(document.getElementById("numCards")?.value || 5);
@@ -122,12 +125,13 @@ socket.on("state", (state) => {
     <div id="others"></div>
   `;
 
-  const yomifudaKey = current.text + "|" + state.questionCount;
-  if (yomifudaKey !== lastYomifudaKey) {
-    lastYomifudaKey = yomifudaKey;
+  // 読み札表示の管理（正解後も維持）
+  const yomifudaDiv = document.getElementById("yomifuda");
+  if (current.text !== lastYomifudaText) {
+    lastYomifudaText = current.text;
     showYomifudaAnimated(current.text);
-  } else if (!yomifudaAnimating) {
-    document.getElementById("yomifuda").textContent = current.text;
+  } else {
+    yomifudaDiv.textContent = current.text;
   }
 
   const cardsDiv = document.getElementById("cards");
@@ -144,7 +148,7 @@ socket.on("state", (state) => {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-    state.players.map(p => `<li>${p.name || "(名前未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
+    state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
 
   if (state.misclicks) {
     state.misclicks.forEach(m => {
@@ -176,7 +180,7 @@ socket.on("end", (players) => {
 });
 
 function submitAnswer(number) {
-  if (locked) return;
+  if (locked || !playerName) return;
   socket.emit("answer", { groupId, name: playerName, number });
 }
 
