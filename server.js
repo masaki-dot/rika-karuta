@@ -6,7 +6,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const states = {}; // 🔁 グループごとに状態を保持
+const states = {}; // グループごとの状態
 
 io.on("connection", (socket) => {
   let groupId = null;
@@ -15,49 +15,75 @@ io.on("connection", (socket) => {
     groupId = gid;
     socket.join(groupId);
     if (!states[groupId]) {
-      states[groupId] = { players: [], current: null, maxQuestions: 0, questionCount: 0 };
+      states[groupId] = {
+        players: [],
+        cards: [],
+        numCards: 5,
+        maxQuestions: 10,
+        questionCount: 0,
+        current: null,
+        misclicks: [],
+        waitingNext: false
+      };
     }
   });
 
   socket.on("start", (data) => {
     const { groupId, cards, numCards, maxQuestions } = data;
-    if (!states[groupId]) return;
-
-    states[groupId].cards = [...cards];
-    states[groupId].numCards = numCards;
-    states[groupId].maxQuestions = maxQuestions;
-    states[groupId].questionCount = 0;
-    states[groupId].players = [];
-
+    states[groupId] = {
+      cards: [...cards],
+      numCards,
+      maxQuestions,
+      questionCount: 0,
+      players: [],
+      current: null,
+      misclicks: [],
+      waitingNext: false
+    };
     nextQuestion(groupId);
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
-    if (!state || !state.current) return;
+    if (!state || !state.current || state.waitingNext) return;
 
-    if (!state.players.find(p => p.name === name)) {
-      state.players.push({ name, score: 0 });
+    let player = state.players.find(p => p.name === name);
+    if (!player) {
+      player = { name, score: 0 };
+      state.players.push(player);
     }
 
-    const player = state.players.find(p => p.name === name);
     const correct = state.current.cards.find(c => c.number === number);
-    if (correct) {
-      correct.correct = true;
+    if (correct && correct.correct) {
       player.score += 1;
-
-      io.to(groupId).emit("state", state);
-
-      setTimeout(() => {
-        states[groupId].questionCount += 1;
-        if (states[groupId].questionCount >= states[groupId].maxQuestions) {
-          io.to(groupId).emit("end", state.players);
-        } else {
-          nextQuestion(groupId);
-        }
-      }, 3000);
+      state.waitingNext = true;
+      io.to(groupId).emit("state", {
+        ...state,
+        misclicks: state.misclicks,
+        waitingNext: true
+      });
     } else {
+      state.misclicks.push({ name, number });
       io.to(groupId).emit("lock", name);
+      io.to(groupId).emit("state", {
+        ...state,
+        misclicks: state.misclicks
+      });
+    }
+  });
+
+  socket.on("next", (groupId) => {
+    const state = states[groupId];
+    if (!state || !state.waitingNext) return;
+
+    state.questionCount += 1;
+    state.waitingNext = false;
+    state.misclicks = [];
+
+    if (state.questionCount >= state.maxQuestions) {
+      io.to(groupId).emit("end", state.players);
+    } else {
+      nextQuestion(groupId);
     }
   });
 
@@ -65,6 +91,8 @@ io.on("connection", (socket) => {
     if (states[groupId]) {
       states[groupId].players = [];
       states[groupId].questionCount = 0;
+      states[groupId].misclicks = [];
+      states[groupId].waitingNext = false;
       nextQuestion(groupId);
     }
   });
@@ -81,11 +109,15 @@ io.on("connection", (socket) => {
       cards: shuffled.map((c, i) => ({ ...c, correct: i === answerIndex }))
     };
 
-    io.to(groupId).emit("state", state);
+    io.to(groupId).emit("state", {
+      ...state,
+      misclicks: state.misclicks,
+      waitingNext: state.waitingNext
+    });
   }
 
   function shuffle(arr) {
-    return arr.sort(() => Math.random() - 0.5);
+    return [...arr].sort(() => Math.random() - 0.5);
   }
 });
 
