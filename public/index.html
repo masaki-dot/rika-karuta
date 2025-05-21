@@ -4,45 +4,11 @@
   <meta charset="UTF-8" />
   <title>理科カルタ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
-  <!-- Socket.IO（サーバーから自動提供） -->
   <script src="/socket.io/socket.io.js"></script>
-
-  <!-- PapaParse（CSV読み込み用）CDN経由で読み込み -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
-
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      background: #f0f0f0;
-      text-align: center;
-    }
-    input, button {
-      margin: 5px;
-      padding: 10px;
-      font-size: 1em;
-    }
-    #cards > div {
-      border: 1px solid #aaa;
-      margin: 5px;
-      padding: 10px;
-      width: 150px;
-      display: inline-block;
-      background: white;
-      border-radius: 8px;
-    }
-    #yomifuda {
-      margin-top: 20px;
-      min-height: 40px;
-    }
-  </style>
 </head>
 <body>
-  <h1>理科カルタ</h1>
   <div id="root"></div>
-
-  <!-- あなたが修正した client.js -->
   <script src="client.js"></script>
 </body>
 </html>
