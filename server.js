@@ -1,12 +1,16 @@
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const states = {}; // グループごとの状態
+// 🔽 publicフォルダからHTML/JSを提供
+app.use(express.static(path.join(__dirname, "public")));
+
+const states = {};
 
 io.on("connection", (socket) => {
   let groupId = null;
