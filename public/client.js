@@ -2,15 +2,48 @@ let socket = io();
 let playerName = "";
 let groupId = "";
 let locked = false;
-let loadedCards = [];
 let readAloud = false;
-let showSpeed = 2000; // 5文字ごとに表示
+let showSpeed = 2000;
 let numCards = 5;
-let lastQuestionText = ""; // 読み札再表示防止
+let maxQuestions = 10;
+let loadedCards = [];
+let yomifudaAnimating = false;
+let lastYomifudaKey = "";
 
 function showGroupSelectUI() {
   const root = document.getElementById("root");
-  root.innerHTML = "<h2>グループを選んでください（1〜10）</h2>";
+  root.innerHTML = `
+    <h2>CSVをアップロードして、グループを選んでください</h2>
+    <input type="file" id="csvFile" accept=".csv" />
+    <br/><br/>
+    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
+    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="500" max="5000" /></label>
+    <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
+    <br/><br/>
+    <div id="groupButtons"></div>
+  `;
+
+  document.getElementById("csvFile").addEventListener("change", () => {
+    const file = document.getElementById("csvFile").files[0];
+    Papa.parse(file, {
+      header: true,
+      complete: (result) => {
+        loadedCards = result.data.filter(r => r['番号'] && r['用語'] && r['説明']).map(r => ({
+          number: r['番号'],
+          term: r['用語'],
+          text: r['説明']
+        }));
+        socket.emit("set_cards", loadedCards);
+        drawGroupButtons();
+      }
+    });
+  });
+}
+
+function drawGroupButtons() {
+  const area = document.getElementById("groupButtons");
+  area.innerHTML = "<h3>グループを選択</h3>";
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
     btn.textContent = "グループ " + i;
@@ -19,7 +52,7 @@ function showGroupSelectUI() {
       socket.emit("join", groupId);
       initUI();
     };
-    root.appendChild(btn);
+    area.appendChild(btn);
   }
 }
 
@@ -28,45 +61,28 @@ function initUI() {
   root.innerHTML = `
     <h1>理科カルタ（リアルタイム）</h1>
     <input type="text" id="nameInput" placeholder="プレイヤー名を入力" />
-    <input type="file" id="csvFile" accept=".csv" />
-    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
-    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="500" max="5000" /></label>
-    <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
-    <button onclick="loadAndStart()">スタート</button>
+    <button onclick="startGame()">スタート</button>
     <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
     <div id="game"></div>
   `;
 }
 
-function loadAndStart() {
+function startGame() {
   playerName = document.getElementById("nameInput").value.trim();
-  const file = document.getElementById("csvFile").files[0];
-  const maxQuestions = Number(document.getElementById("maxQuestions").value);
-  readAloud = document.getElementById("readAloudCheck").checked;
-  showSpeed = Number(document.getElementById("speed").value);
-  numCards = Number(document.getElementById("numCards").value);
+  readAloud = document.getElementById("readAloudCheck")?.checked || false;
+  showSpeed = Number(document.getElementById("speed")?.value || 2000);
+  numCards = Number(document.getElementById("numCards")?.value || 5);
+  maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
 
-  if (!playerName || !file || !groupId) {
-    alert("プレイヤー名、CSV、グループを正しく設定してください");
+  if (!playerName || !groupId) {
+    alert("名前とグループを入力してください");
     return;
   }
 
-  Papa.parse(file, {
-    header: true,
-    complete: (result) => {
-      loadedCards = result.data.filter(r => r['番号'] && r['用語'] && r['説明']).map(r => ({
-        number: r['番号'],
-        term: r['用語'],
-        text: r['説明']
-      }));
-      socket.emit("start", {
-        groupId,
-        cards: loadedCards,
-        numCards: numCards,
-        maxQuestions: maxQuestions
-      });
-    }
+  socket.emit("start", {
+    groupId,
+    numCards,
+    maxQuestions
   });
 }
 
@@ -74,22 +90,20 @@ socket.on("state", (state) => {
   const current = state.current;
   if (!current) return;
 
-  locked = false; // 🔓 新しい問題でロック解除
+  locked = false;
   const root = document.getElementById("game");
-
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">得点: ${getMyScore(state.players)}点</div>
-    <button onclick="resetGame()">リセット</button>
     <div id="others"></div>
   `;
 
-  // 🔄 読み札を再表示しないように制御
-  if (current.text !== lastQuestionText) {
+  const yomifudaKey = current.text + "|" + state.questionCount;
+  if (yomifudaKey !== lastYomifudaKey) {
+    lastYomifudaKey = yomifudaKey;
     showYomifudaAnimated(current.text);
-    lastQuestionText = current.text;
   } else {
     document.getElementById("yomifuda").textContent = current.text;
   }
@@ -144,28 +158,28 @@ function submitAnswer(number) {
   socket.emit("answer", { groupId, name: playerName, number });
 }
 
-function resetGame() {
-  socket.emit("reset", groupId);
-}
-
 function getMyScore(players) {
   const me = players.find((p) => p.name === playerName);
   return me ? me.score : 0;
 }
 
 function showYomifudaAnimated(text) {
-  const yomifudaDiv = document.getElementById("yomifuda");
-  yomifudaDiv.textContent = "";
-  yomifudaDiv.style.textAlign = "left";
-
+  const div = document.getElementById("yomifuda");
+  div.textContent = "";
+  div.style.textAlign = "left";
   let i = 0;
-  speechSynthesis.cancel(); // 前の読み上げを止める
+  yomifudaAnimating = true;
+  speechSynthesis.cancel();
 
   const interval = setInterval(() => {
     const chunk = text.slice(i, i + 5);
-    yomifudaDiv.textContent += chunk;
+    div.textContent += chunk;
     i += 5;
-    if (i >= text.length) clearInterval(interval);
+    if (i >= text.length) {
+      clearInterval(interval);
+      yomifudaAnimating = false;
+      socket.emit("read_done", groupId);
+    }
   }, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
