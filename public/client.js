@@ -1,5 +1,5 @@
 // =======================
-// 修正版 client.js 全文
+// client.js（正解札の黄色表示復活・ボタン削除）
 // =======================
 
 let socket = io();
@@ -82,7 +82,7 @@ socket.on("state", (state) => {
 
   const root = document.getElementById("game");
   root.innerHTML = `
-    <div><strong>問題 ${state.questionCount + 1} / ${state.maxQuestions}</strong></div>
+    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">得点: ${getMyScore(state.players)}点</div>
@@ -98,6 +98,7 @@ socket.on("state", (state) => {
   current.cards.forEach((c) => {
     const div = document.createElement("div");
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px;";
+    if (c.correct) div.style.background = "yellow";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     cardsDiv.appendChild(div);
   });
@@ -113,18 +114,6 @@ socket.on("state", (state) => {
         card.appendChild(tag);
       }
     });
-  }
-
-  if (state.waitingNext) {
-    setTimeout(() => {
-      const btn = document.createElement("button");
-      btn.textContent = "次の問題へ";
-      btn.onclick = () => {
-        socket.emit("next", groupId);
-        waitingNext = false;
-      };
-      document.getElementById("game").appendChild(btn);
-    }, 3000);
   }
 
   const input = document.getElementById("answerInput");
@@ -148,13 +137,6 @@ socket.on("lock", (name) => {
       input.disabled = true;
       input.style.background = "#fdd";
     }
-    setTimeout(() => {
-      locked = false;
-      if (input) {
-        input.disabled = false;
-        input.style.background = "white";
-      }
-    }, 3000);
   }
 });
 
@@ -204,3 +186,5 @@ function showYomifudaAnimated(text) {
 }
 
 window.onload = showGroupSelectUI;
+
+
