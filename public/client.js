@@ -192,7 +192,6 @@ function showYomifudaAnimated(text) {
   let i = 0;
   speechSynthesis.cancel();
 
-  // アニメーションがすでに始まっていたら中断しない
   if (yomifudaAnimating) return;
   yomifudaAnimating = true;
 
