@@ -1,3 +1,4 @@
+// ...省略せず最初から提示...
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -26,7 +27,6 @@ io.on("connection", (socket) => {
 
   socket.on("set_cards", (cards) => {
     globalCards = cards;
-    console.log("📦 CSVを受信、全体へ通知");
     io.emit("csv_ready");
   });
 
@@ -49,7 +49,20 @@ io.on("connection", (socket) => {
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
-    if (state) state.readingCompleted = true;
+    if (!state || state.readingCompleted) return;
+    state.readingCompleted = true;
+
+    setTimeout(() => {
+      const st = states[groupId];
+      if (st && !st.waitingNext) {
+        io.to(groupId).emit("state", {
+          ...st,
+          misclicks: st.misclicks,
+          waitingNext: true
+        });
+        nextQuestion(groupId);
+      }
+    }, 30000); // 30秒後に自動で次の問題へ
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
@@ -93,11 +106,22 @@ io.on("connection", (socket) => {
     } else {
       state.lockedPlayers.push(name);
       state.misclicks.push({ name, number });
-      io.to(groupId).emit("lock", name);
-      io.to(groupId).emit("state", {
-        ...state,
-        misclicks: state.misclicks
-      });
+
+      if (state.lockedPlayers.length >= 4) {
+        state.waitingNext = true;
+        io.to(groupId).emit("state", {
+          ...state,
+          misclicks: state.misclicks,
+          waitingNext: true
+        });
+        nextQuestion(groupId);
+      } else {
+        io.to(groupId).emit("lock", name);
+        io.to(groupId).emit("state", {
+          ...state,
+          misclicks: state.misclicks
+        });
+      }
     }
   });
 
