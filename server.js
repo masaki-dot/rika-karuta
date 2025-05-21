@@ -1,3 +1,7 @@
+// =======================
+// 修正版 server.js 全文（正解札は正解後のみ表示）
+// =======================
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -7,7 +11,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// 🔽 publicフォルダからHTML/JSを提供
 app.use(express.static(path.join(__dirname, "public")));
 
 const states = {};
@@ -57,10 +60,18 @@ io.on("connection", (socket) => {
       state.players.push(player);
     }
 
-    const correct = state.current.cards.find(c => c.number === number);
-    if (correct && correct.correct) {
+    const correct = state.current.answer === number;
+    if (correct) {
       player.score += 1;
       state.waitingNext = true;
+
+      // 正解札にのみ correct: true を付ける
+      const updatedCards = state.current.cards.map(card => {
+        return { ...card, correct: card.number === number };
+      });
+
+      state.current.cards = updatedCards;
+
       io.to(groupId).emit("state", {
         ...state,
         misclicks: state.misclicks,
@@ -71,7 +82,8 @@ io.on("connection", (socket) => {
       io.to(groupId).emit("lock", name);
       io.to(groupId).emit("state", {
         ...state,
-        misclicks: state.misclicks
+        misclicks: state.misclicks,
+        waitingNext: false
       });
     }
   });
@@ -107,16 +119,17 @@ io.on("connection", (socket) => {
 
     const shuffled = shuffle(state.cards).slice(0, state.numCards);
     const answerIndex = Math.floor(Math.random() * shuffled.length);
+
     state.current = {
       text: shuffled[answerIndex].text,
       answer: shuffled[answerIndex].number,
-      cards: shuffled.map((c, i) => ({ ...c, correct: i === answerIndex }))
+      cards: shuffled.map(c => ({ ...c })) // correctフラグを含まない初期状態
     };
 
     io.to(groupId).emit("state", {
       ...state,
       misclicks: state.misclicks,
-      waitingNext: state.waitingNext
+      waitingNext: false
     });
   }
 
