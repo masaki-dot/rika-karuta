@@ -41,7 +41,6 @@ io.on("connection", (socket) => {
     const { groupId, numCards, maxQuestions } = data;
     const state = states[groupId] = initState();
 
-    // CSV全体からランダムに maxQuestions 件を抽出
     state.cards = shuffle([...globalCards]).slice(0, maxQuestions);
     state.numCards = numCards;
     state.maxQuestions = maxQuestions;
@@ -50,7 +49,7 @@ io.on("connection", (socket) => {
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
-    if (!state || state.readingCompleted) return;
+    if (!state || state.readingCompleted || state.waitingNext) return;
     state.readingCompleted = true;
 
     setTimeout(() => {
@@ -65,7 +64,7 @@ io.on("connection", (socket) => {
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
-    if (!state || !state.current || state.waitingNext) return;
+    if (!state || !state.current || state.waitingNext || !name) return;
     if (state.lockedPlayers.includes(name)) return;
 
     let player = state.players.find(p => p.name === name);
@@ -84,6 +83,7 @@ io.on("connection", (socket) => {
       if (!state.readingCompleted) base += 1;
 
       player.score += base;
+      state.readingCompleted = true;
 
       state.current.cards = state.current.cards.map(c => ({
         ...c,
