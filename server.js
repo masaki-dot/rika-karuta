@@ -1,4 +1,3 @@
-// ...省略せず最初から提示...
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -41,7 +40,9 @@ io.on("connection", (socket) => {
   socket.on("start", (data) => {
     const { groupId, numCards, maxQuestions } = data;
     const state = states[groupId] = initState();
-    state.cards = [...globalCards];
+
+    // CSV全体からランダムに maxQuestions 件を抽出
+    state.cards = shuffle([...globalCards]).slice(0, maxQuestions);
     state.numCards = numCards;
     state.maxQuestions = maxQuestions;
     nextQuestion(groupId);
@@ -55,14 +56,11 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       const st = states[groupId];
       if (st && !st.waitingNext) {
-        io.to(groupId).emit("state", {
-          ...st,
-          misclicks: st.misclicks,
-          waitingNext: true
-        });
+        st.waitingNext = true;
+        io.to(groupId).emit("state", { ...st, waitingNext: true });
         nextQuestion(groupId);
       }
-    }, 30000); // 30秒後に自動で次の問題へ
+    }, 30000);
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
@@ -160,23 +158,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const remaining = state.cards.filter(c =>
-      !state.usedCards.includes(c.text + "|" + c.number)
-    );
-
-    if (remaining.length < state.numCards) {
-      state.usedCards = [];
-    }
-
-    const candidates = state.cards.filter(c =>
-      !state.usedCards.includes(c.text + "|" + c.number)
-    );
-
+    const candidates = state.cards;
     const shuffled = shuffle(candidates).slice(0, state.numCards);
     const answerIndex = Math.floor(Math.random() * shuffled.length);
     const answerCard = shuffled[answerIndex];
-
-    state.usedCards.push(answerCard.text + "|" + answerCard.number);
 
     state.current = {
       text: answerCard.text,
@@ -211,4 +196,6 @@ io.on("connection", (socket) => {
 
 server.listen(3000, () => {
   console.log("🚀 Server running on http://localhost:3000");
+});
+
 });
