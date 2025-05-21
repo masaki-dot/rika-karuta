@@ -1,5 +1,5 @@
 // =======================
-// client.js 全文（修正版）
+// 修正版 client.js 全文
 // =======================
 
 let socket = io();
@@ -10,6 +10,7 @@ let loadedCards = [];
 let readAloud = false;
 let showSpeed = 2000; // 5文字ごとに2000ms
 let numCards = 5;
+let waitingNext = false;
 
 function showGroupSelectUI() {
   const root = document.getElementById("root");
@@ -77,9 +78,11 @@ socket.on("state", (state) => {
   const current = state.current;
   if (!current) return;
 
+  waitingNext = state.waitingNext;
+
   const root = document.getElementById("game");
   root.innerHTML = `
-    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
+    <div><strong>問題 ${state.questionCount + 1} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">得点: ${getMyScore(state.players)}点</div>
@@ -96,7 +99,6 @@ socket.on("state", (state) => {
     const div = document.createElement("div");
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px;";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
-    if (c.correct) div.style.background = "yellow";
     cardsDiv.appendChild(div);
   });
 
@@ -113,8 +115,20 @@ socket.on("state", (state) => {
     });
   }
 
+  if (state.waitingNext) {
+    setTimeout(() => {
+      const btn = document.createElement("button");
+      btn.textContent = "次の問題へ";
+      btn.onclick = () => {
+        socket.emit("next", groupId);
+        waitingNext = false;
+      };
+      document.getElementById("game").appendChild(btn);
+    }, 3000);
+  }
+
   const input = document.getElementById("answerInput");
-  if (locked) {
+  if (locked || waitingNext) {
     input.disabled = true;
     input.style.background = "#fdd";
   } else {
@@ -124,15 +138,6 @@ socket.on("state", (state) => {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" + state.players.map(p => `<li>${p.name}: ${p.score}点</li>`).join("") + "</ul>";
-
-  if (state.waitingNext) {
-    setTimeout(() => {
-      const btn = document.createElement("button");
-      btn.textContent = "次の問題へ";
-      btn.onclick = () => socket.emit("next", groupId);
-      document.getElementById("game").appendChild(btn);
-    }, 3000);
-  }
 });
 
 socket.on("lock", (name) => {
@@ -161,7 +166,7 @@ socket.on("end", (players) => {
 });
 
 function submitAnswer() {
-  if (locked) return;
+  if (locked || waitingNext) return;
   const number = document.getElementById("answerInput").value.trim();
   socket.emit("answer", { groupId, name: playerName, number });
   document.getElementById("answerInput").value = "";
