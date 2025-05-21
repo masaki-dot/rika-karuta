@@ -9,6 +9,7 @@ let maxQuestions = 10;
 let loadedCards = [];
 let yomifudaAnimating = false;
 let lastYomifudaKey = "";
+let playerNameFixed = false;
 
 function showGroupSelectUI() {
   const root = document.getElementById("root");
@@ -59,26 +60,35 @@ function drawGroupButtons() {
 
 function initUI() {
   const root = document.getElementById("root");
+  playerNameFixed = false;
   root.innerHTML = `
     <h1>理科カルタ（リアルタイム）</h1>
     <input type="text" id="nameInput" placeholder="プレイヤー名を入力" />
-    <button onclick="startGame()">スタート</button>
+    <button onclick="fixPlayerName()">決定</button>
+    <button id="startBtn" onclick="startGame()" disabled>スタート</button>
     <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
     <div id="game"></div>
   `;
 }
 
+function fixPlayerName() {
+  const name = document.getElementById("nameInput").value.trim();
+  if (name.length === 0) {
+    alert("名前を入力してください");
+    return;
+  }
+  playerName = name;
+  playerNameFixed = true;
+  document.getElementById("nameInput").disabled = true;
+  document.getElementById("startBtn").disabled = false;
+}
+
 function startGame() {
-  playerName = document.getElementById("nameInput").value.trim();
+  if (!playerNameFixed) return;
   readAloud = document.getElementById("readAloudCheck")?.checked || false;
   showSpeed = Number(document.getElementById("speed")?.value || 2000);
   numCards = Number(document.getElementById("numCards")?.value || 5);
   maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
-
-  if (!playerName || !groupId) {
-    alert("名前とグループを入力してください");
-    return;
-  }
 
   socket.emit("start", {
     groupId,
@@ -113,10 +123,10 @@ socket.on("state", (state) => {
   `;
 
   const yomifudaKey = current.text + "|" + state.questionCount;
-  if (yomifudaKey !== lastYomifudaKey) {
+  if (yomifudaKey !== lastYomifudaKey && !yomifudaAnimating) {
     lastYomifudaKey = yomifudaKey;
     showYomifudaAnimated(current.text);
-  } else {
+  } else if (!yomifudaAnimating) {
     document.getElementById("yomifuda").textContent = current.text;
   }
 
@@ -134,7 +144,7 @@ socket.on("state", (state) => {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-    state.players.map(p => `<li>${p.name}: ${p.score}点</li>`).join("") + "</ul>";
+    state.players.map(p => `<li>${p.name || "(名前未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
 
   if (state.misclicks) {
     state.misclicks.forEach(m => {
@@ -161,7 +171,7 @@ socket.on("end", (players) => {
   root.innerHTML += `<h2>ゲーム終了！</h2>`;
   const sorted = [...players].sort((a, b) => b.score - a.score).slice(0, 5);
   root.innerHTML += `<h3>順位</h3><ol>` +
-    sorted.map(p => `<li>${p.name}：${p.score}点</li>`).join('') +
+    sorted.map(p => `<li>${p.name}: ${p.score}点</li>`).join('') +
     `</ol>`;
 });
 
@@ -202,4 +212,3 @@ function showYomifudaAnimated(text) {
 }
 
 window.onload = showGroupSelectUI;
-
