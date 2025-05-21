@@ -125,12 +125,11 @@ socket.on("state", (state) => {
     <div id="others"></div>
   `;
 
-  // 読み札表示の管理（正解後も維持）
   const yomifudaDiv = document.getElementById("yomifuda");
   if (current.text !== lastYomifudaText) {
     lastYomifudaText = current.text;
     showYomifudaAnimated(current.text);
-  } else {
+  } else if (!yomifudaAnimating) {
     yomifudaDiv.textContent = current.text;
   }
 
