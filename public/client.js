@@ -1,3 +1,6 @@
+// =======================
+// client.js 全文（修正版）
+// =======================
 
 let socket = io();
 let playerName = "";
@@ -5,7 +8,7 @@ let groupId = "";
 let locked = false;
 let loadedCards = [];
 let readAloud = false;
-let showSpeed = 40;
+let showSpeed = 2000; // 5文字ごとに2000ms
 let numCards = 5;
 
 function showGroupSelectUI() {
@@ -31,9 +34,10 @@ function initUI() {
     <input type="file" id="csvFile" accept=".csv" />
     <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
-    <label>表示速度(ms/文字): <input type="number" id="speed" value="40" min="10" max="200" /></label>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="500" max="5000" /></label>
     <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
     <button onclick="loadAndStart()">スタート</button>
+    <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
     <div id="game"></div>
   `;
 }
@@ -96,6 +100,19 @@ socket.on("state", (state) => {
     cardsDiv.appendChild(div);
   });
 
+  if (state.misclicks) {
+    state.misclicks.forEach(m => {
+      const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
+      if (card) {
+        card.style.background = "#fdd";
+        const tag = document.createElement("div");
+        tag.style.color = "red";
+        tag.textContent = `お手つき: ${m.name}`;
+        card.appendChild(tag);
+      }
+    });
+  }
+
   const input = document.getElementById("answerInput");
   if (locked) {
     input.disabled = true;
@@ -107,6 +124,15 @@ socket.on("state", (state) => {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" + state.players.map(p => `<li>${p.name}: ${p.score}点</li>`).join("") + "</ul>";
+
+  if (state.waitingNext) {
+    setTimeout(() => {
+      const btn = document.createElement("button");
+      btn.textContent = "次の問題へ";
+      btn.onclick = () => socket.emit("next", groupId);
+      document.getElementById("game").appendChild(btn);
+    }, 3000);
+  }
 });
 
 socket.on("lock", (name) => {
@@ -155,9 +181,13 @@ function showYomifudaAnimated(text) {
   yomifudaDiv.textContent = "";
   yomifudaDiv.style.textAlign = "left";
   let i = 0;
+
+  speechSynthesis.cancel();
+
   const interval = setInterval(() => {
-    yomifudaDiv.textContent += text[i];
-    i++;
+    const chunk = text.slice(i, i + 5);
+    yomifudaDiv.textContent += chunk;
+    i += 5;
     if (i >= text.length) clearInterval(interval);
   }, showSpeed);
 
