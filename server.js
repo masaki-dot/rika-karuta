@@ -9,16 +9,25 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-let globalCards = []; // 全グループ共通のカード
-
+let globalCards = [];
+let currentUsers = 0;
 const states = {};
 
 io.on("connection", (socket) => {
+  currentUsers++;
+  io.emit("user_count", currentUsers);
+
   let groupId = null;
+
+  socket.on("disconnect", () => {
+    currentUsers--;
+    io.emit("user_count", currentUsers);
+  });
 
   socket.on("set_cards", (cards) => {
     globalCards = cards;
-    console.log("📦 CSVを全体に設定しました（", cards.length, "件）");
+    console.log("📦 CSVを受信、全体へ通知");
+    io.emit("csv_ready");
   });
 
   socket.on("join", (gid) => {
@@ -61,7 +70,6 @@ io.on("connection", (socket) => {
       const mis = state.misclicks.length;
       if (mis === 0) base = 3;
       else if (mis === 1) base = 2;
-
       if (!state.readingCompleted) base += 1;
 
       player.score += base;
@@ -180,4 +188,3 @@ io.on("connection", (socket) => {
 server.listen(3000, () => {
   console.log("🚀 Server running on http://localhost:3000");
 });
-
