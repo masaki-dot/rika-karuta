@@ -7,13 +7,19 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// 静的ファイルを配信
 app.use(express.static(path.join(__dirname, "public")));
+
+let globalCards = []; // 全グループ共通のカード
 
 const states = {};
 
 io.on("connection", (socket) => {
   let groupId = null;
+
+  socket.on("set_cards", (cards) => {
+    globalCards = cards;
+    console.log("📦 CSVを全体に設定しました（", cards.length, "件）");
+  });
 
   socket.on("join", (gid) => {
     groupId = gid;
@@ -24,13 +30,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start", (data) => {
-    const { groupId, cards, numCards, maxQuestions } = data;
-    states[groupId] = initState();
-    const state = states[groupId];
-    state.cards = [...cards];
+    const { groupId, numCards, maxQuestions } = data;
+    const state = states[groupId] = initState();
+    state.cards = [...globalCards];
     state.numCards = numCards;
     state.maxQuestions = maxQuestions;
     nextQuestion(groupId);
+  });
+
+  socket.on("read_done", (groupId) => {
+    const state = states[groupId];
+    if (state) state.readingCompleted = true;
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
@@ -47,15 +57,22 @@ io.on("connection", (socket) => {
     const correctCard = state.current.cards.find(c => c.number === number);
 
     if (correctCard && correctCard._answer) {
-      player.score += 1;
+      let base = 1;
+      const mis = state.misclicks.length;
+      if (mis === 0) base = 3;
+      else if (mis === 1) base = 2;
 
-      // 正解札のみ correct: true を付加
+      if (!state.readingCompleted) base += 1;
+
+      player.score += base;
+
       state.current.cards = state.current.cards.map(c => ({
         ...c,
         correct: c._answer || false
       }));
 
       state.waitingNext = true;
+
       io.to(groupId).emit("state", {
         ...state,
         misclicks: state.misclicks,
@@ -71,16 +88,13 @@ io.on("connection", (socket) => {
       io.to(groupId).emit("lock", name);
       io.to(groupId).emit("state", {
         ...state,
-        misclicks: state.misclicks,
-        waitingNext: false
+        misclicks: state.misclicks
       });
     }
   });
 
   socket.on("reset", (groupId) => {
-    if (states[groupId]) {
-      states[groupId] = initState();
-    }
+    states[groupId] = initState();
   });
 
   function initState() {
@@ -94,7 +108,8 @@ io.on("connection", (socket) => {
       current: null,
       misclicks: [],
       lockedPlayers: [],
-      waitingNext: false
+      waitingNext: false,
+      readingCompleted: false
     };
   }
 
@@ -106,19 +121,18 @@ io.on("connection", (socket) => {
     state.misclicks = [];
     state.lockedPlayers = [];
     state.waitingNext = false;
+    state.readingCompleted = false;
 
     if (state.questionCount > state.maxQuestions) {
       io.to(groupId).emit("end", state.players);
       return;
     }
 
-    // 使用していないカードから取り札を選ぶ
-    const remainingCards = state.cards.filter(c =>
+    const remaining = state.cards.filter(c =>
       !state.usedCards.includes(c.text + "|" + c.number)
     );
 
-    // 全カードを使い切ったらリセット
-    if (remainingCards.length < state.numCards) {
+    if (remaining.length < state.numCards) {
       state.usedCards = [];
     }
 
@@ -130,7 +144,6 @@ io.on("connection", (socket) => {
     const answerIndex = Math.floor(Math.random() * shuffled.length);
     const answerCard = shuffled[answerIndex];
 
-    // 使用済みに追加
     state.usedCards.push(answerCard.text + "|" + answerCard.number);
 
     state.current = {
@@ -140,7 +153,7 @@ io.on("connection", (socket) => {
         term: c.term,
         number: c.number,
         text: c.text,
-        _answer: i === answerIndex  // internal flag for correct
+        _answer: i === answerIndex
       }))
     };
 
@@ -154,7 +167,6 @@ io.on("connection", (socket) => {
           term: c.term,
           number: c.number,
           text: c.text
-          // correct: undefined → 最初は非表示
         }))
       }
     });
@@ -166,6 +178,6 @@ io.on("connection", (socket) => {
 });
 
 server.listen(3000, () => {
-  console.log("Server running at http://localhost:3000");
+  console.log("🚀 Server running on http://localhost:3000");
 });
 
