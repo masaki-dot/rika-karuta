@@ -4,8 +4,9 @@ let groupId = "";
 let locked = false;
 let loadedCards = [];
 let readAloud = false;
-let showSpeed = 2000; // 5文字ごとに2秒
+let showSpeed = 2000; // 5文字ごとに表示
 let numCards = 5;
+let lastQuestionText = ""; // 読み札再表示防止
 
 function showGroupSelectUI() {
   const root = document.getElementById("root");
@@ -73,43 +74,42 @@ socket.on("state", (state) => {
   const current = state.current;
   if (!current) return;
 
+  locked = false; // 🔓 新しい問題でロック解除
   const root = document.getElementById("game");
+
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">得点: ${getMyScore(state.players)}点</div>
-    <input type="text" id="answerInput" placeholder="札の番号を入力" />
-    <button onclick="submitAnswer()">送信</button>
     <button onclick="resetGame()">リセット</button>
     <div id="others"></div>
   `;
 
-  showYomifudaAnimated(current.text);
+  // 🔄 読み札を再表示しないように制御
+  if (current.text !== lastQuestionText) {
+    showYomifudaAnimated(current.text);
+    lastQuestionText = current.text;
+  } else {
+    document.getElementById("yomifuda").textContent = current.text;
+  }
 
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
     const div = document.createElement("div");
-    div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px;";
+    div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     if (c.correct) div.style.background = "yellow";
+    div.onclick = () => {
+      if (!locked) submitAnswer(c.number);
+    };
     cardsDiv.appendChild(div);
   });
-
-  const input = document.getElementById("answerInput");
-  if (locked) {
-    input.disabled = true;
-    input.style.background = "#fdd";
-  } else {
-    input.disabled = false;
-    input.style.background = "white";
-  }
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
     state.players.map(p => `<li>${p.name}: ${p.score}点</li>`).join("") + "</ul>";
 
-  // お手つき表示
   if (state.misclicks) {
     state.misclicks.forEach(m => {
       const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
@@ -127,11 +127,6 @@ socket.on("state", (state) => {
 socket.on("lock", (name) => {
   if (name === playerName) {
     locked = true;
-    const input = document.getElementById("answerInput");
-    if (input) {
-      input.disabled = true;
-      input.style.background = "#fdd";
-    }
   }
 });
 
@@ -144,11 +139,9 @@ socket.on("end", (players) => {
     `</ol>`;
 });
 
-function submitAnswer() {
+function submitAnswer(number) {
   if (locked) return;
-  const number = document.getElementById("answerInput").value.trim();
   socket.emit("answer", { groupId, name: playerName, number });
-  document.getElementById("answerInput").value = "";
 }
 
 function resetGame() {
@@ -166,10 +159,10 @@ function showYomifudaAnimated(text) {
   yomifudaDiv.style.textAlign = "left";
 
   let i = 0;
-  speechSynthesis.cancel(); // 読み上げを止める
+  speechSynthesis.cancel(); // 前の読み上げを止める
 
   const interval = setInterval(() => {
-    const chunk = text.slice(i, i + 5); // 5文字ずつ
+    const chunk = text.slice(i, i + 5);
     yomifudaDiv.textContent += chunk;
     i += 5;
     if (i >= text.length) clearInterval(interval);
@@ -183,4 +176,3 @@ function showYomifudaAnimated(text) {
 }
 
 window.onload = showGroupSelectUI;
-
