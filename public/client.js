@@ -4,6 +4,9 @@ let playerName = "";
 let locked = false;
 let loadedCards = [];
 let readAloud = false;
+let showSpeed = 40;
+let previousText = "";
+let numCards = 5;
 
 function initUI() {
   const root = document.getElementById("root");
@@ -12,6 +15,8 @@ function initUI() {
     <input type="text" id="nameInput" placeholder="プレイヤー名を入力" />
     <input type="file" id="csvFile" accept=".csv" />
     <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
+    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
+    <label>表示速度(ms/文字): <input type="number" id="speed" value="40" min="10" max="200" /></label>
     <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
     <button onclick="loadAndStart()">スタート</button>
     <div id="game"></div>
@@ -23,6 +28,9 @@ function loadAndStart() {
   const file = document.getElementById("csvFile").files[0];
   const maxQuestions = Number(document.getElementById("maxQuestions").value);
   readAloud = document.getElementById("readAloudCheck").checked;
+  showSpeed = Number(document.getElementById("speed").value);
+  numCards = Number(document.getElementById("numCards").value);
+
   if (!playerName || !file) {
     alert("プレイヤー名とCSVを入力してください");
     return;
@@ -38,7 +46,7 @@ function loadAndStart() {
       }));
       socket.emit("start", {
         cards: loadedCards,
-        numCards: 5,
+        numCards: numCards,
         maxQuestions: maxQuestions
       });
     }
@@ -52,15 +60,17 @@ socket.on("state", (state) => {
   const root = document.getElementById("game");
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda" style="font-size: 1.2em; margin: 10px;"></div>
+    <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div>得点: ${getMyScore(state.players)}点</div>
+    <div id="scores">得点: ${getMyScore(state.players)}点</div>
     <input type="text" id="answerInput" placeholder="札の番号を入力" />
     <button onclick="submitAnswer()">送信</button>
     <button onclick="resetGame()">リセット</button>
+    <div id="others"></div>
   `;
 
   showYomifudaAnimated(current.text);
+  previousText = current.text;
 
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
@@ -79,13 +89,25 @@ socket.on("state", (state) => {
     input.disabled = false;
     input.style.background = "white";
   }
+
+  const otherDiv = document.getElementById("others");
+  otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" + state.players.map(p => `<li>${p.name}: ${p.score}点</li>`).join("") + "</ul>";
 });
 
 socket.on("lock", (name) => {
   if (name === playerName) {
     locked = true;
+    const input = document.getElementById("answerInput");
+    if (input) {
+      input.disabled = true;
+      input.style.background = "#fdd";
+    }
     setTimeout(() => {
       locked = false;
+      if (input) {
+        input.disabled = false;
+        input.style.background = "white";
+      }
     }, 3000);
   }
 });
@@ -116,12 +138,13 @@ function getMyScore(players) {
 function showYomifudaAnimated(text) {
   const yomifudaDiv = document.getElementById("yomifuda");
   yomifudaDiv.textContent = "";
+  yomifudaDiv.style.textAlign = "left";
   let i = 0;
   const interval = setInterval(() => {
     yomifudaDiv.textContent += text[i];
     i++;
     if (i >= text.length) clearInterval(interval);
-  }, 40);
+  }, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
