@@ -22,6 +22,7 @@ function showGroupSelectUI() {
     <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
     <br/><br/>
     <div id="groupButtons"></div>
+    <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
   `;
 
   document.getElementById("csvFile").addEventListener("change", () => {
@@ -85,6 +86,17 @@ function startGame() {
     maxQuestions
   });
 }
+
+socket.on("csv_ready", () => {
+  if (loadedCards.length === 0) {
+    drawGroupButtons();
+  }
+});
+
+socket.on("user_count", (count) => {
+  const div = document.getElementById("userCountDisplay");
+  if (div) div.textContent = `接続中: ${count}人`;
+});
 
 socket.on("state", (state) => {
   const current = state.current;
@@ -190,3 +202,4 @@ function showYomifudaAnimated(text) {
 }
 
 window.onload = showGroupSelectUI;
+
