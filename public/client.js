@@ -123,7 +123,7 @@ socket.on("state", (state) => {
   `;
 
   const yomifudaKey = current.text + "|" + state.questionCount;
-  if (yomifudaKey !== lastYomifudaKey && !yomifudaAnimating) {
+  if (yomifudaKey !== lastYomifudaKey) {
     lastYomifudaKey = yomifudaKey;
     showYomifudaAnimated(current.text);
   } else if (!yomifudaAnimating) {
@@ -190,8 +190,11 @@ function showYomifudaAnimated(text) {
   div.textContent = "";
   div.style.textAlign = "left";
   let i = 0;
-  yomifudaAnimating = true;
   speechSynthesis.cancel();
+
+  // アニメーションがすでに始まっていたら中断しない
+  if (yomifudaAnimating) return;
+  yomifudaAnimating = true;
 
   const interval = setInterval(() => {
     const chunk = text.slice(i, i + 5);
