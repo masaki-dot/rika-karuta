@@ -1,7 +1,3 @@
-// =======================
-// 修正版 server.js 全文（正解札は正解後のみ表示）
-// =======================
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -11,6 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// 静的ファイルを配信
 app.use(express.static(path.join(__dirname, "public")));
 
 const states = {};
@@ -22,37 +19,24 @@ io.on("connection", (socket) => {
     groupId = gid;
     socket.join(groupId);
     if (!states[groupId]) {
-      states[groupId] = {
-        players: [],
-        cards: [],
-        numCards: 5,
-        maxQuestions: 10,
-        questionCount: 0,
-        current: null,
-        misclicks: [],
-        waitingNext: false
-      };
+      states[groupId] = initState();
     }
   });
 
   socket.on("start", (data) => {
     const { groupId, cards, numCards, maxQuestions } = data;
-    states[groupId] = {
-      cards: [...cards],
-      numCards,
-      maxQuestions,
-      questionCount: 0,
-      players: [],
-      current: null,
-      misclicks: [],
-      waitingNext: false
-    };
+    states[groupId] = initState();
+    const state = states[groupId];
+    state.cards = [...cards];
+    state.numCards = numCards;
+    state.maxQuestions = maxQuestions;
     nextQuestion(groupId);
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
     if (!state || !state.current || state.waitingNext) return;
+    if (state.lockedPlayers.includes(name)) return;
 
     let player = state.players.find(p => p.name === name);
     if (!player) {
@@ -60,24 +44,29 @@ io.on("connection", (socket) => {
       state.players.push(player);
     }
 
-    const correct = state.current.answer === number;
-    if (correct) {
+    const correctCard = state.current.cards.find(c => c.number === number);
+
+    if (correctCard && correctCard._answer) {
       player.score += 1;
+
+      // 正解札のみ correct: true を付加
+      state.current.cards = state.current.cards.map(c => ({
+        ...c,
+        correct: c._answer || false
+      }));
+
       state.waitingNext = true;
-
-      // 正解札にのみ correct: true を付ける
-      const updatedCards = state.current.cards.map(card => {
-        return { ...card, correct: card.number === number };
-      });
-
-      state.current.cards = updatedCards;
-
       io.to(groupId).emit("state", {
         ...state,
         misclicks: state.misclicks,
         waitingNext: true
       });
+
+      setTimeout(() => {
+        nextQuestion(groupId);
+      }, 3000);
     } else {
+      state.lockedPlayers.push(name);
       state.misclicks.push({ name, number });
       io.to(groupId).emit("lock", name);
       io.to(groupId).emit("state", {
@@ -88,48 +77,86 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("next", (groupId) => {
-    const state = states[groupId];
-    if (!state || !state.waitingNext) return;
-
-    state.questionCount += 1;
-    state.waitingNext = false;
-    state.misclicks = [];
-
-    if (state.questionCount >= state.maxQuestions) {
-      io.to(groupId).emit("end", state.players);
-    } else {
-      nextQuestion(groupId);
-    }
-  });
-
   socket.on("reset", (groupId) => {
     if (states[groupId]) {
-      states[groupId].players = [];
-      states[groupId].questionCount = 0;
-      states[groupId].misclicks = [];
-      states[groupId].waitingNext = false;
-      nextQuestion(groupId);
+      states[groupId] = initState();
     }
   });
+
+  function initState() {
+    return {
+      players: [],
+      cards: [],
+      usedCards: [],
+      numCards: 5,
+      maxQuestions: 10,
+      questionCount: 0,
+      current: null,
+      misclicks: [],
+      lockedPlayers: [],
+      waitingNext: false
+    };
+  }
 
   function nextQuestion(groupId) {
     const state = states[groupId];
-    if (!state || !state.cards || state.cards.length === 0) return;
+    if (!state) return;
 
-    const shuffled = shuffle(state.cards).slice(0, state.numCards);
+    state.questionCount += 1;
+    state.misclicks = [];
+    state.lockedPlayers = [];
+    state.waitingNext = false;
+
+    if (state.questionCount > state.maxQuestions) {
+      io.to(groupId).emit("end", state.players);
+      return;
+    }
+
+    // 使用していないカードから取り札を選ぶ
+    const remainingCards = state.cards.filter(c =>
+      !state.usedCards.includes(c.text + "|" + c.number)
+    );
+
+    // 全カードを使い切ったらリセット
+    if (remainingCards.length < state.numCards) {
+      state.usedCards = [];
+    }
+
+    const candidates = state.cards.filter(c =>
+      !state.usedCards.includes(c.text + "|" + c.number)
+    );
+
+    const shuffled = shuffle(candidates).slice(0, state.numCards);
     const answerIndex = Math.floor(Math.random() * shuffled.length);
+    const answerCard = shuffled[answerIndex];
+
+    // 使用済みに追加
+    state.usedCards.push(answerCard.text + "|" + answerCard.number);
 
     state.current = {
-      text: shuffled[answerIndex].text,
-      answer: shuffled[answerIndex].number,
-      cards: shuffled.map(c => ({ ...c })) // correctフラグを含まない初期状態
+      text: answerCard.text,
+      answer: answerCard.number,
+      cards: shuffled.map((c, i) => ({
+        term: c.term,
+        number: c.number,
+        text: c.text,
+        _answer: i === answerIndex  // internal flag for correct
+      }))
     };
 
     io.to(groupId).emit("state", {
       ...state,
-      misclicks: state.misclicks,
-      waitingNext: false
+      misclicks: [],
+      waitingNext: false,
+      current: {
+        ...state.current,
+        cards: state.current.cards.map(c => ({
+          term: c.term,
+          number: c.number,
+          text: c.text
+          // correct: undefined → 最初は非表示
+        }))
+      }
     });
   }
 
@@ -139,5 +166,6 @@ io.on("connection", (socket) => {
 });
 
 server.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+  console.log("Server running at http://localhost:3000");
 });
+
