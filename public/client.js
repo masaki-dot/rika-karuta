@@ -5,6 +5,7 @@ window.onerror = function (msg, src, line, col, err) {
   div.textContent = `[JavaScriptエラー] ${msg} (${src}:${line})`;
   document.body.appendChild(div);
 };
+
 let socket = io();
 let playerName = "";
 let groupId = "";
@@ -31,7 +32,7 @@ function showGroupSelectUI() {
     <br/><br/>
     <div id="groupButtons"></div>
     <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
-  \`;
+  `;
 
   document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
@@ -68,14 +69,14 @@ function drawGroupButtons() {
 function initUI() {
   const root = document.getElementById("root");
   playerNameFixed = false;
-  root.innerHTML = \`
+  root.innerHTML = `
     <h1>理科カルタ（リアルタイム）</h1>
     <input type="text" id="nameInput" placeholder="プレイヤー名を入力" />
     <button onclick="fixPlayerName()">決定</button>
     <button id="startBtn" onclick="startGame()" disabled>スタート</button>
     <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
     <div id="game"></div>
-  \`;
+  `;
 }
 
 function fixPlayerName() {
@@ -115,7 +116,7 @@ socket.on("csv_ready", () => {
 
 socket.on("user_count", (count) => {
   const div = document.getElementById("userCountDisplay");
-  if (div) div.textContent = \`接続中: \${count}人\`;
+  if (div) div.textContent = `接続中: ${count}人`;
 });
 
 socket.on("state", (state) => {
@@ -124,13 +125,13 @@ socket.on("state", (state) => {
 
   locked = false;
   const root = document.getElementById("game");
-  root.innerHTML = \`
-    <div><strong>問題 \${state.questionCount} / \${state.maxQuestions}</strong></div>
+  root.innerHTML = `
+    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div id="scores">得点: \${getMyScore(state.players)}点</div>
+    <div id="scores">得点: ${getMyScore(state.players)}点</div>
     <div id="others"></div>
-  \`;
+  `;
 
   const yomifudaDiv = document.getElementById("yomifuda");
   if (current.text !== lastYomifudaText || yomifudaDiv.textContent.trim() === "") {
@@ -142,7 +143,7 @@ socket.on("state", (state) => {
   current.cards.forEach((c) => {
     const div = document.createElement("div");
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
-    div.innerHTML = \`<div>\${c.term}</div><div>\${c.number}</div>\`;
+    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     if (c.correct) div.style.background = "yellow";
     div.onclick = () => {
       if (!locked) submitAnswer(c.number);
@@ -152,7 +153,7 @@ socket.on("state", (state) => {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-    state.players.map(p => \`<li>\${p.name || "(未設定)"}: \${p.score}点</li>\`).join("") + "</ul>";
+    state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
 
   if (state.misclicks) {
     state.misclicks.forEach(m => {
@@ -161,7 +162,7 @@ socket.on("state", (state) => {
         card.style.background = "#fdd";
         const tag = document.createElement("div");
         tag.style.color = "red";
-        tag.textContent = \`お手つき: \${m.name}\`;
+        tag.textContent = `お手つき: ${m.name}`;
         card.appendChild(tag);
       }
     });
@@ -176,11 +177,11 @@ socket.on("lock", (name) => {
 
 socket.on("end", (players) => {
   const root = document.getElementById("game");
-  root.innerHTML += \`<h2>ゲーム終了！</h2>\`;
+  root.innerHTML += `<h2>ゲーム終了！</h2>`;
   const sorted = [...players].sort((a, b) => b.score - a.score).slice(0, 5);
-  root.innerHTML += \`<h3>順位</h3><ol>\` +
-    sorted.map(p => \`<li>\${p.name}: \${p.score}点</li>\`).join('') +
-    \`</ol>\`;
+  root.innerHTML += `<h3>順位</h3><ol>` +
+    sorted.map(p => `<li>${p.name}: ${p.score}点</li>`).join('') +
+    `</ol>`;
 });
 
 function submitAnswer(number) {
@@ -221,8 +222,7 @@ function showYomifudaAnimated(text) {
   }
 }
 
-// 最後の行（これに置き換える）
+// DOM構築完了後に初期画面を表示（バグ対策）
 window.onload = function () {
   showGroupSelectUI();
 };
-
