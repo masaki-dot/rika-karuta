@@ -211,7 +211,11 @@ function showYomifudaAnimated(text) {
     if (i >= text.length) {
       clearInterval(interval);
       yomifudaAnimating = false;
-      socket.emit("read_done", groupId);
+
+      // ✅ 読み終わったらサーバに通知（重複防止済）
+      if (groupId) {
+        socket.emit("read_done", groupId);
+      }
     }
   }, showSpeed);
 
@@ -221,6 +225,7 @@ function showYomifudaAnimated(text) {
     speechSynthesis.speak(utter);
   }
 }
+
 
 // DOM構築完了後に初期画面を表示（バグ対策）
 window.onload = function () {
