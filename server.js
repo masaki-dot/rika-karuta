@@ -40,10 +40,9 @@ io.on("connection", (socket) => {
   socket.on("start", (data) => {
     const { groupId, numCards, maxQuestions } = data;
     const state = states[groupId] = initState();
-
     state.cards = shuffle([...globalCards]);
     state.maxQuestions = maxQuestions;
-    state.numCards = Math.min(Math.max(5, numCards), 10); // 5～10枚
+    state.numCards = Math.min(Math.max(5, numCards), 10);
     nextQuestion(groupId);
   });
 
@@ -59,7 +58,7 @@ io.on("connection", (socket) => {
         io.to(groupId).emit("state", { ...st, waitingNext: true });
         nextQuestion(groupId);
       }
-    }, 30000); // 30秒後に次へ
+    }, 30000);
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
@@ -99,7 +98,7 @@ io.on("connection", (socket) => {
 
       setTimeout(() => {
         nextQuestion(groupId);
-      }, 3000); // 正解後は3秒
+      }, 3000);
     } else {
       state.lockedPlayers.push(name);
       state.misclicks.push({ name, number });
