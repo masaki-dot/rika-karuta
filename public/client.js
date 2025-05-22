@@ -1,4 +1,10 @@
-
+// --- エラーを画面に表示する ---
+window.onerror = function (msg, src, line, col, err) {
+  const div = document.createElement("div");
+  div.style = "position: fixed; top: 0; left: 0; background: red; color: white; padding: 10px; z-index: 9999; font-size: 14px;";
+  div.textContent = `[JavaScriptエラー] ${msg} (${src}:${line})`;
+  document.body.appendChild(div);
+};
 let socket = io();
 let playerName = "";
 let groupId = "";
