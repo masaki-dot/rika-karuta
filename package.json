@@ -1,6 +1,7 @@
 {
-  "name": "rika-karuta-realtime",
+  "name": "rika-karuta",
   "version": "1.0.0",
+  "description": "理科カルタ リアルタイムWebアプリ",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
