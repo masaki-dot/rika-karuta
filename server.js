@@ -55,12 +55,10 @@ io.on("connection", (socket) => {
       const st = states[groupId];
       if (st && !st.waitingNext) {
         st.waitingNext = true;
-        io.to(groupId).emit("state", { ...st, waitingNext: true });
         nextQuestion(groupId);
       }
-    }, 30000);
+    }, 30000); // 要望①: 30秒後に自動で次へ
   });
-
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
     if (!state || !state.current || state.waitingNext || !name) return;
@@ -121,10 +119,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("reset", (groupId) => {
-    states[groupId] = initState();
-  });
-
   function initState() {
     return {
       players: [],
@@ -164,9 +158,7 @@ io.on("connection", (socket) => {
       state.usedQuestions = [];
     }
 
-    const question = shuffle(state.cards).find(q =>
-      !state.usedQuestions.includes(q.text + "|" + q.number)
-    );
+    const question = shuffle(remaining)[0];
     state.usedQuestions.push(question.text + "|" + question.number);
 
     const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
