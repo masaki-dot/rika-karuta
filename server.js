@@ -25,7 +25,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("set_cards", (cards) => {
-    globalCards = cards;
+    globalCards = [...cards]; // 保持用にコピー
     io.emit("csv_ready");
   });
 
@@ -49,12 +49,13 @@ io.on("connection", (socket) => {
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
     if (!state || state.readingCompleted || state.waitingNext) return;
+
     state.readingCompleted = true;
 
-    // 30秒後に自動で次の問題へ
+    // 30秒後に次の問題へ
     setTimeout(() => {
       const st = states[groupId];
-      if (st && !st.waitingNext) {
+      if (st && !st.waitingNext && st.readingCompleted) {
         st.waitingNext = true;
         nextQuestion(groupId);
       }
@@ -96,9 +97,10 @@ io.on("connection", (socket) => {
         waitingNext: true
       });
 
+      // 3秒後に次の問題へ
       setTimeout(() => {
         nextQuestion(groupId);
-      }, 3000); // 正解後は3秒
+      }, 3000);
     } else {
       state.lockedPlayers.push(name);
       state.misclicks.push({ name, number });
@@ -141,7 +143,7 @@ io.on("connection", (socket) => {
     const state = states[groupId];
     if (!state) return;
 
-    state.questionCount += 1;
+    state.questionCount++;
     state.misclicks = [];
     state.lockedPlayers = [];
     state.waitingNext = false;
