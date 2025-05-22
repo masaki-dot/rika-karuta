@@ -20,7 +20,7 @@ let playerNameFixed = false;
 
 function showGroupSelectUI() {
   const root = document.getElementById("root");
-  root.innerHTML = \`
+  root.innerHTML = `
     <h2>CSVをアップロードして、グループを選んでください</h2>
     <input type="file" id="csvFile" accept=".csv" />
     <br/><br/>
