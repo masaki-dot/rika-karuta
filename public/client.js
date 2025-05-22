@@ -221,4 +221,8 @@ function showYomifudaAnimated(text) {
   }
 }
 
-window.onload = showGroupSelectUI;
+// 最後の行（これに置き換える）
+window.onload = function () {
+  showGroupSelectUI();
+};
+
