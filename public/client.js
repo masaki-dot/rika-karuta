@@ -57,7 +57,6 @@ function drawGroupButtons() {
     area.appendChild(btn);
   }
 }
-
 function initUI() {
   const root = document.getElementById("root");
   playerNameFixed = false;
@@ -126,11 +125,9 @@ socket.on("state", (state) => {
   `;
 
   const yomifudaDiv = document.getElementById("yomifuda");
-  if (current.text !== lastYomifudaText) {
+  if (current.text !== lastYomifudaText || yomifudaDiv.textContent.trim() === "") {
     lastYomifudaText = current.text;
     showYomifudaAnimated(current.text);
-  } else if (!yomifudaAnimating) {
-    yomifudaDiv.textContent = current.text;
   }
 
   const cardsDiv = document.getElementById("cards");
