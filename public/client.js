@@ -92,11 +92,17 @@ function fixPlayerName() {
 }
 
 function startGame() {
-  const body = document.body;
-  const logDiv = document.createElement("div");
-  logDiv.style = "background: green; color: white; padding: 5px; position: fixed; top: 0; left: 0; z-index: 9999;";
-  logDiv.textContent = "✅ 最新の client.js が読み込まれています！（画面ログ）";
-  body.appendChild(logDiv);
+   // ✅ ここに追加
+  const log1 = document.createElement("div");
+  log1.style = "background: green; color: white; padding: 5px; position: fixed; top: 0; left: 0; z-index: 9999;";
+  log1.textContent = "✅ 最新の client.js が読み込まれています！（画面ログ）";
+  document.body.appendChild(log1);
+
+  const testValue = document.getElementById("numCards")?.value;
+  const log2 = document.createElement("div");
+  log2.style = "background: navy; color: white; padding: 5px; position: fixed; top: 30px; left: 0; z-index: 9999;";
+  log2.textContent = `📌 読み取ったnumCards: ${testValue}`;
+  document.body.appendChild(log2);
 
   if (!playerNameFixed) {
     alert("プレイヤー名を決定してください");
