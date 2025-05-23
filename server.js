@@ -1,3 +1,4 @@
+// ✅ 完全修正版 server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -25,7 +26,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("set_cards", (cards) => {
-    globalCards = [...cards]; // 保持用にコピー
+    globalCards = [...cards];
     io.emit("csv_ready");
   });
 
@@ -43,21 +44,33 @@ io.on("connection", (socket) => {
     state.cards = shuffle([...globalCards]);
     state.maxQuestions = maxQuestions;
     state.numCards = Math.min(Math.max(5, numCards), 10);
+    console.log(`[DEBUG] ゲーム開始: group=${groupId}, numCards=${state.numCards}`);
     nextQuestion(groupId);
   });
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
     if (!state || state.readingCompleted || state.waitingNext) return;
-
     state.readingCompleted = true;
 
-    // 30秒後に次の問題へ
     setTimeout(() => {
       const st = states[groupId];
       if (st && !st.waitingNext && st.readingCompleted) {
         st.waitingNext = true;
         nextQuestion(groupId);
+        io.to(groupId).emit("state", {
+          ...st,
+          misclicks: [],
+          waitingNext: false,
+          current: {
+            ...st.current,
+            cards: st.current.cards.map(c => ({
+              term: c.term,
+              number: c.number,
+              text: c.text
+            }))
+          }
+        });
       }
     }, 30000);
   });
@@ -97,7 +110,6 @@ io.on("connection", (socket) => {
         waitingNext: true
       });
 
-      // 3秒後に次の問題へ
       setTimeout(() => {
         nextQuestion(groupId);
       }, 3000);
@@ -142,6 +154,8 @@ io.on("connection", (socket) => {
   function nextQuestion(groupId) {
     const state = states[groupId];
     if (!state) return;
+
+    console.log(`[DEBUG] nextQuestion: group=${groupId}, numCards=${state.numCards}`);
 
     state.questionCount++;
     state.misclicks = [];
