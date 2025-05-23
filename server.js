@@ -39,7 +39,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start", (data) => {
-  ...
 });
 
 socket.on("read_done", (groupId) => {
