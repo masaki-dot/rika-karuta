@@ -253,16 +253,15 @@ function showYomifudaAnimated(text) {
     div.textContent += chunk;
     i += 5;
 
-    if (i >= text.length) {
-      clearInterval(interval);
-      yomifudaAnimating = false;
+   if (i >= text.length) {
+  clearInterval(interval);
+  yomifudaAnimating = false;
 
-      // ✅ 読み終わったことをサーバに通知する
-      if (groupId) {
-        socket.emit("read_done", groupId);
-      }
-    }
-  }, showSpeed);
+  if (groupId) {
+    socket.emit("read_done", groupId);
+  }
+}
+, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
