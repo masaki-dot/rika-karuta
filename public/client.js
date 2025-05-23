@@ -92,7 +92,12 @@ function fixPlayerName() {
 }
 
 function startGame() {
-  console.log("✅ 最新の client.js が読み込まれています！");
+  const body = document.body;
+  const logDiv = document.createElement("div");
+  logDiv.style = "background: green; color: white; padding: 5px; position: fixed; top: 0; left: 0; z-index: 9999;";
+  logDiv.textContent = "✅ 最新の client.js が読み込まれています！（画面ログ）";
+  body.appendChild(logDiv);
+
   if (!playerNameFixed) {
     alert("プレイヤー名を決定してください");
     return;
@@ -102,8 +107,6 @@ function startGame() {
   showSpeed = Number(document.getElementById("speed")?.value || 2000);
   numCards = Number(document.getElementById("numCards")?.value || 5);
   maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
-
-  console.log(`[DEBUG] startGame() → numCards=${numCards}, maxQuestions=${maxQuestions}`);
 
   socket.emit("start", {
     groupId,
