@@ -92,6 +92,7 @@ function fixPlayerName() {
 }
 
 function startGame() {
+  console.log("✅ 最新の client.js が読み込まれています！");
   if (!playerNameFixed) {
     alert("プレイヤー名を決定してください");
     return;
