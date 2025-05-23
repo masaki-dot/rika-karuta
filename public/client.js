@@ -96,10 +96,13 @@ function startGame() {
     alert("プレイヤー名を決定してください");
     return;
   }
+
   readAloud = document.getElementById("readAloudCheck")?.checked || false;
   showSpeed = Number(document.getElementById("speed")?.value || 2000);
   numCards = Number(document.getElementById("numCards")?.value || 5);
   maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
+
+  console.log(`[DEBUG] startGame() → numCards=${numCards}, maxQuestions=${maxQuestions}`);
 
   socket.emit("start", {
     groupId,
