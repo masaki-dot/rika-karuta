@@ -155,11 +155,17 @@ socket.on("state", (state) => {
     <div id="others"></div>
   `;
 
-  const yomifudaDiv = document.getElementById("yomifuda");
-  if (current.text !== lastYomifudaText) {
+ const yomifudaDiv = document.getElementById("yomifuda");
+
+// 🧠 前と同じテキストでも強制再表示（表示されていなければ）
+if (current.text !== lastYomifudaText) {
   lastYomifudaText = current.text;
+  yomifudaAnimating = false; // ← アニメーションの再実行を許可
   showYomifudaAnimated(current.text);
 } else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
+  yomifudaDiv.textContent = current.text;
+}
+ else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
   // アニメーション済みでも何も表示されていなければ全文表示
   yomifudaDiv.textContent = current.text;
 }
@@ -223,24 +229,25 @@ function showYomifudaAnimated(text) {
   div.textContent = "";
   div.style.textAlign = "left";
   let i = 0;
+
+  if (yomifudaAnimating) return; // ← すでにアニメ中なら中断
+
+  yomifudaAnimating = true;
   speechSynthesis.cancel();
 
-  if (yomifudaAnimating) return;
-  yomifudaAnimating = true;
-
   const interval = setInterval(() => {
-    const chunk = text.slice(i, i + 5);
-    div.textContent += chunk;
-    i += 5;
     if (i >= text.length) {
       clearInterval(interval);
       yomifudaAnimating = false;
-
-      // ✅ 読み終わったらサーバに通知（重複防止済）
+      // ✅ 表示完了したらサーバに通知（重複防止も含む）
       if (groupId) {
         socket.emit("read_done", groupId);
       }
+      return;
     }
+    const chunk = text.slice(i, i + 5);
+    div.textContent += chunk;
+    i += 5;
   }, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
@@ -249,6 +256,7 @@ function showYomifudaAnimated(text) {
     speechSynthesis.speak(utter);
   }
 }
+
 
 
 // DOM構築完了後に初期画面を表示（バグ対策）
