@@ -253,14 +253,15 @@ function showYomifudaAnimated(text) {
     div.textContent += chunk;
     i += 5;
 
-   if (i >= text.length) {
-  clearInterval(interval);
-  yomifudaAnimating = false;
+    if (i >= text.length) {
+      clearInterval(interval);
+      yomifudaAnimating = false;
 
-  if (groupId) {
-    socket.emit("read_done", groupId);
-  }
-}, showSpeed);
+      if (groupId) {
+        socket.emit("read_done", groupId);
+      }
+    }
+  }, showSpeed);  // ✅ ここでsetIntervalの関数を閉じる！
 
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
@@ -268,6 +269,7 @@ function showYomifudaAnimated(text) {
     speechSynthesis.speak(utter);
   }
 }
+
 
 
 
