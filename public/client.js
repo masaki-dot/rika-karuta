@@ -131,10 +131,9 @@ function startGame() {
 }
 
 socket.on("csv_ready", () => {
-  if (loadedCards.length === 0) {
-    drawGroupButtons();
-  }
+  drawGroupButtons();
 });
+
 
 socket.on("user_count", (count) => {
   const div = document.getElementById("userCountDisplay");
