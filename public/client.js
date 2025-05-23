@@ -156,11 +156,13 @@ socket.on("state", (state) => {
   `;
 
   const yomifudaDiv = document.getElementById("yomifuda");
-  if (current.text !== lastYomifudaText || yomifudaDiv.textContent.trim() === "") {
-    lastYomifudaText = current.text;
-    showYomifudaAnimated(current.text);
-  }
-
+  if (current.text !== lastYomifudaText) {
+  lastYomifudaText = current.text;
+  showYomifudaAnimated(current.text);
+} else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
+  // アニメーション済みでも何も表示されていなければ全文表示
+  yomifudaDiv.textContent = current.text;
+}
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
     const div = document.createElement("div");
