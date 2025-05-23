@@ -118,14 +118,23 @@ io.on("connection", (socket) => {
       state.misclicks.push({ name, number });
 
       if (state.lockedPlayers.length >= 4) {
-        state.waitingNext = true;
-        io.to(groupId).emit("state", {
-          ...state,
-          misclicks: state.misclicks,
-          waitingNext: true
-        });
-        nextQuestion(groupId);
-      } else {
+  state.readingCompleted = true; // ← 強制的に全文読み終わったとみなす
+  io.to(groupId).emit("state", {
+    ...state,
+    misclicks: state.misclicks,
+    waitingNext: true
+  });
+
+  // ✅ 30秒待って次の問題へ（正解が出ていない場合）
+  setTimeout(() => {
+    const st = states[groupId];
+    if (st && !st.waitingNext) {
+      st.waitingNext = true;
+      nextQuestion(groupId);
+    }
+  }, 30000);
+}
+else {
         io.to(groupId).emit("lock", name);
         io.to(groupId).emit("state", {
           ...state,
