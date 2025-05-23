@@ -48,32 +48,26 @@ io.on("connection", (socket) => {
     nextQuestion(groupId);
   });
 
-  socket.on("read_done", (groupId) => {
-    const state = states[groupId];
-    if (!state || state.readingCompleted || state.waitingNext) return;
-    state.readingCompleted = true;
-
-    setTimeout(() => {
-      const st = states[groupId];
-      if (st && !st.waitingNext && st.readingCompleted) {
-        st.waitingNext = true;
-        nextQuestion(groupId);
-        io.to(groupId).emit("state", {
-          ...st,
-          misclicks: [],
-          waitingNext: false,
-          current: {
-            ...st.current,
-            cards: st.current.cards.map(c => ({
-              term: c.term,
-              number: c.number,
-              text: c.text
-            }))
-          }
-        });
+  setTimeout(() => {
+  const st = states[groupId];
+  if (st && st.readingCompleted) {
+    st.waitingNext = true;
+    nextQuestion(groupId);
+    io.to(groupId).emit("state", {
+      ...st,
+      misclicks: [],
+      waitingNext: false,
+      current: {
+        ...st.current,
+        cards: st.current.cards.map(c => ({
+          term: c.term,
+          number: c.number,
+          text: c.text
+        }))
       }
-    }, 30000);
-  });
+    });
+  }
+}, 30000);
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
