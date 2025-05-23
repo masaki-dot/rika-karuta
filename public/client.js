@@ -260,8 +260,7 @@ function showYomifudaAnimated(text) {
   if (groupId) {
     socket.emit("read_done", groupId);
   }
-}
-, showSpeed);
+}, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
