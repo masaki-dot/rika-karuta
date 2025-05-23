@@ -158,11 +158,12 @@ socket.on("state", (state) => {
  const yomifudaDiv = document.getElementById("yomifuda");
 
 // 🧠 前と同じテキストでも強制再表示（表示されていなければ）
-if (current.text !== lastYomifudaText) {
+if (current.text !== lastYomifudaText || !yomifudaAnimating) {
   lastYomifudaText = current.text;
-  yomifudaAnimating = false; // ← アニメーションの再実行を許可
+  yomifudaAnimating = false; // アニメーション強制再許可
   showYomifudaAnimated(current.text);
-} else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
+}
+ else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
   yomifudaDiv.textContent = current.text;
 }
  else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
