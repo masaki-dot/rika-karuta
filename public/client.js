@@ -73,11 +73,20 @@ function initUI() {
     <h1>理科カルタ（リアルタイム）</h1>
     <input type="text" id="nameInput" placeholder="プレイヤー名を入力" />
     <button onclick="fixPlayerName()">決定</button>
+
+    <br/><br/>
+    <label>問題数: <input type="number" id="maxQuestions" value="${maxQuestions}" min="1" /></label>
+    <label>取り札の数: <input type="number" id="numCards" value="${numCards}" min="5" max="10" /></label>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="${showSpeed}" min="100" max="5000" /></label>
+    <label><input type="checkbox" id="readAloudCheck" ${readAloud ? "checked" : ""} /> 読み札を読み上げる</label>
+
+    <br/><br/>
     <button id="startBtn" onclick="startGame()" disabled>スタート</button>
     <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
     <div id="game"></div>
   `;
 }
+
 
 function fixPlayerName() {
   const name = document.getElementById("nameInput").value.trim();
