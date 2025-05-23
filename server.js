@@ -38,8 +38,16 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("start", (data) => {
+ socket.on("start", (data) => {
+  const { groupId, numCards, maxQuestions } = data;
+  const state = states[groupId] = initState();
+  state.cards = shuffle([...globalCards]);
+  state.maxQuestions = maxQuestions;
+  state.numCards = Math.min(Math.max(5, numCards), 10);
+  console.log(`[DEBUG] ゲーム開始: group=${groupId}, numCards=${state.numCards}`);
+  nextQuestion(groupId);
 });
+
 
 socket.on("read_done", (groupId) => {
   console.log(`[DEBUG] read_done received for ${groupId}`);
