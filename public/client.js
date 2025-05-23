@@ -162,12 +162,19 @@ if (current.text !== lastYomifudaText || !yomifudaAnimating) {
   lastYomifudaText = current.text;
   yomifudaAnimating = false;
 
-  // ✅ 読み札エリアを先に空にしてからアニメ開始
   const yomifudaDiv = document.getElementById("yomifuda");
-  if (yomifudaDiv) yomifudaDiv.textContent = "";
 
-  showYomifudaAnimated(current.text);
+  // ✅ 0.1秒だけ空白にする演出
+  if (yomifudaDiv) {
+    yomifudaDiv.textContent = "";
+    setTimeout(() => {
+      showYomifudaAnimated(current.text);
+    }, 100); // ← 100ms（0.1秒）後にアニメーション開始
+  } else {
+    showYomifudaAnimated(current.text); // 念のため
+  }
 }
+
 
  else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
   yomifudaDiv.textContent = current.text;
