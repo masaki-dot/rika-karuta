@@ -160,9 +160,15 @@ socket.on("state", (state) => {
 // 🧠 前と同じテキストでも強制再表示（表示されていなければ）
 if (current.text !== lastYomifudaText || !yomifudaAnimating) {
   lastYomifudaText = current.text;
-  yomifudaAnimating = false; // アニメーション強制再許可
+  yomifudaAnimating = false;
+
+  // ✅ 読み札エリアを先に空にしてからアニメ開始
+  const yomifudaDiv = document.getElementById("yomifuda");
+  if (yomifudaDiv) yomifudaDiv.textContent = "";
+
   showYomifudaAnimated(current.text);
 }
+
  else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
   yomifudaDiv.textContent = current.text;
 }
