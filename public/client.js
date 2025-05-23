@@ -243,25 +243,25 @@ function showYomifudaAnimated(text) {
   div.textContent = "";
   div.style.textAlign = "left";
   let i = 0;
-
-  if (yomifudaAnimating) return; // ← すでにアニメ中なら中断
-
-  yomifudaAnimating = true;
   speechSynthesis.cancel();
 
+  if (yomifudaAnimating) return;
+  yomifudaAnimating = true;
+
   const interval = setInterval(() => {
-    if (i >= text.length) {
-      clearInterval(interval);
-      yomifudaAnimating = false;
-      // ✅ 表示完了したらサーバに通知（重複防止も含む）
-      if (groupId) {
-        socket.emit("read_done", groupId);
-      }
-      return;
-    }
     const chunk = text.slice(i, i + 5);
     div.textContent += chunk;
     i += 5;
+
+    if (i >= text.length) {
+      clearInterval(interval);
+      yomifudaAnimating = false;
+
+      // ✅ 読み終わったことをサーバに通知する
+      if (groupId) {
+        socket.emit("read_done", groupId);
+      }
+    }
   }, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
@@ -270,6 +270,7 @@ function showYomifudaAnimated(text) {
     speechSynthesis.speak(utter);
   }
 }
+
 
 
 
