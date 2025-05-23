@@ -39,35 +39,37 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start", (data) => {
-    const { groupId, numCards, maxQuestions } = data;
-    const state = states[groupId] = initState();
-    state.cards = shuffle([...globalCards]);
-    state.maxQuestions = maxQuestions;
-    state.numCards = Math.min(Math.max(5, numCards), 10);
-    console.log(`[DEBUG] ゲーム開始: group=${groupId}, numCards=${state.numCards}`);
-    nextQuestion(groupId);
-  });
+  ...
+});
+
+socket.on("read_done", (groupId) => {
+  console.log(`[DEBUG] read_done received for ${groupId}`);
+  const state = states[groupId];
+  if (!state || state.readingCompleted || state.waitingNext) return;
+  state.readingCompleted = true;
 
   setTimeout(() => {
-  const st = states[groupId];
-  if (st && st.readingCompleted) {
-    st.waitingNext = true;
-    nextQuestion(groupId);
-    io.to(groupId).emit("state", {
-      ...st,
-      misclicks: [],
-      waitingNext: false,
-      current: {
-        ...st.current,
-        cards: st.current.cards.map(c => ({
-          term: c.term,
-          number: c.number,
-          text: c.text
-        }))
-      }
-    });
-  }
-}, 30000);
+    const st = states[groupId];
+    if (st && st.readingCompleted) {
+      st.waitingNext = true;
+      nextQuestion(groupId);
+      io.to(groupId).emit("state", {
+        ...st,
+        misclicks: [],
+        waitingNext: false,
+        current: {
+          ...st.current,
+          cards: st.current.cards.map(c => ({
+            term: c.term,
+            number: c.number,
+            text: c.text
+          }))
+        }
+      });
+    }
+  }, 30000);
+});
+
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
