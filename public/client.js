@@ -238,6 +238,8 @@ function getMyScore(players) {
 }
 
 function showYomifudaAnimated(text) {
+if (yomifudaAnimating) return;  // ← 二重に発火しないように
+  yomifudaAnimating = true;
   const div = document.getElementById("yomifuda");
   div.textContent = "";
   div.style.textAlign = "left";
