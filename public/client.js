@@ -249,9 +249,6 @@ if (yomifudaAnimating) return;  // ← 二重に発火しないように
   let i = 0;
   speechSynthesis.cancel();
 
-  if (yomifudaAnimating) return;
-  yomifudaAnimating = true;
-
   const interval = setInterval(() => {
     const chunk = text.slice(i, i + 5);
     div.textContent += chunk;
