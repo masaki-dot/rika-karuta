@@ -141,6 +141,7 @@ socket.on("user_count", (count) => {
 });
 
 socket.on("state", (state) => {
+ window.__alreadyReadDone__ = false;
   const current = state.current;
   if (!current) return;
 
@@ -241,7 +242,7 @@ function getMyScore(players) {
 }
 
 function showYomifudaAnimated(text) {
-if (yomifudaAnimating) return;  // ← 二重に発火しないように
+  if (yomifudaAnimating) return;
   yomifudaAnimating = true;
   const div = document.getElementById("yomifuda");
   div.textContent = "";
@@ -258,11 +259,13 @@ if (yomifudaAnimating) return;  // ← 二重に発火しないように
       clearInterval(interval);
       yomifudaAnimating = false;
 
-    if (groupId) {
+      // ✅ ここが大事！
+      if (groupId && !window.__alreadyReadDone__) {
+        window.__alreadyReadDone__ = true;
         socket.emit("read_done", groupId);
       }
     }
-  }, showSpeed); // ✅ ここでsetIntervalの関数を閉じる！
+  }, showSpeed);
 
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
@@ -270,8 +273,6 @@ if (yomifudaAnimating) return;  // ← 二重に発火しないように
     speechSynthesis.speak(utter);
   }
 }
-
-
 
 
 
