@@ -154,15 +154,13 @@ socket.on("state", (state) => {
     <div id="others"></div>
   `;
 
- const yomifudaDiv = document.getElementById("yomifuda");
-
-// 🧠 前と同じテキストでも強制再表示（表示されていなければ）
-if (current.text !== lastYomifudaText || !yomifudaAnimating) {
-  lastYomifudaText = current.text;
+  // ✅ ↓この2行をここに追加！
   yomifudaAnimating = false;
+  lastYomifudaText = "";
 
   const yomifudaDiv = document.getElementById("yomifuda");
 
+  // このあとにある showYomifudaAnimated() をそのまま維持
   if (yomifudaDiv) {
     yomifudaDiv.textContent = "";
     setTimeout(() => {
