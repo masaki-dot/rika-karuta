@@ -163,12 +163,11 @@ if (current.text !== lastYomifudaText || !yomifudaAnimating) {
 
   const yomifudaDiv = document.getElementById("yomifuda");
 
-  // ✅ 0.1秒だけ空白にする演出
   if (yomifudaDiv) {
     yomifudaDiv.textContent = "";
     setTimeout(() => {
       showYomifudaAnimated(current.text);
-    }, 100); // ← 100ms（0.1秒）後にアニメーション開始
+    }, 100);  // 0.1秒の空白演出
   } else {
     showYomifudaAnimated(current.text); // 念のため
   }
