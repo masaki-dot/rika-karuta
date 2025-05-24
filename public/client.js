@@ -161,18 +161,22 @@ socket.on("state", (state) => {
   const yomifudaDiv = document.getElementById("yomifuda");
 
   // このあとにある showYomifudaAnimated() をそのまま維持
-  if (yomifudaDiv) {
+ if (yomifudaDiv) {
   yomifudaDiv.textContent = "";
   setTimeout(() => {
     showYomifudaAnimated(current.text);
-  }, 100);
+  }, 100); // 0.1秒後にアニメーション表示
 } else {
-  showYomifudaAnimated(current.text);
+  // yomifudaDivがnullなら安全にスキップ（または表示）
+  const fallbackDiv = document.getElementById("yomifuda");
+  if (fallbackDiv) {
+    fallbackDiv.textContent = "";
+    setTimeout(() => {
+      showYomifudaAnimated(current.text);
+    }, 100);
+  }
 }
 
-else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
-  yomifudaDiv.textContent = current.text;
-}
 
 
 
