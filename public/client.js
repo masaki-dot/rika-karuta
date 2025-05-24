@@ -180,9 +180,7 @@ socket.on("state", (state) => {
 
 
 
- else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
-  yomifudaDiv.textContent = current.text;
-}
+
  else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
   // アニメーション済みでも何も表示されていなければ全文表示
   yomifudaDiv.textContent = current.text;
