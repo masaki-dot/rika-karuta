@@ -258,11 +258,11 @@ if (yomifudaAnimating) return;  // ← 二重に発火しないように
       clearInterval(interval);
       yomifudaAnimating = false;
 
-      if (groupId) {
+    if (groupId) {
         socket.emit("read_done", groupId);
       }
     }
-  }, showSpeed);  // ✅ ここでsetIntervalの関数を閉じる！
+  }, showSpeed); // ✅ ここでsetIntervalの関数を閉じる！
 
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
