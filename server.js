@@ -163,33 +163,37 @@ else {
     };
   }
 
-  function nextQuestion(groupId) {
-    const state = states[groupId];
-    if (!state) return;
+function nextQuestion(groupId) {
+  const state = states[groupId];
+  if (!state) return;
 
-    console.log(`[DEBUG] nextQuestion: group=${groupId}, numCards=${state.numCards}`);
+  console.log(`[DEBUG] nextQuestion: group=${groupId}, numCards=${state.numCards}`);
 
-    state.questionCount++;
-    state.misclicks = [];
-    state.lockedPlayers = [];
-    state.waitingNext = false;
-    state.readingCompleted = false;
+  state.questionCount++;
+  state.misclicks = [];
+  state.lockedPlayers = [];
+  state.waitingNext = false;
+  state.readingCompleted = false;
 
-    if (state.questionCount > state.maxQuestions) {
-      io.to(groupId).emit("end", state.players);
-      return;
-    }
+  if (state.questionCount > state.maxQuestions) {
+    io.to(groupId).emit("end", state.players);
+    return;
+  }
 
-    const remaining = state.cards.filter(q =>
-      !state.usedQuestions.includes(q.text + "|" + q.number)
-    );
+  const remaining = state.cards.filter(q =>
+    !state.usedQuestions.includes(q.text + "|" + q.number)
+  );
 
-    if (remaining.length === 0) {
-      state.usedQuestions = [];
-    }
+  // ✅【ここを追加】残りの問題が0ならゲーム終了
+  if (remaining.length === 0) {
+    console.log("[WARN] 残りの問題がありません。ゲーム終了します。");
+    io.to(groupId).emit("end", state.players);
+    return;
+  }
 
-    const question = shuffle(remaining)[0];
-    state.usedQuestions.push(question.text + "|" + question.number);
+  const question = shuffle(remaining)[0];
+  state.usedQuestions.push(question.text + "|" + question.number);
+
 
     const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
     const allCards = shuffle([...distractors, question]);
