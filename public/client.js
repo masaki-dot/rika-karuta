@@ -155,8 +155,11 @@ socket.on("state", (state) => {
   `;
 
   // ✅ ↓この2行をここに追加！
-  yomifudaAnimating = false;
-  lastYomifudaText = "";
+yomifudaAnimating = false;
+lastYomifudaText = "";
+
+// 強制的に再表示
+showYomifudaAnimated(current.text);
 
   const yomifudaDiv = document.getElementById("yomifuda");
 
