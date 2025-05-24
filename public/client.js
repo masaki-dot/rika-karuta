@@ -162,14 +162,18 @@ socket.on("state", (state) => {
 
   // このあとにある showYomifudaAnimated() をそのまま維持
   if (yomifudaDiv) {
-    yomifudaDiv.textContent = "";
-    setTimeout(() => {
-      showYomifudaAnimated(current.text);
-    }, 100);  // 0.1秒の空白演出
-  } else {
-    showYomifudaAnimated(current.text); // 念のため
-  }
+  yomifudaDiv.textContent = "";
+  setTimeout(() => {
+    showYomifudaAnimated(current.text);
+  }, 100);
+} else {
+  showYomifudaAnimated(current.text);
 }
+
+else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
+  yomifudaDiv.textContent = current.text;
+}
+
 
 
  else if (!yomifudaDiv.textContent || yomifudaDiv.textContent.trim() === "") {
