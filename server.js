@@ -25,10 +25,12 @@ io.on("connection", (socket) => {
     io.emit("user_count", currentUsers);
   });
 
-  socket.on("set_cards", (cards) => {
-    globalCards = [...cards];
-    io.emit("csv_ready");
-  });
+socket.on("set_cards", (cards) => {
+  globalCards = [...cards];
+  console.log(`[DEBUG] CSV読み込み完了: ${globalCards.length}件`);
+  io.emit("csv_ready");
+});
+
 
   socket.on("join", (gid) => {
     groupId = gid;
@@ -180,9 +182,11 @@ function nextQuestion(groupId) {
     return;
   }
 
-  const remaining = state.cards.filter(q =>
-    !state.usedQuestions.includes(q.text + "|" + q.number)
-  );
+ const remaining = state.cards.filter(q =>
+  !state.usedQuestions.includes(q.text + "|" + q.number)
+);
+
+console.log(`[DEBUG] remaining.length = ${remaining.length}`); // ← これ！
 
   // ✅【ここを追加】残りの問題が0ならゲーム終了
   if (remaining.length === 0) {
