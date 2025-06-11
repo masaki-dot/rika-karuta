@@ -25,10 +25,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("set_cards", (cards) => {
-    globalCards = [...cards];
-    console.log(`[DEBUG] CSV読み込み完了: ${globalCards.length}件`);
-    io.emit("csv_ready");
-  });
+  globalCards = [...cards];
+  console.log(`[DEBUG] サーバーが受け取った問題数: ${globalCards.length}`);
+  console.log("[DEBUG] 最初の5問:", globalCards.slice(0, 5));
+  io.emit("csv_ready");
+});
+
 
   socket.on("join", (gid) => {
     groupId = gid;
