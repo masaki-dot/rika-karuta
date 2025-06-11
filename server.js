@@ -182,15 +182,8 @@ function nextQuestion(groupId) {
     return;
   }
 
- const remaining = state.cards.filter(q =>
-  !state.usedQuestions.includes(q.text + "|" + q.number)
-);
-
-console.log(`[DEBUG] remaining.length = ${remaining.length}`); // ← これ！
-
-  // ✅【ここを追加】残りの問題が0ならゲーム終了
+  const remaining = state.cards.filter(q => !state.usedQuestions.includes(q.text + "|" + q.number));
   if (remaining.length === 0) {
-    console.log("[WARN] 残りの問題がありません。ゲーム終了します。");
     io.to(groupId).emit("end", state.players);
     return;
   }
@@ -198,36 +191,34 @@ console.log(`[DEBUG] remaining.length = ${remaining.length}`); // ← これ！
   const question = shuffle(remaining)[0];
   state.usedQuestions.push(question.text + "|" + question.number);
 
+  const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
+  const allCards = shuffle([...distractors, question]);
 
-    const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
-    const allCards = shuffle([...distractors, question]);
+  state.current = {
+    text: question.text,
+    answer: question.number,
+    cards: allCards.map(c => ({
+      term: c.term,
+      number: c.number,
+      text: c.text,
+      _answer: c.number === question.number
+    }))
+  };
 
-    state.current = {
-      text: question.text,
-      answer: question.number,
-      cards: allCards.map(c => ({
+  io.to(groupId).emit("state", {
+    ...state,
+    misclicks: [],
+    waitingNext: false,
+    current: {
+      ...state.current,
+      cards: state.current.cards.map(c => ({
         term: c.term,
         number: c.number,
-        text: c.text,
-        _answer: c.number === question.number
+        text: c.text
       }))
-    };
-
-    io.to(groupId).emit("state", {
-      ...state,
-      misclicks: [],
-      waitingNext: false,
-      current: {
-        ...state.current,
-        cards: state.current.cards.map(c => ({
-          term: c.term,
-          number: c.number,
-          text: c.text
-        }))
-      }
-    });
-  }
-
+    }
+  });
+}
   function shuffle(arr) {
     return [...arr].sort(() => Math.random() - 0.5);
   }
