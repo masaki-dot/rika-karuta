@@ -38,30 +38,35 @@ function showGroupSelectUI() {
   document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
 Papa.parse(file, {
-  header: false,
+  header: false, // ヘッダーを使わず、1行目を手動で扱う
   skipEmptyLines: true,
   complete: (result) => {
     const rows = result.data;
-    console.log("📥 読み込んだ行数:", rows.length);
 
-    // 1行目をヘッダーとして使用し、それ以降をデータとして処理
-    const header = rows[0];
-    const dataRows = rows.slice(1);
+    if (rows.length < 2) {
+      alert("CSVファイルに十分な行がありません。");
+      return;
+    }
 
-    loadedCards = dataRows.map((r, i) => ({
-      number: String(r[0]).trim(), // 番号列
-      term: String(r[1]).trim(),   // 用語列
-      text: String(r[2]).trim()    // 説明列
-    }));
+    // 1行目を列名として使い、2行目以降をデータとして扱う
+    const dataRows = rows.slice(1); // ← ここが重要！
 
-    console.log("📦 CSV読込結果:", loadedCards.length, "件");
-    console.log("📤 サーバーに送信するデータ（冒頭5件）:", loadedCards.slice(0, 5));
+    loadedCards = dataRows.map((r, i) => {
+      return {
+        number: String(r[0]).trim(), // 番号
+        term: String(r[1]).trim(),   // 用語
+        text: String(r[2]).trim()    // 説明
+      };
+    }).filter(card => card.term && card.text); // 空白行除外
+
+    console.log("📥 読み込んだ問題数:", loadedCards.length);
+    console.log("📤 サーバーに送信する冒頭5件:", loadedCards.slice(0, 5));
 
     socket.emit("set_cards", loadedCards);
     drawGroupButtons();
   },
   error: (err) => {
-    console.error("🚨 CSV解析エラー:", err);
+    console.error("🚨 CSV読み込みエラー:", err);
   }
 });
 
