@@ -169,6 +169,12 @@ function nextQuestion(groupId) {
   const state = states[groupId];
   if (!state) return;
 
+  // ✅ 最大問題数に達していれば終了
+  if (state.questionCount >= state.maxQuestions) {
+    io.to(groupId).emit("end", state.players);
+    return;
+  }
+
   console.log(`[DEBUG] nextQuestion: group=${groupId}, numCards=${state.numCards}`);
 
   state.questionCount++;
@@ -177,12 +183,11 @@ function nextQuestion(groupId) {
   state.waitingNext = false;
   state.readingCompleted = false;
 
-  if (state.questionCount > state.maxQuestions) {
-    io.to(groupId).emit("end", state.players);
-    return;
-  }
+  // ✅ 毎回 globalCards からランダムに選び、usedQuestions で重複回避
+  const remaining = globalCards.filter(q =>
+    !state.usedQuestions.includes(q.text + "|" + q.number)
+  );
 
-  const remaining = state.cards.filter(q => !state.usedQuestions.includes(q.text + "|" + q.number));
   if (remaining.length === 0) {
     io.to(groupId).emit("end", state.players);
     return;
@@ -219,6 +224,7 @@ function nextQuestion(groupId) {
     }
   });
 }
+
   function shuffle(arr) {
     return [...arr].sort(() => Math.random() - 0.5);
   }
