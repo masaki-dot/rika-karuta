@@ -49,16 +49,14 @@ io.on("connection", (socket) => {
     nextQuestion(groupId);
   });
 
-  socket.on("read_done", (groupId) => {
+ socket.on("read_done", (groupId) => {
   const state = states[groupId];
   if (!state || state.readingCompleted || state.waitingNext) return;
 
   state.readingCompleted = true;
 
-  console.log(`[DEBUG] 読み札の全文表示完了: group=${groupId}`);
-
-  // 30秒後に次の問題へ（正解が出なかった場合）
-  setTimeout(() => {
+  // ✅ タイマーを登録し、IDを保存
+  state.timeoutId = setTimeout(() => {
     const st = states[groupId];
     if (st && st.readingCompleted && !st.waitingNext) {
       st.waitingNext = true;
@@ -66,6 +64,7 @@ io.on("connection", (socket) => {
     }
   }, 30000);
 });
+
 
 
   socket.on("answer", ({ groupId, name, number }) => {
@@ -81,7 +80,7 @@ io.on("connection", (socket) => {
 
     const correctCard = state.current.cards.find(c => c.number === number);
 
-  if (correctCard && correctCard._answer) {
+if (correctCard && correctCard._answer) {
   let base = 1;
   const mis = state.misclicks.length;
   if (mis === 0) base = 3;
@@ -92,6 +91,12 @@ io.on("connection", (socket) => {
 
   state.readingCompleted = true;
   state.waitingNext = true;
+
+  // ✅ 30秒タイマーが生きていたらキャンセル
+  if (state.timeoutId) {
+    clearTimeout(state.timeoutId);
+    state.timeoutId = null;
+  }
 
   state.current.cards = state.current.cards.map(c => ({
     ...c,
@@ -104,14 +109,13 @@ io.on("connection", (socket) => {
     waitingNext: true
   });
 
-  // ✅ 正解時は3秒後に次の問題へ進む
   setTimeout(() => {
     nextQuestion(groupId);
   }, 3000);
+
   return;
-
-
-    } else {
+}
+else {
       state.lockedPlayers.push(name);
       state.misclicks.push({ name, number });
 
@@ -141,19 +145,22 @@ io.on("connection", (socket) => {
   });
 
   function initState() {
-    return {
-      players: [],
-      usedQuestions: [],
-      numCards: 5,
-      maxQuestions: 10,
-      questionCount: 0,
-      current: null,
-      misclicks: [],
-      lockedPlayers: [],
-      waitingNext: false,
-      readingCompleted: false
-    };
-  }
+  return {
+    players: [],
+    cards: [],
+    usedQuestions: [],
+    numCards: 5,
+    maxQuestions: 10,
+    questionCount: 0,
+    current: null,
+    misclicks: [],
+    lockedPlayers: [],
+    waitingNext: false,
+    readingCompleted: false,
+    timeoutId: null  // ←追加
+  };
+}
+
 
   function nextQuestion(groupId) {
     const state = states[groupId];
