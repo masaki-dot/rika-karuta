@@ -50,19 +50,23 @@ io.on("connection", (socket) => {
   });
 
   socket.on("read_done", (groupId) => {
-    console.log(`[DEBUG] read_done received for ${groupId}`);
-    const state = states[groupId];
-    if (!state || state.readingCompleted || state.waitingNext) return;
-    state.readingCompleted = true;
+  const state = states[groupId];
+  if (!state || state.readingCompleted || state.waitingNext) return;
 
-    setTimeout(() => {
-      const st = states[groupId];
-      if (st && st.readingCompleted && !st.waitingNext) {
-        st.waitingNext = true;
-        nextQuestion(groupId);
-      }
-    }, 30000); // 30秒待機
-  });
+  state.readingCompleted = true;
+
+  console.log(`[DEBUG] 読み札の全文表示完了: group=${groupId}`);
+
+  // 30秒後に次の問題へ（正解が出なかった場合）
+  setTimeout(() => {
+    const st = states[groupId];
+    if (st && st.readingCompleted && !st.waitingNext) {
+      st.waitingNext = true;
+      nextQuestion(groupId);
+    }
+  }, 30000);
+});
+
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
@@ -77,31 +81,37 @@ io.on("connection", (socket) => {
 
     const correctCard = state.current.cards.find(c => c.number === number);
 
-    if (correctCard && correctCard._answer) {
-      let base = 1;
-      const mis = state.misclicks.length;
-      if (mis === 0) base = 3;
-      else if (mis === 1) base = 2;
-      if (!state.readingCompleted) base += 1;
+  if (correctCard && correctCard._answer) {
+  let base = 1;
+  const mis = state.misclicks.length;
+  if (mis === 0) base = 3;
+  else if (mis === 1) base = 2;
+  if (!state.readingCompleted) base += 1;
 
-      player.score += base;
-      state.readingCompleted = true;
-      state.waitingNext = true;
+  player.score += base;
 
-      state.current.cards = state.current.cards.map(c => ({
-        ...c,
-        correct: c._answer || false
-      }));
+  state.readingCompleted = true;
+  state.waitingNext = true;
 
-      io.to(groupId).emit("state", {
-        ...state,
-        misclicks: state.misclicks,
-        waitingNext: true
-      });
+  state.current.cards = state.current.cards.map(c => ({
+    ...c,
+    correct: c._answer || false
+  }));
 
-      setTimeout(() => {
-        nextQuestion(groupId);
-      }, 3000);
+  io.to(groupId).emit("state", {
+    ...state,
+    misclicks: state.misclicks,
+    waitingNext: true
+  });
+
+  // ✅ 正解時は3秒後に次の問題へ進む
+  setTimeout(() => {
+    nextQuestion(groupId);
+  }, 3000);
+
+  return;
+}
+
     } else {
       state.lockedPlayers.push(name);
       state.misclicks.push({ name, number });
