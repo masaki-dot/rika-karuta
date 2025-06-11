@@ -39,20 +39,29 @@ function showGroupSelectUI() {
     const file = document.getElementById("csvFile").files[0];
 Papa.parse(file, {
   header: true,
+  skipEmptyLines: true,
   complete: (result) => {
-    loadedCards = result.data.filter(r => r['番号'] && r['用語'] && r['説明']).map(r => ({
-      number: String(r['番号']).trim(),
-      term: r['用語'].trim(),
-      text: r['説明'].trim()
-    }));
-　　console.log("📤 サーバーに送信するデータ:", loadedCards);
+    console.log("📥 Papa.raw result:", result);  // ← 追加：念のため元データを見る
+
+    loadedCards = result.data
+      .filter(r => typeof r['番号'] !== "undefined" && typeof r['用語'] !== "undefined" && typeof r['説明'] !== "undefined")
+      .map(r => ({
+        number: String(r['番号']).trim(),
+        term: String(r['用語']).trim(),
+        text: String(r['説明']).trim()
+      }));
+
     console.log("📦 CSV読込結果:", loadedCards.length, "件");
-    console.log("📦 CSV最初の5件:", loadedCards.slice(0, 5));
+    console.log("📤 サーバーに送信するデータ:", loadedCards.slice(0, 5));
 
     socket.emit("set_cards", loadedCards);
     drawGroupButtons();
+  },
+  error: (err) => {
+    console.error("🚨 CSV解析エラー:", err);
   }
 });
+
 
 
   });
