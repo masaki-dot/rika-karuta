@@ -37,18 +37,23 @@ function showGroupSelectUI() {
 
   document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
- Papa.parse(file, {
+Papa.parse(file, {
   header: true,
   complete: (result) => {
     loadedCards = result.data.filter(r => r['番号'] && r['用語'] && r['説明']).map(r => ({
-      number: String(r['番号']).trim(),  // ← ここが重要
+      number: String(r['番号']).trim(),
       term: r['用語'].trim(),
       text: r['説明'].trim()
     }));
+
+    console.log("📦 CSV読込結果:", loadedCards.length, "件");
+    console.log("📦 CSV最初の5件:", loadedCards.slice(0, 5));
+
     socket.emit("set_cards", loadedCards);
     drawGroupButtons();
   }
 });
+
 
   });
 }
