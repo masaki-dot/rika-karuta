@@ -254,12 +254,9 @@ function showYomifudaAnimated(text) {
     const chunk = text.slice(i, i + 5);
     div.textContent += chunk;
     i += 5;
-
     if (i >= text.length) {
       clearInterval(interval);
       yomifudaAnimating = false;
-
-      // ✅ ここが大事！
       if (groupId && !window.__alreadyReadDone__) {
         window.__alreadyReadDone__ = true;
         socket.emit("read_done", groupId);
