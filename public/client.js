@@ -1,4 +1,5 @@
-// --- エラーを画面に表示する ---
+// ✅ 完全修正版 client.js
+
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
   div.style = "position: fixed; top: 0; left: 0; background: red; color: white; padding: 10px; z-index: 9999; font-size: 14px;";
@@ -73,20 +74,17 @@ function initUI() {
     <h1>理科カルタ（リアルタイム）</h1>
     <input type="text" id="nameInput" placeholder="プレイヤー名を入力" />
     <button onclick="fixPlayerName()">決定</button>
-
     <br/><br/>
     <label>問題数: <input type="number" id="maxQuestions" value="${maxQuestions}" min="1" /></label>
     <label>取り札の数: <input type="number" id="numCards" value="${numCards}" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="${showSpeed}" min="100" max="5000" /></label>
     <label><input type="checkbox" id="readAloudCheck" ${readAloud ? "checked" : ""} /> 読み札を読み上げる</label>
-
     <br/><br/>
     <button id="startBtn" onclick="startGame()" disabled>スタート</button>
     <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
     <div id="game"></div>
   `;
 }
-
 
 function fixPlayerName() {
   const name = document.getElementById("nameInput").value.trim();
@@ -101,18 +99,6 @@ function fixPlayerName() {
 }
 
 function startGame() {
-   // ✅ ここに追加
-  const log1 = document.createElement("div");
-  log1.style = "background: green; color: white; padding: 5px; position: fixed; top: 0; left: 0; z-index: 9999;";
-  log1.textContent = "✅ 最新の client.js が読み込まれています！（画面ログ）";
-  document.body.appendChild(log1);
-
-  const testValue = document.getElementById("numCards")?.value;
-  const log2 = document.createElement("div");
-  log2.style = "background: navy; color: white; padding: 5px; position: fixed; top: 30px; left: 0; z-index: 9999;";
-  log2.textContent = `📌 読み取ったnumCards: ${testValue}`;
-  document.body.appendChild(log2);
-
   if (!playerNameFixed) {
     alert("プレイヤー名を決定してください");
     return;
@@ -134,14 +120,13 @@ socket.on("csv_ready", () => {
   drawGroupButtons();
 });
 
-
 socket.on("user_count", (count) => {
   const div = document.getElementById("userCountDisplay");
   if (div) div.textContent = `接続中: ${count}人`;
 });
 
 socket.on("state", (state) => {
- window.__alreadyReadDone__ = false;
+  window.__alreadyReadDone__ = false;
   const current = state.current;
   if (!current) return;
 
@@ -155,36 +140,16 @@ socket.on("state", (state) => {
     <div id="others"></div>
   `;
 
-  // ✅ ↓この2行をここに追加！
-yomifudaAnimating = false;
-lastYomifudaText = "";
-
-// 強制的に再表示
-showYomifudaAnimated(current.text);
+  yomifudaAnimating = false;
+  lastYomifudaText = "";
 
   const yomifudaDiv = document.getElementById("yomifuda");
-
-  // このあとにある showYomifudaAnimated() をそのまま維持
- if (yomifudaDiv) {
-  yomifudaDiv.textContent = "";
-  setTimeout(() => {
-    showYomifudaAnimated(current.text);
-  }, 100); // 0.1秒後にアニメーション表示
-} else {
-  // yomifudaDivがnullなら安全にスキップ（または表示）
-  const fallbackDiv = document.getElementById("yomifuda");
-  if (fallbackDiv) {
-    fallbackDiv.textContent = "";
+  if (yomifudaDiv) {
+    yomifudaDiv.textContent = "";
     setTimeout(() => {
       showYomifudaAnimated(current.text);
     }, 100);
   }
-}
-
-
-
-
-
 
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
@@ -271,9 +236,6 @@ function showYomifudaAnimated(text) {
   }
 }
 
-
-
-// DOM構築完了後に初期画面を表示（バグ対策）
 window.onload = function () {
   showGroupSelectUI();
 };
