@@ -108,9 +108,8 @@ io.on("connection", (socket) => {
   setTimeout(() => {
     nextQuestion(groupId);
   }, 3000);
-
   return;
-}
+
 
     } else {
       state.lockedPlayers.push(name);
