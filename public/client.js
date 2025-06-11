@@ -37,18 +37,19 @@ function showGroupSelectUI() {
 
   document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
-    Papa.parse(file, {
-      header: true,
-      complete: (result) => {
-        loadedCards = result.data.filter(r => r['番号'] && r['用語'] && r['説明']).map(r => ({
-          number: r['番号'],
-          term: r['用語'],
-          text: r['説明']
-        }));
-        socket.emit("set_cards", loadedCards);
-        drawGroupButtons();
-      }
-    });
+ Papa.parse(file, {
+  header: true,
+  complete: (result) => {
+    loadedCards = result.data.filter(r => r['番号'] && r['用語'] && r['説明']).map(r => ({
+      number: String(r['番号']).trim(),  // ← ここが重要
+      term: r['用語'].trim(),
+      text: r['説明'].trim()
+    }));
+    socket.emit("set_cards", loadedCards);
+    drawGroupButtons();
+  }
+});
+
   });
 }
 
