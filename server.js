@@ -162,16 +162,17 @@ io.on("connection", (socket) => {
     state.readingCompleted = false;
 
     const remaining = globalCards.filter(q =>
-      !state.usedQuestions.includes(q.text + "|" + q.number)
-    );
+  !state.usedQuestions.includes(q.text + "|" + q.number)
+);
 
-    if (remaining.length === 0) {
-      io.to(groupId).emit("end", state.players);
-      return;
-    }
+console.log("[DEBUG] usedQuestions数:", state.usedQuestions.length);
+console.log("[DEBUG] remaining候補数:", remaining.length);
 
-    const question = shuffle(remaining)[Math.floor(Math.random() * remaining.length)];
-    state.usedQuestions.push(question.text + "|" + question.number);
+const question = shuffle(remaining)[0];
+
+console.log("[DEBUG] 出題された問題:", question.number, question.text);
+
+state.usedQuestions.push(question.text + "|" + question.number);
 
     const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
     const allCards = shuffle([...distractors, question]);
