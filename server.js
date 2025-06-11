@@ -1,4 +1,3 @@
-// ✅ 完全修正版 server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -25,12 +24,11 @@ io.on("connection", (socket) => {
     io.emit("user_count", currentUsers);
   });
 
-socket.on("set_cards", (cards) => {
-  globalCards = [...cards];
-  console.log(`[DEBUG] CSV読み込み完了: ${globalCards.length}件`);
-  io.emit("csv_ready");
-});
-
+  socket.on("set_cards", (cards) => {
+    globalCards = [...cards];
+    console.log(`[DEBUG] CSV読み込み完了: ${globalCards.length}件`);
+    io.emit("csv_ready");
+  });
 
   socket.on("join", (gid) => {
     groupId = gid;
@@ -40,33 +38,29 @@ socket.on("set_cards", (cards) => {
     }
   });
 
- socket.on("start", (data) => {
-  const { groupId, numCards, maxQuestions } = data;
-  const state = states[groupId] = initState();
-  state.cards = shuffle([...globalCards]);
-  state.maxQuestions = maxQuestions;
-  state.numCards = Math.min(Math.max(5, numCards), 10);
-  console.log(`[DEBUG] ゲーム開始: group=${groupId}, numCards=${state.numCards}`);
-  nextQuestion(groupId);
-});
+  socket.on("start", (data) => {
+    const { groupId, numCards, maxQuestions } = data;
+    const state = states[groupId] = initState();
+    state.maxQuestions = maxQuestions;
+    state.numCards = Math.min(Math.max(5, numCards), 10);
+    console.log(`[DEBUG] ゲーム開始: group=${groupId}, numCards=${state.numCards}`);
+    nextQuestion(groupId);
+  });
 
+  socket.on("read_done", (groupId) => {
+    console.log(`[DEBUG] read_done received for ${groupId}`);
+    const state = states[groupId];
+    if (!state || state.readingCompleted || state.waitingNext) return;
+    state.readingCompleted = true;
 
-socket.on("read_done", (groupId) => {
-  console.log(`[DEBUG] read_done received for ${groupId}`);
-  const state = states[groupId];
-  if (!state || state.readingCompleted || state.waitingNext) return;
-  state.readingCompleted = true;
-
-  setTimeout(() => {
-    const st = states[groupId];
-    if (st && st.readingCompleted && !st.waitingNext) {
-      st.waitingNext = true;
-      nextQuestion(groupId);
-    }
-  }, 30000);  // ✅ 30秒きっちり待つ
-});
-
-
+    setTimeout(() => {
+      const st = states[groupId];
+      if (st && st.readingCompleted && !st.waitingNext) {
+        st.waitingNext = true;
+        nextQuestion(groupId);
+      }
+    }, 30000); // 30秒待機
+  });
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
@@ -111,23 +105,21 @@ socket.on("read_done", (groupId) => {
       state.misclicks.push({ name, number });
 
       if (state.lockedPlayers.length >= 4) {
-  state.readingCompleted = true; // ← 強制的に全文読み終わったとみなす
-  io.to(groupId).emit("state", {
-    ...state,
-    misclicks: state.misclicks,
-    waitingNext: true
-  });
+        state.readingCompleted = true;
+        io.to(groupId).emit("state", {
+          ...state,
+          misclicks: state.misclicks,
+          waitingNext: true
+        });
 
-  // ✅ 30秒待って次の問題へ（正解が出ていない場合）
-  setTimeout(() => {
-    const st = states[groupId];
-    if (st && !st.waitingNext) {
-      st.waitingNext = true;
-      nextQuestion(groupId);
-    }
-  }, 30000);
-}
-else {
+        setTimeout(() => {
+          const st = states[groupId];
+          if (st && !st.waitingNext) {
+            st.waitingNext = true;
+            nextQuestion(groupId);
+          }
+        }, 30000);
+      } else {
         io.to(groupId).emit("lock", name);
         io.to(groupId).emit("state", {
           ...state,
@@ -140,7 +132,6 @@ else {
   function initState() {
     return {
       players: [],
-      cards: [],
       usedQuestions: [],
       numCards: 5,
       maxQuestions: 10,
@@ -153,65 +144,63 @@ else {
     };
   }
 
-function nextQuestion(groupId) {
-  const state = states[groupId];
-  if (!state) return;
+  function nextQuestion(groupId) {
+    const state = states[groupId];
+    if (!state) return;
 
-  // ✅ 最大問題数に達していれば終了
-  if (state.questionCount >= state.maxQuestions) {
-    io.to(groupId).emit("end", state.players);
-    return;
-  }
+    if (state.questionCount >= state.maxQuestions) {
+      io.to(groupId).emit("end", state.players);
+      return;
+    }
 
-  console.log(`[DEBUG] nextQuestion: group=${groupId}, numCards=${state.numCards}`);
+    console.log(`[DEBUG] nextQuestion: group=${groupId}, numCards=${state.numCards}`);
 
-  state.questionCount++;
-  state.misclicks = [];
-  state.lockedPlayers = [];
-  state.waitingNext = false;
-  state.readingCompleted = false;
+    state.questionCount++;
+    state.misclicks = [];
+    state.lockedPlayers = [];
+    state.waitingNext = false;
+    state.readingCompleted = false;
 
-  // ✅ 毎回 globalCards からランダムに選び、usedQuestions で重複回避
-  const remaining = globalCards.filter(q =>
-    !state.usedQuestions.includes(q.text + "|" + q.number)
-  );
+    const remaining = globalCards.filter(q =>
+      !state.usedQuestions.includes(q.text + "|" + q.number)
+    );
 
-  if (remaining.length === 0) {
-    io.to(groupId).emit("end", state.players);
-    return;
-  }
+    if (remaining.length === 0) {
+      io.to(groupId).emit("end", state.players);
+      return;
+    }
 
-  const question = shuffle(remaining)[0];
-  state.usedQuestions.push(question.text + "|" + question.number);
+    const question = shuffle(remaining)[Math.floor(Math.random() * remaining.length)];
+    state.usedQuestions.push(question.text + "|" + question.number);
 
-  const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
-  const allCards = shuffle([...distractors, question]);
+    const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
+    const allCards = shuffle([...distractors, question]);
 
-  state.current = {
-    text: question.text,
-    answer: question.number,
-    cards: allCards.map(c => ({
-      term: c.term,
-      number: c.number,
-      text: c.text,
-      _answer: c.number === question.number
-    }))
-  };
-
-  io.to(groupId).emit("state", {
-    ...state,
-    misclicks: [],
-    waitingNext: false,
-    current: {
-      ...state.current,
-      cards: state.current.cards.map(c => ({
+    state.current = {
+      text: question.text,
+      answer: question.number,
+      cards: allCards.map(c => ({
         term: c.term,
         number: c.number,
-        text: c.text
+        text: c.text,
+        _answer: c.number === question.number
       }))
-    }
-  });
-}
+    };
+
+    io.to(groupId).emit("state", {
+      ...state,
+      misclicks: [],
+      waitingNext: false,
+      current: {
+        ...state.current,
+        cards: state.current.cards.map(c => ({
+          term: c.term,
+          number: c.number,
+          text: c.text
+        }))
+      }
+    });
+  }
 
   function shuffle(arr) {
     return [...arr].sort(() => Math.random() - 0.5);
