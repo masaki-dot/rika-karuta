@@ -59,25 +59,13 @@ socket.on("read_done", (groupId) => {
 
   setTimeout(() => {
     const st = states[groupId];
-    if (st && st.readingCompleted) {
+    if (st && st.readingCompleted && !st.waitingNext) {
       st.waitingNext = true;
       nextQuestion(groupId);
-      io.to(groupId).emit("state", {
-        ...st,
-        misclicks: [],
-        waitingNext: false,
-        current: {
-          ...st.current,
-          cards: st.current.cards.map(c => ({
-            term: c.term,
-            number: c.number,
-            text: c.text
-          }))
-        }
-      });
     }
-  }, 30000);
+  }, 30000);  // ✅ 30秒きっちり待つ
 });
+
 
 
   socket.on("answer", ({ groupId, name, number }) => {
