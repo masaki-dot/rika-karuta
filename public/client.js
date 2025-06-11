@@ -38,21 +38,24 @@ function showGroupSelectUI() {
   document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
 Papa.parse(file, {
-  header: true,
+  header: false,
   skipEmptyLines: true,
   complete: (result) => {
-    console.log("📥 Papa.raw result:", result);  // ← 追加：念のため元データを見る
+    const rows = result.data;
+    console.log("📥 読み込んだ行数:", rows.length);
 
-    loadedCards = result.data
-      .filter(r => typeof r['番号'] !== "undefined" && typeof r['用語'] !== "undefined" && typeof r['説明'] !== "undefined")
-      .map(r => ({
-        number: String(r['番号']).trim(),
-        term: String(r['用語']).trim(),
-        text: String(r['説明']).trim()
-      }));
+    // 1行目をヘッダーとして使用し、それ以降をデータとして処理
+    const header = rows[0];
+    const dataRows = rows.slice(1);
+
+    loadedCards = dataRows.map((r, i) => ({
+      number: String(r[0]).trim(), // 番号列
+      term: String(r[1]).trim(),   // 用語列
+      text: String(r[2]).trim()    // 説明列
+    }));
 
     console.log("📦 CSV読込結果:", loadedCards.length, "件");
-    console.log("📤 サーバーに送信するデータ:", loadedCards.slice(0, 5));
+    console.log("📤 サーバーに送信するデータ（冒頭5件）:", loadedCards.slice(0, 5));
 
     socket.emit("set_cards", loadedCards);
     drawGroupButtons();
