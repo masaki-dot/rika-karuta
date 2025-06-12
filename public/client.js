@@ -168,15 +168,20 @@ socket.on("state", (state) => {
     <div id="others"></div>
   `;
 
-  const yomifuda = document.getElementById("yomifuda");
-  if (lastYomifudaText !== current.text) {
-    lastYomifudaText = current.text;
-    yomifudaAnimating = false;
-    yomifuda.textContent = "";
-    setTimeout(() => {
+const yomifuda = document.getElementById("yomifuda");
+if (lastYomifudaText !== current.text) {
+  lastYomifudaText = current.text;
+  yomifudaAnimating = false;
+  yomifuda.textContent = "";
+
+  setTimeout(() => {
+    // アニメーション中だったら絶対に再表示しない（再上書きを防ぐ）
+    if (!yomifudaAnimating) {
       showYomifudaAnimated(current.text);
-    }, 100);
-  }
+    }
+  }, 100);
+}
+
 
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
@@ -250,12 +255,10 @@ function showYomifudaAnimated(text) {
       clearInterval(interval);
       yomifudaAnimating = false;
 
-      // 読み終わったことをサーバーに通知（1回だけ）
       if (groupId && !window.__alreadyReadDone__) {
         window.__alreadyReadDone__ = true;
         socket.emit("read_done", groupId);
       }
-
       return;
     }
 
@@ -264,13 +267,16 @@ function showYomifudaAnimated(text) {
     i += 5;
   }, showSpeed);
 
-  // 読み上げ（必要なときのみ）
+  // ⛔ 他人の操作が clearInterval していないか確認したい場合は、intervalを window に保存してもOK
+  window.__activeYomifudaInterval__ = interval;
+
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "ja-JP";
     speechSynthesis.speak(utter);
   }
 }
+
 
 
 window.onload = function () {
