@@ -190,18 +190,19 @@ socket.on("state", (state) => {
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
     state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
 
-  if (state.misclicks) {
-    state.misclicks.forEach(m => {
-      const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
-      if (card) {
-        card.style.background = "#fdd";
-        const tag = document.createElement("div");
-        tag.style.color = "red";
-        tag.textContent = `お手つき: ${m.name}`;
-        card.appendChild(tag);
-      }
-    });
-  }
+if (state.misclicks) {
+  state.misclicks.forEach(m => {
+    const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
+    if (card) {
+      card.style.background = "#fdd";
+      const tag = document.createElement("div");
+      tag.style.color = "red";
+      tag.textContent = `お手つき: ${m.name}`;
+      card.appendChild(tag);
+    }
+  });
+}
+
 });
 
 socket.on("lock", (name) => {
