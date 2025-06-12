@@ -116,32 +116,22 @@ if (correctCard && correctCard._answer) {
   return;
 }
 else {
-      state.lockedPlayers.push(name);
-      state.misclicks.push({ name, number });
+  state.lockedPlayers.push(name);
+  state.misclicks.push({ name, number });
 
-      if (state.lockedPlayers.length >= 4) {
-        state.readingCompleted = true;
-        io.to(groupId).emit("state", {
-          ...state,
-          misclicks: state.misclicks,
-          waitingNext: true
-        });
+  // プレイヤーをロック
+  io.to(groupId).emit("lock", name);
 
-        setTimeout(() => {
-          const st = states[groupId];
-          if (st && !st.waitingNext) {
-            st.waitingNext = true;
-            nextQuestion(groupId);
-          }
-        }, 30000);
-      } else {
-        io.to(groupId).emit("lock", name);
-        io.to(groupId).emit("state", {
-          ...state,
-          misclicks: state.misclicks
-        });
-      }
-    }
+  // 現在の状態を更新（赤く表示される）
+  io.to(groupId).emit("state", {
+    ...state,
+    misclicks: state.misclicks
+  });
+
+  // ✅ ここでは進行せず、read_done による30秒待機をそのまま待つ
+}
+
+
   });
 
   function initState() {
