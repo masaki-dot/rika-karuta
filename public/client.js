@@ -154,14 +154,20 @@ socket.on("state", (state) => {
   if (!current) return;
 
   locked = false;
-  const root = document.getElementById("game");
-  root.innerHTML = `
-    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
-    <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div id="scores">得点: ${getMyScore(state.players)}点</div>
-    <div id="others"></div>
-  `;
+const root = document.getElementById("game");
+
+// 読み札の中身を保持（消えないようにする）
+const existingYomifuda = document.getElementById("yomifuda")?.outerHTML
+  || `<div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>`;
+
+root.innerHTML = `
+  <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
+  ${existingYomifuda}
+  <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
+  <div id="scores">得点: ${getMyScore(state.players)}点</div>
+  <div id="others"></div>
+`;
+
 
   yomifudaAnimating = false;
   lastYomifudaText = "";
