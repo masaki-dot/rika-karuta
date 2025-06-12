@@ -167,12 +167,18 @@ socket.on("state", (state) => {
   lastYomifudaText = "";
 
   const yomifudaDiv = document.getElementById("yomifuda");
-  if (yomifudaDiv) {
+const yomifudaDiv = document.getElementById("yomifuda");
+if (yomifudaDiv) {
+  // すでに同じ問題文が表示中なら再表示しない
+  if (!yomifudaAnimating && lastYomifudaText !== current.text) {
     yomifudaDiv.textContent = "";
     setTimeout(() => {
       showYomifudaAnimated(current.text);
     }, 100);
+    lastYomifudaText = current.text;
   }
+}
+
 
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
