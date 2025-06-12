@@ -155,63 +155,38 @@ socket.on("state", (state) => {
 
   locked = false;
 
-  // 読み札がすでに表示済みなら保存
-  const yomifudaDiv = document.getElementById("yomifuda");
-  const existingYomifudaHTML = yomifudaDiv?.outerHTML || `<div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>`;
+  // 🔒 アニメーション中で、かつ同じ問題なら何もせずUIだけ更新
+  if (yomifudaAnimating && lastYomifudaText === current.text) {
+    updateGameUI(state, false); // 読み札はそのまま
+    return;
+  }
 
-  const root = document.getElementById("game");
-  root.innerHTML = `
-    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    ${existingYomifudaHTML}
-    <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div id="scores">得点: ${getMyScore(state.players)}点</div>
-    <div id="others"></div>
-  `;
-
-const yomifuda = document.getElementById("yomifuda");
-if (lastYomifudaText !== current.text) {
+  // 🔁 新しい問題になったときのみ読み札の表示も更新
   lastYomifudaText = current.text;
   yomifudaAnimating = false;
-  yomifuda.textContent = "";
 
-  setTimeout(() => {
-    // アニメーション中だったら絶対に再表示しない（再上書きを防ぐ）
-    if (!yomifudaAnimating) {
-      showYomifudaAnimated(current.text);
-    }
-  }, 100);
-}
-
-
-  const cardsDiv = document.getElementById("cards");
-  current.cards.forEach((c) => {
-    const div = document.createElement("div");
-    div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
-    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
-    if (c.correct) div.style.background = "yellow";
-    div.onclick = () => {
-      if (!locked) submitAnswer(c.number);
-    };
-    cardsDiv.appendChild(div);
-  });
-
-  const otherDiv = document.getElementById("others");
-  otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-    state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
-
-  if (state.misclicks) {
-    state.misclicks.forEach(m => {
-      const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
-      if (card) {
-        card.style.background = "#fdd";
-        const tag = document.createElement("div");
-        tag.style.color = "red";
-        tag.textContent = `お手つき: ${m.name}`;
-        card.appendChild(tag);
-      }
-    });
-  }
+  updateGameUI(state, true); // 読み札も更新
 });
+socket.on("state", (state) => {
+  window.__alreadyReadDone__ = false;
+  const current = state.current;
+  if (!current) return;
+
+  locked = false;
+
+  // 🔒 アニメーション中で、かつ同じ問題なら何もせずUIだけ更新
+  if (yomifudaAnimating && lastYomifudaText === current.text) {
+    updateGameUI(state, false); // 読み札はそのまま
+    return;
+  }
+
+  // 🔁 新しい問題になったときのみ読み札の表示も更新
+  lastYomifudaText = current.text;
+  yomifudaAnimating = false;
+
+  updateGameUI(state, true); // 読み札も更新
+});
+
 
 
 socket.on("lock", (name) => {
