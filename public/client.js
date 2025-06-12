@@ -237,32 +237,41 @@ function getMyScore(players) {
 function showYomifudaAnimated(text) {
   if (yomifudaAnimating) return;
   yomifudaAnimating = true;
+
   const div = document.getElementById("yomifuda");
+  if (!div) return;
+
   div.textContent = "";
   div.style.textAlign = "left";
   let i = 0;
-  speechSynthesis.cancel();
 
   const interval = setInterval(() => {
-    const chunk = text.slice(i, i + 5);
-    div.textContent += chunk;
-    i += 5;
     if (i >= text.length) {
       clearInterval(interval);
       yomifudaAnimating = false;
+
+      // 読み終わったことをサーバーに通知（1回だけ）
       if (groupId && !window.__alreadyReadDone__) {
         window.__alreadyReadDone__ = true;
         socket.emit("read_done", groupId);
       }
+
+      return;
     }
+
+    const chunk = text.slice(i, i + 5);
+    div.textContent += chunk;
+    i += 5;
   }, showSpeed);
 
+  // 読み上げ（必要なときのみ）
   if (readAloud && window.speechSynthesis) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "ja-JP";
     speechSynthesis.speak(utter);
   }
 }
+
 
 window.onload = function () {
   showGroupSelectUI();
