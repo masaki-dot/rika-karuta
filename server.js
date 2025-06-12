@@ -119,17 +119,32 @@ else {
   state.lockedPlayers.push(name);
   state.misclicks.push({ name, number });
 
-  // プレイヤーをロック
+  // ✅ 取り札に赤表示＋名前を追加できるように、correct情報も送る
+  state.current.cards = state.current.cards.map(c => ({
+    ...c,
+    correct: c._answer || false
+  }));
+
+  // 該当プレイヤーをロック
   io.to(groupId).emit("lock", name);
 
-  // 現在の状態を更新（赤く表示される）
+  // 状態を再送（misclicksとともにcurrentを含める）
   io.to(groupId).emit("state", {
     ...state,
-    misclicks: state.misclicks
+    misclicks: state.misclicks,
+    current: {
+      ...state.current,
+      cards: state.current.cards.map(c => ({
+        term: c.term,
+        number: c.number,
+        text: c.text
+      }))
+    }
   });
 
-  // ✅ ここでは進行せず、read_done による30秒待機をそのまま待つ
+  // ✅ 次の問題への進行は read_done に任せる（ここでは進めない）
 }
+
 
 
   });
