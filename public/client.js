@@ -154,38 +154,29 @@ socket.on("state", (state) => {
   if (!current) return;
 
   locked = false;
-const root = document.getElementById("game");
 
-// 読み札の中身を保持（消えないようにする）
-const existingYomifuda = document.getElementById("yomifuda")?.outerHTML
-  || `<div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>`;
-
-root.innerHTML = `
-  <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-  ${existingYomifuda}
-  <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-  <div id="scores">得点: ${getMyScore(state.players)}点</div>
-  <div id="others"></div>
-`;
-
-
-  yomifudaAnimating = false;
-  lastYomifudaText = "";
-
+  // 読み札がすでに表示済みなら保存
   const yomifudaDiv = document.getElementById("yomifuda");
-if (yomifudaDiv) {
-  // 直前と違う問題文のときだけアニメーション実行
+  const existingYomifudaHTML = yomifudaDiv?.outerHTML || `<div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>`;
+
+  const root = document.getElementById("game");
+  root.innerHTML = `
+    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
+    ${existingYomifudaHTML}
+    <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
+    <div id="scores">得点: ${getMyScore(state.players)}点</div>
+    <div id="others"></div>
+  `;
+
+  const yomifuda = document.getElementById("yomifuda");
   if (lastYomifudaText !== current.text) {
     lastYomifudaText = current.text;
-    yomifudaAnimating = false; // 念のためリセット
-    yomifudaDiv.textContent = "";
+    yomifudaAnimating = false;
+    yomifuda.textContent = "";
     setTimeout(() => {
       showYomifudaAnimated(current.text);
     }, 100);
   }
-}
-
-
 
   const cardsDiv = document.getElementById("cards");
   current.cards.forEach((c) => {
@@ -203,20 +194,20 @@ if (yomifudaDiv) {
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
     state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
 
-if (state.misclicks) {
-  state.misclicks.forEach(m => {
-    const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
-    if (card) {
-      card.style.background = "#fdd";
-      const tag = document.createElement("div");
-      tag.style.color = "red";
-      tag.textContent = `お手つき: ${m.name}`;
-      card.appendChild(tag);
-    }
-  });
-}
-
+  if (state.misclicks) {
+    state.misclicks.forEach(m => {
+      const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
+      if (card) {
+        card.style.background = "#fdd";
+        const tag = document.createElement("div");
+        tag.style.color = "red";
+        tag.textContent = `お手つき: ${m.name}`;
+        card.appendChild(tag);
+      }
+    });
+  }
 });
+
 
 socket.on("lock", (name) => {
   if (name === playerName) {
