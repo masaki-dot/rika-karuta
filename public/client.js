@@ -214,6 +214,59 @@ function getMyScore(players) {
   return me ? me.score : 0;
 }
 
+function updateGameUI(state, showYomifuda = true) {
+  const root = document.getElementById("game");
+
+  root.innerHTML = `
+    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
+    <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
+    <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
+    <div id="scores">得点: ${getMyScore(state.players)}点</div>
+    <div id="others"></div>
+  `;
+
+  const yomifuda = document.getElementById("yomifuda");
+
+  if (showYomifuda) {
+    yomifuda.textContent = "";
+    setTimeout(() => {
+      showYomifudaAnimated(state.current.text);
+    }, 100);
+  } else {
+    yomifuda.textContent = lastYomifudaText;
+  }
+
+  const cardsDiv = document.getElementById("cards");
+  state.current.cards.forEach((c) => {
+    const div = document.createElement("div");
+    div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
+    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
+    if (c.correct) div.style.background = "yellow";
+    div.onclick = () => {
+      if (!locked) submitAnswer(c.number);
+    };
+    cardsDiv.appendChild(div);
+  });
+
+  const otherDiv = document.getElementById("others");
+  otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
+    state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
+
+  if (state.misclicks) {
+    state.misclicks.forEach(m => {
+      const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
+      if (card) {
+        card.style.background = "#fdd";
+        const tag = document.createElement("div");
+        tag.style.color = "red";
+        tag.textContent = `お手つき: ${m.name}`;
+        card.appendChild(tag);
+      }
+    });
+  }
+}
+
+
 function showYomifudaAnimated(text) {
   if (yomifudaAnimating) return;
   yomifudaAnimating = true;
