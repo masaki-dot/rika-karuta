@@ -168,15 +168,17 @@ socket.on("state", (state) => {
 
   const yomifudaDiv = document.getElementById("yomifuda");
 if (yomifudaDiv) {
-  // すでに同じ問題文が表示中なら再表示しない
-  if (!yomifudaAnimating && lastYomifudaText !== current.text) {
+  // 直前と違う問題文のときだけアニメーション実行
+  if (lastYomifudaText !== current.text) {
+    lastYomifudaText = current.text;
+    yomifudaAnimating = false; // 念のためリセット
     yomifudaDiv.textContent = "";
     setTimeout(() => {
       showYomifudaAnimated(current.text);
     }, 100);
-    lastYomifudaText = current.text;
   }
 }
+
 
 
   const cardsDiv = document.getElementById("cards");
