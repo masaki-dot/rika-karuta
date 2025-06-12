@@ -129,18 +129,21 @@ else {
   io.to(groupId).emit("lock", name);
 
   // 状態を再送（misclicksとともにcurrentを含める）
-  io.to(groupId).emit("state", {
-    ...state,
-    misclicks: state.misclicks,
-    current: {
-      ...state.current,
-      cards: state.current.cards.map(c => ({
-        term: c.term,
-        number: c.number,
-        text: c.text
-      }))
-    }
-  });
+ io.to(groupId).emit("state", {
+  players: state.players,
+  misclicks: state.misclicks,
+  questionCount: state.questionCount,
+  maxQuestions: state.maxQuestions,
+  current: {
+    text: state.current.text,
+    cards: state.current.cards.map(c => ({
+      term: c.term,
+      number: c.number,
+      text: c.text
+    }))
+  }
+});
+
 
   // ✅ 次の問題への進行は read_done に任せる（ここでは進めない）
 }
