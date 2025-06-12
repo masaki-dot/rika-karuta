@@ -55,7 +55,7 @@ io.on("connection", (socket) => {
 
   state.readingCompleted = true;
 
-  // ✅ タイマーを登録し、IDを保存
+  // ✅ 30秒後に次の問題へ進むタイマー
   state.timeoutId = setTimeout(() => {
     const st = states[groupId];
     if (st && st.readingCompleted && !st.waitingNext) {
