@@ -23,12 +23,13 @@ let playerNameFixed = false;
 function showGroupSelectUI() {
   const root = document.getElementById("root");
   root.innerHTML = `
-    <h2>CSVをアップロードして、グループを選んでください</h2>
+    <h2>CSVと共通設定をアップロードしてください</h2>
     <input type="file" id="csvFile" accept=".csv" />
     <br/><br/>
     <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
+    <br/><br/>
     <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
     <br/><br/>
     <div id="groupButtons"></div>
@@ -37,43 +38,48 @@ function showGroupSelectUI() {
 
   document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
-Papa.parse(file, {
-  header: false, // ヘッダーを使わず、1行目を手動で扱う
-  skipEmptyLines: true,
-  complete: (result) => {
-    const rows = result.data;
 
-    if (rows.length < 2) {
-      alert("CSVファイルに十分な行がありません。");
-      return;
-    }
+    Papa.parse(file, {
+      header: false,
+      skipEmptyLines: true,
+      complete: (result) => {
+        const rows = result.data;
+        if (rows.length < 2) {
+          alert("CSVファイルに十分な行がありません。");
+          return;
+        }
 
-    // 1行目を列名として使い、2行目以降をデータとして扱う
-    const dataRows = rows.slice(1); // ← ここが重要！
+        const dataRows = rows.slice(1);
 
-    loadedCards = dataRows.map((r, i) => {
-      return {
-        number: String(r[0]).trim(), // 番号
-        term: String(r[1]).trim(),   // 用語
-        text: String(r[2]).trim()    // 説明
-      };
-    }).filter(card => card.term && card.text); // 空白行除外
+        loadedCards = dataRows.map((r) => ({
+          number: String(r[0]).trim(),
+          term: String(r[1]).trim(),
+          text: String(r[2]).trim()
+        })).filter(card => card.term && card.text);
 
-    console.log("📥 読み込んだ問題数:", loadedCards.length);
-    console.log("📤 サーバーに送信する冒頭5件:", loadedCards.slice(0, 5));
+        // ✅ 共通設定の取得
+        maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
+        numCards = Number(document.getElementById("numCards").value || 5);
+        showSpeed = Number(document.getElementById("speed").value || 2000);
+        readAloud = document.getElementById("readAloudCheck").checked;
 
-    socket.emit("set_cards", loadedCards);
-    drawGroupButtons();
-  },
-  error: (err) => {
-    console.error("🚨 CSV読み込みエラー:", err);
-  }
-});
+        console.log("📥 読み込んだ問題数:", loadedCards.length);
+        console.log("📤 サーバーに送信予定の設定:", {
+          maxQuestions,
+          numCards,
+          showSpeed
+        });
 
-
-
+        // この段階では socket.emit(...) はまだしません
+        drawGroupButtons(); // 次のステップでサーバーに送信するよう変更予定
+      },
+      error: (err) => {
+        console.error("🚨 CSV読み込みエラー:", err);
+      }
+    });
   });
 }
+
 
 function drawGroupButtons() {
   const area = document.getElementById("groupButtons");
