@@ -223,19 +223,21 @@ state.usedQuestions.push(question.text + "|" + question.number);
       }))
     };
 
-    io.to(groupId).emit("state", {
-      ...state,
-      misclicks: [],
-      waitingNext: false,
-      current: {
-        ...state.current,
-        cards: state.current.cards.map(c => ({
-          term: c.term,
-          number: c.number,
-          text: c.text
-        }))
-      }
-    });
+io.to(groupId).emit("state", {
+  ...state,
+  showSpeed: globalSettings.showSpeed,  // ←追加
+  misclicks: [],
+  waitingNext: false,
+  current: {
+    ...state.current,
+    cards: state.current.cards.map(c => ({
+      term: c.term,
+      number: c.number,
+      text: c.text
+    }))
+  }
+});
+
   }
 
   function shuffle(arr) {
