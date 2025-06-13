@@ -203,20 +203,25 @@ socket.on("state", (state) => {
   const current = state.current;
   if (!current) return;
 
+  // ✅ ロック解除（毎問題のはじめに必ずリセット！）
   locked = false;
 
-  // 🔒 アニメーション中で、かつ同じ問題なら何もせずUIだけ更新
+  // 表示速度の共有
+  if (state.showSpeed) {
+    showSpeed = state.showSpeed;
+  }
+
   if (yomifudaAnimating && lastYomifudaText === current.text) {
-    updateGameUI(state, false); // 読み札はそのまま
+    updateGameUI(state, false);
     return;
   }
 
-  // 🔁 新しい問題になったときのみ読み札の表示も更新
   lastYomifudaText = current.text;
   yomifudaAnimating = false;
 
-  updateGameUI(state, true); // 読み札も更新
+  updateGameUI(state, true);
 });
+
 
 
 
