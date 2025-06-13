@@ -210,6 +210,11 @@ socket.on("end", (players) => {
     `</ol>`;
 });
 
+socket.on("start_group_selection", () => {
+  drawGroupButtons();
+});
+
+
 function submitAnswer(number) {
   if (locked || !playerName) return;
   socket.emit("answer", { groupId, name: playerName, number });
