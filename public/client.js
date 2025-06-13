@@ -137,8 +137,11 @@ function fixPlayerName() {
   playerName = name;
   playerNameFixed = true;
   document.getElementById("nameInput").disabled = true;
-  document.getElementById("startBtn").disabled = false;
+
+  // スタート画面へ進む
+  initUI();
 }
+
 
 function startGame() {
   if (!playerNameFixed) {
