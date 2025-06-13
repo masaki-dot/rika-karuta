@@ -15,7 +15,6 @@ let globalSettings = {
   showSpeed: 2000
 };
 
-let globalCards = [];
 let currentUsers = 0;
 const states = {};
 
