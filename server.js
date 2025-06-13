@@ -8,6 +8,12 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
+let globalCards = [];
+let globalSettings = {
+  maxQuestions: 10,
+  numCards: 5,
+  showSpeed: 2000
+};
 
 let globalCards = [];
 let currentUsers = 0;
@@ -24,12 +30,16 @@ io.on("connection", (socket) => {
     io.emit("user_count", currentUsers);
   });
 
-  socket.on("set_cards", (cards) => {
+  socket.on("set_cards_and_settings", ({ cards, settings }) => {
   globalCards = [...cards];
-  console.log(`[DEBUG] サーバーが受け取った問題数: ${globalCards.length}`);
-  console.log("[DEBUG] 最初の5問:", globalCards.slice(0, 5));
-  io.emit("csv_ready");
+  globalSettings = settings;
+
+  console.log("[DEBUG] 受信した共通設定:", settings);
+  console.log("[DEBUG] 問題数:", globalCards.length);
+
+  io.emit("start_group_selection");
 });
+;
 
 
   socket.on("join", (gid) => {
