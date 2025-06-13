@@ -43,36 +43,36 @@ function showGroupSelectUI() {
       header: false,
       skipEmptyLines: true,
       complete: (result) => {
-        const rows = result.data;
-        if (rows.length < 2) {
-          alert("CSVファイルに十分な行がありません。");
-          return;
-        }
+  const rows = result.data;
+  if (rows.length < 2) {
+    alert("CSVファイルに十分な行がありません。");
+    return;
+  }
 
-        const dataRows = rows.slice(1);
+  const dataRows = rows.slice(1);
 
-        loadedCards = dataRows.map((r) => ({
-          number: String(r[0]).trim(),
-          term: String(r[1]).trim(),
-          text: String(r[2]).trim()
-        })).filter(card => card.term && card.text);
+  loadedCards = dataRows.map((r) => ({
+    number: String(r[0]).trim(),
+    term: String(r[1]).trim(),
+    text: String(r[2]).trim()
+  })).filter(card => card.term && card.text);
 
-        // ✅ 共通設定の取得
-        maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
-        numCards = Number(document.getElementById("numCards").value || 5);
-        showSpeed = Number(document.getElementById("speed").value || 2000);
-        readAloud = document.getElementById("readAloudCheck").checked;
+  // ✅ 共通設定を取得
+  maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
+  numCards = Number(document.getElementById("numCards").value || 5);
+  showSpeed = Number(document.getElementById("speed").value || 2000);
+  readAloud = document.getElementById("readAloudCheck").checked;
 
-        console.log("📥 読み込んだ問題数:", loadedCards.length);
-        console.log("📤 サーバーに送信予定の設定:", {
-          maxQuestions,
-          numCards,
-          showSpeed
-        });
-
-        // この段階では socket.emit(...) はまだしません
-        drawGroupButtons(); // 次のステップでサーバーに送信するよう変更予定
-      },
+  // ✅ サーバーに共通設定＋カードを送信！
+  socket.emit("set_cards_and_settings", {
+    cards: loadedCards,
+    settings: {
+      maxQuestions,
+      numCards,
+      showSpeed
+    }
+  });
+},
       error: (err) => {
         console.error("🚨 CSV読み込みエラー:", err);
       }
