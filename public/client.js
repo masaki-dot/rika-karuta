@@ -182,18 +182,22 @@ socket.on("state", (state) => {
 
   locked = false;
 
-  // 🔒 アニメーション中で、かつ同じ問題なら何もせずUIだけ更新
+  // ✅ 表示速度をサーバーから受け取って反映
+  if (state.showSpeed) {
+    showSpeed = state.showSpeed;
+  }
+
   if (yomifudaAnimating && lastYomifudaText === current.text) {
-    updateGameUI(state, false); // 読み札はそのまま
+    updateGameUI(state, false);
     return;
   }
 
-  // 🔁 新しい問題になったときのみ読み札の表示も更新
   lastYomifudaText = current.text;
   yomifudaAnimating = false;
 
-  updateGameUI(state, true); // 読み札も更新
+  updateGameUI(state, true);
 });
+
 socket.on("state", (state) => {
   window.__alreadyReadDone__ = false;
   const current = state.current;
