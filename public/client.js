@@ -82,19 +82,32 @@ function showGroupSelectUI() {
 
 
 function drawGroupButtons() {
+  const root = document.getElementById("root");
+  root.innerHTML = "<h2>グループを選択してください</h2><div id='groupButtons'></div>";
   const area = document.getElementById("groupButtons");
-  area.innerHTML = "<h3>グループを選択</h3>";
+
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
     btn.textContent = "グループ " + i;
     btn.onclick = () => {
       groupId = "group" + i;
       socket.emit("join", groupId);
-      initUI();
+      showNameInputUI();  // ✅ 新しい名前入力画面へ
     };
     area.appendChild(btn);
   }
 }
+
+function showNameInputUI() {
+  const root = document.getElementById("root");
+  root.innerHTML = `
+    <h2>プレイヤー名を入力してください</h2>
+    <input type="text" id="nameInput" placeholder="プレイヤー名" />
+    <button onclick="fixPlayerName()">決定</button>
+    <div id="game"></div>
+  `;
+}
+
 
 function initUI() {
   const root = document.getElementById("root");
