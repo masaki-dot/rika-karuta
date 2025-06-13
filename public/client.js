@@ -138,9 +138,14 @@ function fixPlayerName() {
   playerNameFixed = true;
   document.getElementById("nameInput").disabled = true;
 
-  // スタート画面へ進む
-  initUI();
+  // ✅ 名前決定後、すぐゲームをスタート！
+  socket.emit("start", {
+    groupId,
+    numCards,
+    maxQuestions
+  });
 }
+
 
 
 function startGame() {
