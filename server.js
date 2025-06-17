@@ -135,7 +135,7 @@ else {
   }));
 
   // 該当プレイヤーをロック
-  io.to(groupId).emit("lock", name);
+  io.to(socket.id).emit("lock", name);
 
   // 状態を再送（misclicksとともにcurrentを含める）
  io.to(groupId).emit("state", {
