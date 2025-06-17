@@ -138,11 +138,20 @@ function fixPlayerName() {
   playerNameFixed = true;
   document.getElementById("nameInput").disabled = true;
 
--  socket.emit("start", {
--    groupId,
--    numCards,
--    maxQuestions
--  });
+  // ✅ ここは削除 or コメントアウト
+  // socket.emit("start", {
+  //   groupId,
+  //   numCards,
+  //   maxQuestions
+  // });
+
+  // ✅ スタートボタンを表示する
+  const gameDiv = document.getElementById("game");
+  gameDiv.innerHTML = `
+    <button id="startBtn" onclick="startGame()">スタート</button>
+  `;
+}
+
 
 +  // ✅ スタートボタンを表示する
 +  const gameDiv = document.getElementById("game");
