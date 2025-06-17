@@ -153,16 +153,6 @@ function fixPlayerName() {
 }
 
 
-+  // ✅ スタートボタンを表示する
-+  const gameDiv = document.getElementById("game");
-+  gameDiv.innerHTML = `
-+    <button id="startBtn" onclick="startGame()">スタート</button>
-+  `;
-}
-
-
-
-
 function startGame() {
   if (!playerNameFixed) {
     alert("プレイヤー名を決定してください");
