@@ -138,13 +138,19 @@ function fixPlayerName() {
   playerNameFixed = true;
   document.getElementById("nameInput").disabled = true;
 
-  // ✅ 名前決定後、すぐゲームをスタート！
-  socket.emit("start", {
-    groupId,
-    numCards,
-    maxQuestions
-  });
+-  socket.emit("start", {
+-    groupId,
+-    numCards,
+-    maxQuestions
+-  });
+
++  // ✅ スタートボタンを表示する
++  const gameDiv = document.getElementById("game");
++  gameDiv.innerHTML = `
++    <button id="startBtn" onclick="startGame()">スタート</button>
++  `;
 }
+
 
 
 
