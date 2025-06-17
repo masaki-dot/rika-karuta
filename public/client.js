@@ -223,13 +223,10 @@ socket.on("state", (state) => {
 });
 
 
-
-
-socket.on("lock", (name) => {
-  if (name === playerName) {
-    locked = true;
-  }
+socket.on("lock", () => {
+  locked = true;
 });
+
 
 socket.on("end", (players) => {
   const root = document.getElementById("game");
