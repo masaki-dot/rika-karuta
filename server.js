@@ -83,7 +83,7 @@ io.on("connection", (socket) => {
 
     let player = state.players.find(p => p.name === name);
     if (!player) {
-      player = { name, score: 0 };
+      player = { name, hp: 20 };
       state.players.push(player);
     }
 
