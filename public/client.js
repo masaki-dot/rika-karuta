@@ -259,7 +259,7 @@ function updateGameUI(state, showYomifuda = true) {
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div id="scores">得点: ${getMyScore(state.players)}点</div>
+    <div id="scores">HP: ${getMyHP(state.players)}点</div>
     <div id="others"></div>
   `;
 
