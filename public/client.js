@@ -230,10 +230,7 @@ socket.on("lock", () => {
 socket.on("end", (players) => {
   const root = document.getElementById("game");
   root.innerHTML += `<h2>ゲーム終了！</h2>`;
-  const sorted = [...players].sort((a, b) => b.score - a.score).slice(0, 5);
-  root.innerHTML += `<h3>順位</h3><ol>` +
-    sorted.map(p => `<li>${p.name}: ${p.score}点</li>`).join('') +
-    `</ol>`;
+  // 勝者表示は今後のルールに合わせて再実装予定（一時的にコメントアウト）
 });
 
 socket.on("start_group_selection", () => {
@@ -288,7 +285,7 @@ function updateGameUI(state, showYomifuda = true) {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-    state.players.map(p => `<li>${p.name || "(未設定)"}: ${p.score}点</li>`).join("") + "</ul>";
+   state.players.map(p => `<li>${p.name || "(未設定)"}: HP: ${p.hp ?? "-"}点</li>`).join("") + "</ul>";
 
   if (state.misclicks) {
     state.misclicks.forEach(m => {
