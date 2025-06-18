@@ -246,11 +246,6 @@ function submitAnswer(number) {
   socket.emit("answer", { groupId, name: playerName, number });
 }
 
-function getMyScore(players) {
-  const me = players.find((p) => p.name === playerName);
-  return me ? me.score : 0;
-}
-
 function updateGameUI(state, showYomifuda = true) {
   const root = document.getElementById("game");
 
