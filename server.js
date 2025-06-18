@@ -47,6 +47,12 @@ io.on("connection", (socket) => {
     if (!states[groupId]) {
       states[groupId] = initState();
     }
+
+    // 初期状態でそのプレイヤーを登録しておく（score不要）
+ const state = states[groupId];
+ if (!state.players.find(p => p.name === socket.id)) {
+   state.players.push({ name: socket.id, hp: 20 });
+ }
   });
 
   socket.on("start", (data) => {
