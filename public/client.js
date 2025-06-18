@@ -11,7 +11,6 @@ let socket = io();
 let playerName = "";
 let groupId = "";
 let locked = false;
-let readAloud = false;
 let showSpeed = 2000;
 let numCards = 5;
 let maxQuestions = 10;
