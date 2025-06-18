@@ -246,6 +246,12 @@ function submitAnswer(number) {
   socket.emit("answer", { groupId, name: playerName, number });
 }
 
+function getMyHP(players) {
+  const me = players.find((p) => p.name === playerName);
+  return me ? me.hp : "-";
+}
+
+
 function updateGameUI(state, showYomifuda = true) {
   const root = document.getElementById("game");
 
