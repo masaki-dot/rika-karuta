@@ -30,7 +30,6 @@ function showGroupSelectUI() {
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
     <br/><br/>
-    <label><input type="checkbox" id="readAloudCheck" /> 読み札を読み上げる</label>
     <br/><br/>
     <div id="groupButtons"></div>
     <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
