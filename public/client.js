@@ -59,7 +59,6 @@ function showGroupSelectUI() {
   maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
   numCards = Number(document.getElementById("numCards").value || 5);
   showSpeed = Number(document.getElementById("speed").value || 2000);
-  readAloud = document.getElementById("readAloudCheck").checked;
 
   // ✅ サーバーに共通設定＋カードを送信！
   socket.emit("set_cards_and_settings", {
@@ -118,7 +117,6 @@ function initUI() {
     <label>問題数: <input type="number" id="maxQuestions" value="${maxQuestions}" min="1" /></label>
     <label>取り札の数: <input type="number" id="numCards" value="${numCards}" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="${showSpeed}" min="100" max="5000" /></label>
-    <label><input type="checkbox" id="readAloudCheck" ${readAloud ? "checked" : ""} /> 読み札を読み上げる</label>
     <br/><br/>
     <button id="startBtn" onclick="startGame()" disabled>スタート</button>
     <button onclick="showGroupSelectUI()">グループ選択に戻る</button>
@@ -156,8 +154,6 @@ function startGame() {
     alert("プレイヤー名を決定してください");
     return;
   }
-
-  readAloud = document.getElementById("readAloudCheck")?.checked || false;
   showSpeed = Number(document.getElementById("speed")?.value || 2000);
   numCards = Number(document.getElementById("numCards")?.value || 5);
   maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
