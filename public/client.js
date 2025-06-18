@@ -341,11 +341,6 @@ function showYomifudaAnimated(text) {
   // ⛔ 他人の操作が clearInterval していないか確認したい場合は、intervalを window に保存してもOK
   window.__activeYomifudaInterval__ = interval;
 
-  if (readAloud && window.speechSynthesis) {
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ja-JP";
-    speechSynthesis.speak(utter);
-  }
 }
 
 
