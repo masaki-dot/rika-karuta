@@ -244,9 +244,10 @@ function submitAnswer(number) {
 }
 
 function getMyHP(players) {
-  const me = players.find((p) => p.name === playerName);
-  return me ? me.hp : "-";
+  const me = players.find((p) => p.name === playerName || p.name === socket.id);
+  return me && typeof me.hp === "number" ? me.hp : 20;
 }
+
 
 
 function updateGameUI(state, showYomifuda = true) {
