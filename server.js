@@ -51,11 +51,19 @@ socket.on("join", (gid) => {
 
   const state = states[groupId];
 
-  // ✅ 自分が state.players にまだいなければ追加（仮名＋hp: 20）
-  if (!state.players.find(p => p.name === socket.id)) {
-    state.players.push({ name: socket.id, hp: 20 });  // scoreは使わない
+  // ✅ socket.id を一時的な名前として仮登録（HPも同時に）
+  if (!state.players.find(p => p.socketId === socket.id)) {
+    state.players.push({
+      socketId: socket.id, // ← 識別用
+      name: "(未設定)",
+      hp: 20
+    });
   }
+
+  // ✅ 状態を即送信（他クライアントにも反映させる）
+  io.to(groupId).emit("state", state);
 });
+
 
 
   socket.on("start", (data) => {
