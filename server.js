@@ -1,253 +1,223 @@
-window.onerror = function (msg, src, line, col, err) {
-  const div = document.createElement("div");
-  div.style = "position: fixed; top: 0; left: 0; background: red; color: white; padding: 10px; z-index: 9999; font-size: 14px;";
-  div.textContent = `[JavaScriptエラー] ${msg} (${src}:${line})`;
-  document.body.appendChild(div);
-};
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
 
-let socket = io();
-let playerName = "";
-let groupId = "";
-let locked = false;
-let showSpeed = 2000;
-let numCards = 5;
-let maxQuestions = 10;
-let loadedCards = [];
-let yomifudaAnimating = false;
-let lastYomifudaText = "";
-let playerNameFixed = false;
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-function showGroupSelectUI() {
-  const root = document.getElementById("root");
-  root.innerHTML = `
-    <h2>CSVと共通設定をアップロードしてください</h2>
-    <input type="file" id="csvFile" accept=".csv" />
-    <br/><br/>
-    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
-    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
-    <br/><br/>
-    <div id="groupButtons"></div>
-    <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
-  `;
+app.use(express.static(path.join(__dirname, "public")));
 
-  document.getElementById("csvFile").addEventListener("change", () => {
-    const file = document.getElementById("csvFile").files[0];
-    Papa.parse(file, {
-      header: false,
-      skipEmptyLines: true,
-      complete: (result) => {
-        const rows = result.data;
-        if (rows.length < 2) {
-          alert("CSVファイルに十分な行がありません。");
-          return;
-        }
+let globalCards = [];
+let globalSettings = { maxQuestions: 10, numCards: 5, showSpeed: 2000 };
+let currentUsers = 0;
+const states = {};
 
-        const dataRows = rows.slice(1);
-        loadedCards = dataRows.map((r) => ({
-          number: String(r[0]).trim(),
-          term: String(r[1]).trim(),
-          text: String(r[2]).trim()
-        })).filter(card => card.term && card.text);
+io.on("connection", (socket) => {
+  currentUsers++;
+  io.emit("user_count", currentUsers);
+  let groupId = null;
 
-        maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
-        numCards = Number(document.getElementById("numCards").value || 5);
-        showSpeed = Number(document.getElementById("speed").value || 2000);
-
-        socket.emit("set_cards_and_settings", {
-          cards: loadedCards,
-          settings: {
-            maxQuestions,
-            numCards,
-            showSpeed
-          }
-        });
-      },
-      error: (err) => {
-        console.error("🚨 CSV読み込みエラー:", err);
-      }
-    });
-  });
-}
-
-function drawGroupButtons() {
-  const root = document.getElementById("root");
-  root.innerHTML = "<h2>グループを選択してください</h2><div id='groupButtons'></div>";
-  const area = document.getElementById("groupButtons");
-  for (let i = 1; i <= 10; i++) {
-    const btn = document.createElement("button");
-    btn.textContent = "グループ " + i;
-    btn.onclick = () => {
-      groupId = "group" + i;
-      socket.emit("join", groupId);
-      showNameInputUI();
-    };
-    area.appendChild(btn);
-  }
-}
-
-function showNameInputUI() {
-  const root = document.getElementById("root");
-  root.innerHTML = `
-    <h2>プレイヤー名を入力してください</h2>
-    <input type="text" id="nameInput" placeholder="プレイヤー名" />
-    <button onclick="fixPlayerName()">決定</button>
-    <div id="game"></div>
-  `;
-}
-
-function fixPlayerName() {
-  const name = document.getElementById("nameInput").value.trim();
-  if (!name) {
-    alert("名前を入力してください");
-    return;
-  }
-  playerName = name;
-  playerNameFixed = true;
-  document.getElementById("nameInput").disabled = true;
-  const gameDiv = document.getElementById("game");
-  gameDiv.innerHTML = `<button id="startBtn" onclick="startGame()">スタート</button>`;
-}
-
-function startGame() {
-  if (!playerNameFixed) {
-    alert("プレイヤー名を決定してください");
-    return;
-  }
-  showSpeed = Number(document.getElementById("speed")?.value || 2000);
-  numCards = Number(document.getElementById("numCards")?.value || 5);
-  maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
-
-  socket.emit("start", {
-    groupId,
-    numCards,
-    maxQuestions
-  });
-}
-
-socket.on("csv_ready", () => drawGroupButtons());
-socket.on("user_count", (count) => {
-  const div = document.getElementById("userCountDisplay");
-  if (div) div.textContent = `接続中: ${count}人`;
-});
-socket.on("start_group_selection", () => drawGroupButtons());
-
-socket.on("state", (state) => {
-  window.__alreadyReadDone__ = false;
-  const current = state.current;
-  if (!current) return;
-
-  locked = false;
-  if (state.showSpeed) showSpeed = state.showSpeed;
-  if (yomifudaAnimating && lastYomifudaText === current.text) {
-    updateGameUI(state, false);
-    return;
-  }
-
-  lastYomifudaText = current.text;
-  yomifudaAnimating = false;
-  updateGameUI(state, true);
-});
-
-socket.on("lock", () => locked = true);
-
-socket.on("end", (players) => {
-  const root = document.getElementById("game");
-  root.innerHTML += `<h2>ゲーム終了！</h2>`;
-});
-
-function submitAnswer(number) {
-  if (locked || !playerName) return;
-  socket.emit("answer", { groupId, name: playerName, number });
-}
-
-function getMyHP(players) {
-  const me = players.find((p) => p.name === playerName || p.socketId === socket.id);
-  return me && typeof me.hp === "number" ? me.hp : 20;
-}
-
-function updateGameUI(state, showYomifuda = true) {
-  const root = document.getElementById("game");
-  root.innerHTML = `
-    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda" style="font-size: 1.2em; margin: 10px; text-align: left;"></div>
-    <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div id="scores">HP: ${getMyHP(state.players)}点</div>
-    <div id="others"></div>
-  `;
-
-  const yomifuda = document.getElementById("yomifuda");
-  if (showYomifuda) {
-    yomifuda.textContent = "";
-    setTimeout(() => {
-      showYomifudaAnimated(state.current.text);
-    }, 100);
-  } else {
-    yomifuda.textContent = lastYomifudaText;
-  }
-
-  const cardsDiv = document.getElementById("cards");
-  state.current.cards.forEach((c) => {
-    const div = document.createElement("div");
-    div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
-    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
-    if (c.correct) div.style.background = "yellow";
-    div.onclick = () => {
-      if (!locked) submitAnswer(c.number);
-    };
-    cardsDiv.appendChild(div);
+  socket.on("disconnect", () => {
+    currentUsers--;
+    io.emit("user_count", currentUsers);
   });
 
-  const otherDiv = document.getElementById("others");
-  otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-    state.players
-      .filter(p => p.name !== playerName)
-      .map(p => {
-        const name = p.name || "(未設定)";
-        const hp = typeof p.hp === "number" ? p.hp : 20;
-        return `<li>${name}: HP: ${hp}点</li>`;
-      }).join("") +
-    "</ul>";
+  socket.on("set_cards_and_settings", ({ cards, settings }) => {
+    globalCards = [...cards];
+    globalSettings = settings;
+    io.emit("start_group_selection");
+  });
 
-  if (state.misclicks) {
-    state.misclicks.forEach(m => {
-      const card = [...document.querySelectorAll("#cards div")].find(d => d.innerText.includes(m.number));
-      if (card) {
-        card.style.background = "#fdd";
-        const tag = document.createElement("div");
-        tag.style.color = "red";
-        tag.textContent = `お手つき: ${m.name}`;
-        card.appendChild(tag);
-      }
-    });
-  }
-}
+  socket.on("join", (gid) => {
+    groupId = gid;
+    socket.join(groupId);
+    if (!states[groupId]) states[groupId] = initState();
 
-function showYomifudaAnimated(text) {
-  if (yomifudaAnimating) return;
-  yomifudaAnimating = true;
-  const div = document.getElementById("yomifuda");
-  if (!div) return;
-  div.textContent = "";
-  div.style.textAlign = "left";
-  let i = 0;
-  const interval = setInterval(() => {
-    if (i >= text.length) {
-      clearInterval(interval);
-      yomifudaAnimating = false;
-      if (groupId && !window.__alreadyReadDone__) {
-        window.__alreadyReadDone__ = true;
-        socket.emit("read_done", groupId);
-      }
-      return;
+    const state = states[groupId];
+    if (!state.players.find(p => p.socketId === socket.id)) {
+      state.players.push({ socketId: socket.id, name: "(未設定)", hp: 20 });
     }
-    const chunk = text.slice(i, i + 5);
-    div.textContent += chunk;
-    i += 5;
-  }, showSpeed);
-  window.__activeYomifudaInterval__ = interval;
+
+    io.to(groupId).emit("state", {
+      ...state,
+      showSpeed: globalSettings.showSpeed
+    });
+  });
+
+  socket.on("start", (data) => {
+    const { groupId: gid, numCards, maxQuestions } = data;
+    const state = states[gid];
+    if (!state) return;
+
+    const player = state.players.find(p => p.socketId === socket.id);
+    if (player && data.playerName) {
+      player.name = data.playerName;
+    }
+
+    state.maxQuestions = maxQuestions;
+    state.numCards = Math.min(Math.max(5, numCards), 10);
+    nextQuestion(gid);
+  });
+
+  socket.on("read_done", (groupId) => {
+    const state = states[groupId];
+    if (!state || state.readingCompleted || state.waitingNext) return;
+
+    state.readingCompleted = true;
+
+    state.timeoutId = setTimeout(() => {
+      if (state.readingCompleted && !state.waitingNext) {
+        state.waitingNext = true;
+        nextQuestion(groupId);
+      }
+    }, 30000);
+  });
+
+  socket.on("answer", ({ groupId, name, number }) => {
+    const state = states[groupId];
+    if (!state || !state.current || state.waitingNext || !name) return;
+    const player = state.players.find(p => p.name === name);
+    if (!player || player.hp <= 0 || state.lockedPlayers.includes(name)) return;
+
+    const correctCard = state.current.cards.find(c => c.number === number);
+
+    if (correctCard && correctCard._answer) {
+      state.readingCompleted = true;
+      state.waitingNext = true;
+
+      for (const p of state.players) {
+        if (p.name !== name && p.hp > 0) {
+          p.hp -= state.current.pointValue;
+          if (p.hp < 0) p.hp = 0;
+        }
+      }
+
+      if (state.timeoutId) {
+        clearTimeout(state.timeoutId);
+        state.timeoutId = null;
+      }
+
+      io.to(groupId).emit("state", {
+        ...state,
+        misclicks: state.misclicks,
+        waitingNext: true
+      });
+
+      setTimeout(() => nextQuestion(groupId), 3000);
+    } else {
+      state.lockedPlayers.push(name);
+      state.misclicks.push({ name, number });
+      player.hp -= state.current.pointValue;
+      if (player.hp < 0) player.hp = 0;
+
+      io.to(socket.id).emit("lock", name);
+      io.to(groupId).emit("state", {
+        ...state,
+        current: {
+          ...state.current,
+          cards: state.current.cards.map(c => ({
+            term: c.term,
+            number: c.number,
+            text: c.text
+          }))
+        }
+      });
+    }
+  });
+});
+
+function initState() {
+  return {
+    players: [],
+    cards: [],
+    usedQuestions: [],
+    numCards: 5,
+    maxQuestions: 10,
+    questionCount: 0,
+    current: null,
+    misclicks: [],
+    lockedPlayers: [],
+    waitingNext: false,
+    readingCompleted: false,
+    timeoutId: null
+  };
 }
 
-window.onload = function () {
-  showGroupSelectUI();
-};
+function nextQuestion(groupId) {
+  const state = states[groupId];
+  if (!state) return;
+
+  const alivePlayers = state.players.filter(p => p.hp > 0);
+  if (alivePlayers.length <= 1 || state.questionCount >= state.maxQuestions) {
+    io.to(groupId).emit("end", state.players);
+    return;
+  }
+
+  const remaining = globalCards.filter(q =>
+    !state.usedQuestions.includes(q.text + "|" + q.number)
+  );
+
+  if (remaining.length === 0) {
+    io.to(groupId).emit("end", state.players);
+    return;
+  }
+
+  const question = shuffle(remaining)[0];
+  const pointValue = getRandomPoint();
+  state.usedQuestions.push(question.text + "|" + question.number);
+
+  const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
+  const allCards = shuffle([...distractors, question]);
+
+  state.questionCount++;
+  state.misclicks = [];
+  state.lockedPlayers = [];
+  state.waitingNext = false;
+  state.readingCompleted = false;
+
+  state.current = {
+    text: question.text,
+    answer: question.number,
+    pointValue,
+    cards: allCards.map(c => ({
+      term: c.term,
+      number: c.number,
+      text: c.text,
+      _answer: c.number === question.number
+    }))
+  };
+
+  io.to(groupId).emit("state", {
+    ...state,
+    showSpeed: globalSettings.showSpeed,
+    misclicks: [],
+    waitingNext: false,
+    current: {
+      text: state.current.text,
+      pointValue: state.current.pointValue,
+      cards: state.current.cards.map(c => ({
+        term: c.term,
+        number: c.number,
+        text: c.text
+      }))
+    }
+  });
+}
+
+function shuffle(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
+
+function getRandomPoint() {
+  const r = Math.random();
+  if (r < 0.4) return 1;
+  if (r < 0.8) return 2;
+  if (r < 0.95) return 3;
+  return 5;
+}
+
+server.listen(3000, () => {
+  console.log("🚀 Server running on http://localhost:3000");
+});
