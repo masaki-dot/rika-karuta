@@ -286,12 +286,15 @@ function updateGameUI(state, showYomifuda = true) {
 
   const otherDiv = document.getElementById("others");
  otherDiv.innerHTML = "<h4>他のプレーヤー:</h4><ul>" +
-  state.players.map(p => {
-    const hp = typeof p.hp === "number" ? p.hp : 20;
-    const name = p.name || "(未設定)";
-    return `<li>${name}: HP: ${hp}点</li>`;
-  }).join("") +
+  state.players
+    .filter(p => p.name !== playerName) // ← 自分以外
+    .map(p => {
+      const name = p.name || "(未設定)";
+      const hp = typeof p.hp === "number" ? p.hp : 20;
+      return `<li>${name}: HP: ${hp}点</li>`;
+    }).join("") +
   "</ul>";
+
 
 
   if (state.misclicks) {
