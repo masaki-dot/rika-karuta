@@ -41,19 +41,22 @@ io.on("connection", (socket) => {
 ;
 
 
-  socket.on("join", (gid) => {
-    groupId = gid;
-    socket.join(groupId);
-    if (!states[groupId]) {
-      states[groupId] = initState();
-    }
+socket.on("join", (gid) => {
+  groupId = gid;
+  socket.join(groupId);
 
-    // 初期状態でそのプレイヤーを登録しておく（score不要）
- const state = states[groupId];
- if (!state.players.find(p => p.name === socket.id)) {
-   state.players.push({ name: socket.id, hp: 20 });
- }
-  });
+  if (!states[groupId]) {
+    states[groupId] = initState();
+  }
+
+  const state = states[groupId];
+
+  // ✅ 自分が state.players にまだいなければ追加（仮名＋hp: 20）
+  if (!state.players.find(p => p.name === socket.id)) {
+    state.players.push({ name: socket.id, hp: 20 });  // scoreは使わない
+  }
+});
+
 
   socket.on("start", (data) => {
     const { groupId, numCards, maxQuestions } = data;
