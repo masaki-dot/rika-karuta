@@ -47,13 +47,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start", (data) => {
-    const { groupId: gid, numCards, maxQuestions } = data;
+    const { groupId: gid, numCards, maxQuestions, playerName } = data;
     const state = states[gid];
     if (!state) return;
 
     const player = state.players.find(p => p.socketId === socket.id);
-    if (player && data.playerName) {
-      player.name = data.playerName;
+    if (player && playerName) {
+      player.name = playerName;
     }
 
     state.maxQuestions = maxQuestions;
@@ -66,7 +66,6 @@ io.on("connection", (socket) => {
     if (!state || state.readingCompleted || state.waitingNext) return;
 
     state.readingCompleted = true;
-
     state.timeoutId = setTimeout(() => {
       if (state.readingCompleted && !state.waitingNext) {
         state.waitingNext = true;
@@ -78,8 +77,9 @@ io.on("connection", (socket) => {
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
     if (!state || !state.current || state.waitingNext || !name) return;
-    const player = state.players.find(p => p.name === name);
-    if (!player || player.hp <= 0 || state.lockedPlayers.includes(name)) return;
+
+    const player = state.players.find(p => p.name === name || p.socketId === socket.id);
+    if (!player || player.hp <= 0 || state.lockedPlayers.includes(player.name)) return;
 
     const correctCard = state.current.cards.find(c => c.number === number);
 
@@ -88,42 +88,24 @@ io.on("connection", (socket) => {
       state.waitingNext = true;
 
       for (const p of state.players) {
-        if (p.name !== name && p.hp > 0) {
+        if (p.name !== player.name && p.hp > 0) {
           p.hp -= state.current.pointValue;
           if (p.hp < 0) p.hp = 0;
         }
       }
 
-      if (state.timeoutId) {
-        clearTimeout(state.timeoutId);
-        state.timeoutId = null;
-      }
-
-      io.to(groupId).emit("state", {
-        ...state,
-        misclicks: state.misclicks,
-        waitingNext: true
-      });
+      if (state.timeoutId) clearTimeout(state.timeoutId);
+      io.to(groupId).emit("state", { ...state });
 
       setTimeout(() => nextQuestion(groupId), 3000);
     } else {
-      state.lockedPlayers.push(name);
-      state.misclicks.push({ name, number });
+      state.lockedPlayers.push(player.name);
+      state.misclicks.push({ name: player.name, number });
       player.hp -= state.current.pointValue;
       if (player.hp < 0) player.hp = 0;
 
-      io.to(socket.id).emit("lock", name);
-      io.to(groupId).emit("state", {
-        ...state,
-        current: {
-          ...state.current,
-          cards: state.current.cards.map(c => ({
-            term: c.term,
-            number: c.number,
-            text: c.text
-          }))
-        }
-      });
+      io.to(socket.id).emit("lock", player.name);
+      io.to(groupId).emit("state", { ...state });
     }
   });
 });
