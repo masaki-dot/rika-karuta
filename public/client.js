@@ -1,4 +1,4 @@
-// ✅ 修正済み client.js
+// ✅ 修正済み client.js（2025年6月版）
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -143,17 +143,42 @@ function submitAnswer(number) {
   socket.emit("answer", { groupId, name: playerName, number });
 }
 
+function animateYomifuda(text) {
+  const yomifudaDiv = document.getElementById("yomifuda");
+  yomifudaDiv.innerHTML = "";
+  yomifudaAnimating = true;
+  lastYomifudaText = text;
+
+  let index = 0;
+
+  function showNext() {
+    if (index >= text.length) {
+      yomifudaAnimating = false;
+      socket.emit("read_done", groupId);
+      return;
+    }
+    const chunk = text.slice(index, index + 5);
+    yomifudaDiv.innerHTML += chunk;
+    index += 5;
+    setTimeout(showNext, showSpeed);
+  }
+
+  showNext();
+}
+
 function updateGameUI(state) {
   const root = document.getElementById("game");
   const myHP = state.players.find(p => p.name === playerName)?.hp ?? 20;
 
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda">${state.current.text}</div>
+    <div id="yomifuda" style="font-size: 24px; margin: 10px 0;"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">自分のHP: ${myHP}点</div>
     <div id="others"></div>
   `;
+
+  animateYomifuda(state.current.text);
 
   const cardsDiv = document.getElementById("cards");
   state.current.cards.forEach((c) => {
@@ -172,8 +197,9 @@ function updateGameUI(state) {
     state.players.map(p => {
       const name = p.name || "(未設定)";
       const hp = typeof p.hp === "number" ? p.hp : 20;
-      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
-        <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
+      const hpPercent = Math.max(0, hp / 20 * 100);
+      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px; margin-top: 2px;">
+        <div style="background: green; height: 10px; width: ${hpPercent}%;"></div></div>`;
       return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
     }).join("") + "</ul>";
 }
