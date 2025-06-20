@@ -1,3 +1,5 @@
+// ✅ Render対応＆不具合修正済み server.js（2025年6月版）
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -8,6 +10,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
+
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -44,8 +47,8 @@ io.on("connection", (socket) => {
     }
 
     const state = states[groupId];
-
-    if (!state.players.find(p => p.socketId === socket.id)) {
+    let player = state.players.find(p => p.name === socket.id);
+    if (!player) {
       state.players.push({
         socketId: socket.id,
         name: "(未設定)",
@@ -53,8 +56,7 @@ io.on("connection", (socket) => {
         answered: false
       });
     }
-
-    io.to(groupId).emit("state", state);
+    io.to(groupId).emit("state", safeState(state));
   });
 
   socket.on("start", (data) => {
@@ -80,16 +82,18 @@ io.on("connection", (socket) => {
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
+    console.log(`[📩 answer] ${name} => ${number} in ${groupId}`);
     const state = states[groupId];
-    if (!state || !state.current || state.waitingNext || !name) return;
+    if (!state || !state.current || state.waitingNext || !name) {
+      console.log("⚠️ 無効な状態: 回答無視");
+      return;
+    }
 
     let player = state.players.find(p => p.name === name);
     if (!player) {
       player = { socketId: socket.id, name, hp: 20, answered: false };
       state.players.push(player);
     }
-
-    // 名前の登録を更新
     player.name = name;
 
     const correctCard = state.current.cards.find(c => c.number === number);
@@ -99,17 +103,13 @@ io.on("connection", (socket) => {
       state.readingCompleted = true;
       state.waitingNext = true;
 
-      if (state.timeoutId) {
-        clearTimeout(state.timeoutId);
-        state.timeoutId = null;
-      }
+      if (state.timeoutId) clearTimeout(state.timeoutId);
 
       state.current.cards = state.current.cards.map(c => ({
         ...c,
         correct: c._answer || false
       }));
 
-      // 解答者以外を減点（HP制）
       const pointValue = state.current.pointValue;
       state.players.forEach(p => {
         if (p.name !== name && p.hp > 0) {
@@ -118,17 +118,12 @@ io.on("connection", (socket) => {
         }
       });
 
-      io.to(groupId).emit("state", {
-        ...state,
-        waitingNext: true
-      });
+      io.to(groupId).emit("state", safeState(state));
 
       setTimeout(() => {
         nextQuestion(groupId);
       }, 3000);
-      return;
     } else {
-      // お手つき：ロック＋減点
       if (!state.lockedPlayers.includes(name)) {
         state.lockedPlayers.push(name);
         state.misclicks.push({ name, number });
@@ -139,11 +134,7 @@ io.on("connection", (socket) => {
         }
 
         socket.emit("lock", name);
-
-        io.to(groupId).emit("state", {
-          ...state,
-          waitingNext: false
-        });
+        io.to(groupId).emit("state", safeState(state));
       }
     }
   });
@@ -174,6 +165,18 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const remaining = globalCards.filter(q =>
+      !state.usedQuestions.includes(q.text + "|" + q.number)
+    );
+
+    if (remaining.length === 0) {
+      io.to(groupId).emit("end", state.players);
+      return;
+    }
+
+    const question = shuffle(remaining)[0];
+    state.usedQuestions.push(question.text + "|" + question.number);
+
     state.questionCount++;
     state.misclicks = [];
     state.lockedPlayers = [];
@@ -181,17 +184,9 @@ io.on("connection", (socket) => {
     state.waitingNext = false;
     state.players.forEach(p => (p.answered = false));
 
-    const remaining = globalCards.filter(q =>
-      !state.usedQuestions.includes(q.text + "|" + q.number)
-    );
-
-    const question = shuffle(remaining)[0];
-    state.usedQuestions.push(question.text + "|" + question.number);
-
     const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
     const allCards = shuffle([...distractors, question]);
 
-    // ランダムなポイントを決定
     const rand = Math.random();
     let pointValue = 1;
     if (rand < 0.05) pointValue = 5;
@@ -210,18 +205,23 @@ io.on("connection", (socket) => {
       }))
     };
 
-    io.to(groupId).emit("state", {
+    io.to(groupId).emit("state", safeState(state));
+  }
+
+  function safeState(state) {
+    return {
       ...state,
-      showSpeed: globalSettings.showSpeed,
       current: {
-        ...state.current,
-        cards: state.current.cards.map(c => ({
+        text: state.current?.text,
+        pointValue: state.current?.pointValue,
+        cards: state.current?.cards.map(c => ({
           term: c.term,
           number: c.number,
-          text: c.text
-        }))
+          text: c.text,
+          correct: c.correct || false
+        })) || []
       }
-    });
+    };
   }
 
   function shuffle(arr) {
@@ -229,6 +229,7 @@ io.on("connection", (socket) => {
   }
 });
 
-server.listen(3000, () => {
-  console.log("🚀 Server running on http://localhost:3000");
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
