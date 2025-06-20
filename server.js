@@ -60,10 +60,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start", (data) => {
-    const { groupId, numCards, maxQuestions } = data;
+    const { groupId, numCards, maxQuestions, showSpeed } = data;
     const state = states[groupId] = initState();
     state.maxQuestions = maxQuestions;
     state.numCards = Math.min(Math.max(5, numCards), 10);
+    globalSettings.showSpeed = showSpeed;
     nextQuestion(groupId);
   });
 
