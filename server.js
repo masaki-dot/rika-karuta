@@ -8,7 +8,6 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
-
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -61,17 +60,9 @@ io.on("connection", (socket) => {
   socket.on("start", (data) => {
     const { groupId } = data;
     const state = states[groupId] = initState();
-
-    // グローバル設定を適用
     state.maxQuestions = globalSettings.maxQuestions;
-    state.numCards = Math.min(Math.max(5, globalSettings.numCards), 10);
+    state.numCards = globalSettings.numCards;
     state.showSpeed = globalSettings.showSpeed;
-
-    if (state.timeoutId) {
-      clearTimeout(state.timeoutId);
-      state.timeoutId = null;
-    }
-
     nextQuestion(groupId);
   });
 
@@ -80,6 +71,7 @@ io.on("connection", (socket) => {
     if (!state || state.readingCompleted || state.waitingNext) return;
 
     state.readingCompleted = true;
+    if (state.timeoutId) clearTimeout(state.timeoutId);
     state.timeoutId = setTimeout(() => {
       const st = states[groupId];
       if (st && st.readingCompleted && !st.waitingNext) {
@@ -145,6 +137,13 @@ io.on("connection", (socket) => {
           if (player.hp < 0) player.hp = 0;
         }
 
+        state.current.cards = state.current.cards.map(c => {
+          if (c.number === number) {
+            return { ...c, incorrect: true };
+          }
+          return c;
+        });
+
         socket.emit("lock", name);
 
         io.to(groupId).emit("state", {
@@ -162,25 +161,20 @@ io.on("connection", (socket) => {
       usedQuestions: [],
       numCards: 5,
       maxQuestions: 10,
-      showSpeed: 2000,
       questionCount: 0,
       current: null,
       misclicks: [],
       lockedPlayers: [],
       waitingNext: false,
       readingCompleted: false,
-      timeoutId: null
+      timeoutId: null,
+      showSpeed: 2000
     };
   }
 
   function nextQuestion(groupId) {
     const state = states[groupId];
     if (!state) return;
-
-    if (state.timeoutId) {
-      clearTimeout(state.timeoutId);
-      state.timeoutId = null;
-    }
 
     if (state.questionCount >= state.maxQuestions) {
       io.to(groupId).emit("end", state.players);
@@ -230,7 +224,9 @@ io.on("connection", (socket) => {
         cards: state.current.cards.map(c => ({
           term: c.term,
           number: c.number,
-          text: c.text
+          text: c.text,
+          correct: c.correct,
+          incorrect: c.incorrect
         }))
       }
     });
