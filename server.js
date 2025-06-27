@@ -8,6 +8,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
+
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -60,6 +61,8 @@ io.on("connection", (socket) => {
   socket.on("start", (data) => {
     const { groupId } = data;
     const state = states[groupId] = initState();
+
+    // グローバル設定を適用
     state.maxQuestions = globalSettings.maxQuestions;
     state.numCards = Math.min(Math.max(5, globalSettings.numCards), 10);
     state.showSpeed = globalSettings.showSpeed;
@@ -77,7 +80,6 @@ io.on("connection", (socket) => {
     if (!state || state.readingCompleted || state.waitingNext) return;
 
     state.readingCompleted = true;
-    if (state.timeoutId) clearTimeout(state.timeoutId);
     state.timeoutId = setTimeout(() => {
       const st = states[groupId];
       if (st && st.readingCompleted && !st.waitingNext) {
@@ -98,6 +100,7 @@ io.on("connection", (socket) => {
     }
 
     player.name = name;
+
     const correctCard = state.current.cards.find(c => c.number === number);
 
     if (correctCard && correctCard._answer && !player.answered) {
@@ -143,6 +146,7 @@ io.on("connection", (socket) => {
         }
 
         socket.emit("lock", name);
+
         io.to(groupId).emit("state", {
           ...state,
           waitingNext: false
@@ -158,14 +162,14 @@ io.on("connection", (socket) => {
       usedQuestions: [],
       numCards: 5,
       maxQuestions: 10,
+      showSpeed: 2000,
       questionCount: 0,
       current: null,
       misclicks: [],
       lockedPlayers: [],
       waitingNext: false,
       readingCompleted: false,
-      timeoutId: null,
-      showSpeed: 2000
+      timeoutId: null
     };
   }
 
@@ -238,5 +242,5 @@ io.on("connection", (socket) => {
 });
 
 server.listen(3000, () => {
-  console.log("\u{1F680} Server running on http://localhost:3000");
+  console.log("🚀 Server running on http://localhost:3000");
 });
