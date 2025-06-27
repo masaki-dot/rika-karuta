@@ -1,5 +1,3 @@
-// ✅ Render対応＆全不具合修正済み server.js（2025年6月最新版）
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -10,7 +8,6 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
-
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -47,8 +44,8 @@ io.on("connection", (socket) => {
     }
 
     const state = states[groupId];
-    let player = state.players.find(p => p.name === socket.id);
-    if (!player) {
+
+    if (!state.players.find(p => p.socketId === socket.id)) {
       state.players.push({
         socketId: socket.id,
         name: "(未設定)",
@@ -56,23 +53,31 @@ io.on("connection", (socket) => {
         answered: false
       });
     }
-    io.to(groupId).emit("state", safeState(state));
+
+    io.to(groupId).emit("state", state);
   });
 
   socket.on("start", (data) => {
-    const { groupId, numCards, maxQuestions, showSpeed } = data;
+    const { groupId } = data;
     const state = states[groupId] = initState();
-    state.maxQuestions = maxQuestions;
-    state.numCards = Math.min(Math.max(5, numCards), 10);
-    globalSettings.showSpeed = showSpeed;
+    state.maxQuestions = globalSettings.maxQuestions;
+    state.numCards = Math.min(Math.max(5, globalSettings.numCards), 10);
+    state.showSpeed = globalSettings.showSpeed;
+
+    if (state.timeoutId) {
+      clearTimeout(state.timeoutId);
+      state.timeoutId = null;
+    }
+
     nextQuestion(groupId);
   });
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
-    if (!state || state.readingCompleted || state.waitingNext || state.timeoutId) return;
+    if (!state || state.readingCompleted || state.waitingNext) return;
 
     state.readingCompleted = true;
+    if (state.timeoutId) clearTimeout(state.timeoutId);
     state.timeoutId = setTimeout(() => {
       const st = states[groupId];
       if (st && st.readingCompleted && !st.waitingNext) {
@@ -83,20 +88,16 @@ io.on("connection", (socket) => {
   });
 
   socket.on("answer", ({ groupId, name, number }) => {
-    console.log(`[📩 answer] ${name} => ${number} in ${groupId}`);
     const state = states[groupId];
-    if (!state || !state.current || state.waitingNext || !name) {
-      console.log("⚠️ 無効な状態: 回答無視");
-      return;
-    }
+    if (!state || !state.current || state.waitingNext || !name) return;
 
     let player = state.players.find(p => p.name === name);
     if (!player) {
       player = { socketId: socket.id, name, hp: 20, answered: false };
       state.players.push(player);
     }
-    player.name = name;
 
+    player.name = name;
     const correctCard = state.current.cards.find(c => c.number === number);
 
     if (correctCard && correctCard._answer && !player.answered) {
@@ -104,7 +105,10 @@ io.on("connection", (socket) => {
       state.readingCompleted = true;
       state.waitingNext = true;
 
-      if (state.timeoutId) clearTimeout(state.timeoutId);
+      if (state.timeoutId) {
+        clearTimeout(state.timeoutId);
+        state.timeoutId = null;
+      }
 
       state.current.cards = state.current.cards.map(c => ({
         ...c,
@@ -119,11 +123,15 @@ io.on("connection", (socket) => {
         }
       });
 
-      io.to(groupId).emit("state", safeState(state));
+      io.to(groupId).emit("state", {
+        ...state,
+        waitingNext: true
+      });
 
       setTimeout(() => {
         nextQuestion(groupId);
       }, 3000);
+      return;
     } else {
       if (!state.lockedPlayers.includes(name)) {
         state.lockedPlayers.push(name);
@@ -135,7 +143,10 @@ io.on("connection", (socket) => {
         }
 
         socket.emit("lock", name);
-        io.to(groupId).emit("state", safeState(state));
+        io.to(groupId).emit("state", {
+          ...state,
+          waitingNext: false
+        });
       }
     }
   });
@@ -153,7 +164,8 @@ io.on("connection", (socket) => {
       lockedPlayers: [],
       waitingNext: false,
       readingCompleted: false,
-      timeoutId: null
+      timeoutId: null,
+      showSpeed: 2000
     };
   }
 
@@ -161,30 +173,29 @@ io.on("connection", (socket) => {
     const state = states[groupId];
     if (!state) return;
 
+    if (state.timeoutId) {
+      clearTimeout(state.timeoutId);
+      state.timeoutId = null;
+    }
+
     if (state.questionCount >= state.maxQuestions) {
       io.to(groupId).emit("end", state.players);
       return;
     }
-
-    const remaining = globalCards.filter(q =>
-      !state.usedQuestions.includes(q.text + "|" + q.number)
-    );
-
-    if (remaining.length === 0) {
-      io.to(groupId).emit("end", state.players);
-      return;
-    }
-
-    const question = shuffle(remaining)[0];
-    state.usedQuestions.push(question.text + "|" + question.number);
 
     state.questionCount++;
     state.misclicks = [];
     state.lockedPlayers = [];
     state.readingCompleted = false;
     state.waitingNext = false;
-    state.timeoutId = null;
     state.players.forEach(p => (p.answered = false));
+
+    const remaining = globalCards.filter(q =>
+      !state.usedQuestions.includes(q.text + "|" + q.number)
+    );
+
+    const question = shuffle(remaining)[0];
+    state.usedQuestions.push(question.text + "|" + question.number);
 
     const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
     const allCards = shuffle([...distractors, question]);
@@ -207,25 +218,18 @@ io.on("connection", (socket) => {
       }))
     };
 
-    io.to(groupId).emit("state", safeState(state));
-  }
-
-  function safeState(state) {
-    return {
+    io.to(groupId).emit("state", {
       ...state,
-      showSpeed: globalSettings.showSpeed,
+      showSpeed: state.showSpeed,
       current: {
-        text: state.current?.text,
-        pointValue: state.current?.pointValue,
-        cards: state.current?.cards.map(c => ({
+        ...state.current,
+        cards: state.current.cards.map(c => ({
           term: c.term,
           number: c.number,
-          text: c.text,
-          correct: c.correct || false
-        })) || []
-      },
-      misclicks: state.misclicks
-    };
+          text: c.text
+        }))
+      }
+    });
   }
 
   function shuffle(arr) {
@@ -233,7 +237,6 @@ io.on("connection", (socket) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+server.listen(3000, () => {
+  console.log("\u{1F680} Server running on http://localhost:3000");
 });
