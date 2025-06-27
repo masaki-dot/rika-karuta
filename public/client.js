@@ -1,4 +1,4 @@
-// ✅ 修正済み client.js 全文（読み札アニメーション対応 & 表示速度反映）
+// ✅ 修正済み client.js（表示速度反映・お手付き表示など対応）
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -19,35 +19,22 @@ let yomifudaAnimating = false;
 let lastYomifudaText = "";
 let playerNameFixed = false;
 
-function animateYomifuda(text, targetDiv, speed) {
-  let i = 0;
-  yomifudaAnimating = true;
-  const interval = setInterval(() => {
-    if (i >= text.length) {
-      clearInterval(interval);
-      yomifudaAnimating = false;
-      socket.emit("read_done", groupId);
-    } else {
-      targetDiv.textContent += text.slice(i, i + 5);
-      i += 5;
-    }
-  }, speed);
-}
-
-function showCSVUploadUI() {
+function showGroupSelectUI() {
   const root = document.getElementById("root");
   root.innerHTML = `
-    <h2>CSVをアップロードしてください</h2>
+    <h2>CSVと共通設定をアップロードしてください</h2>
     <input type="file" id="csvFile" accept=".csv" />
     <br/><br/>
-    <button id="csvSubmit">CSV決定</button>
+    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
+    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
+    <br/><br/>
+    <div id="groupButtons"></div>
+    <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
   `;
-  document.getElementById("csvSubmit").onclick = () => {
+
+  document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
-    if (!file) {
-      alert("CSVを選択してください");
-      return;
-    }
     Papa.parse(file, {
       header: false,
       skipEmptyLines: true,
@@ -59,39 +46,25 @@ function showCSVUploadUI() {
           term: String(r[1]).trim(),
           text: String(r[2]).trim()
         })).filter(card => card.term && card.text);
-        showSettingsUI();
+
+        maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
+        numCards = Number(document.getElementById("numCards").value || 5);
+        showSpeed = Number(document.getElementById("speed").value || 2000);
+
+        socket.emit("set_cards_and_settings", {
+          cards: loadedCards,
+          settings: {
+            maxQuestions,
+            numCards,
+            showSpeed
+          }
+        });
       }
     });
-  };
-}
-
-function showSettingsUI() {
-  const root = document.getElementById("root");
-  root.innerHTML = `
-    <h2>設定</h2>
-    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label><br/>
-    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label><br/><br/>
-    <button onclick="submitSettings()">設定を確定</button>
-  `;
-}
-
-function submitSettings() {
-  maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
-  numCards = Number(document.getElementById("numCards").value || 5);
-  showSpeed = Number(document.getElementById("speed").value || 2000);
-
-  socket.emit("set_cards_and_settings", {
-    cards: loadedCards,
-    settings: {
-      maxQuestions,
-      numCards,
-      showSpeed
-    }
   });
 }
 
-socket.on("start_group_selection", () => {
+function drawGroupButtons() {
   const root = document.getElementById("root");
   root.innerHTML = "<h2>グループを選択してください</h2><div id='groupButtons'></div>";
   const area = document.getElementById("groupButtons");
@@ -105,7 +78,7 @@ socket.on("start_group_selection", () => {
     };
     area.appendChild(btn);
   }
-});
+}
 
 function showNameInputUI() {
   const root = document.getElementById("root");
@@ -135,8 +108,14 @@ function startGame() {
     alert("プレイヤー名を決定してください");
     return;
   }
-  socket.emit("start", { groupId });
+  showSpeed = Number(document.getElementById("speed")?.value || 2000);
+  numCards = Number(document.getElementById("numCards")?.value || 5);
+  maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
+  socket.emit("start", { groupId, numCards, maxQuestions });
 }
+
+socket.on("csv_ready", drawGroupButtons);
+socket.on("start_group_selection", drawGroupButtons);
 
 socket.on("user_count", (count) => {
   const div = document.getElementById("userCountDisplay");
@@ -148,6 +127,10 @@ socket.on("state", (state) => {
   locked = false;
   showSpeed = state.showSpeed || 2000;
   updateGameUI(state);
+  if (lastYomifudaText !== state.current.text) {
+    lastYomifudaText = state.current.text;
+    animateYomifuda(state.current.text);
+  }
 });
 
 socket.on("lock", () => {
@@ -176,22 +159,13 @@ function updateGameUI(state) {
     <div id="others"></div>
   `;
 
-  const yomifudaDiv = document.getElementById("yomifuda");
-  if (state.current.text !== lastYomifudaText) {
-    lastYomifudaText = state.current.text;
-    yomifudaDiv.textContent = "";
-    animateYomifuda(state.current.text, yomifudaDiv, showSpeed);
-  }
-
   const cardsDiv = document.getElementById("cards");
   state.current.cards.forEach((c) => {
     const div = document.createElement("div");
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     if (c.correct) div.style.background = "yellow";
-    if (state.misclicks.some(m => m.number === c.number)) {
-      div.style.background = "#f88";
-    }
+    if (c.incorrect) div.style.background = "red";
     div.onclick = () => {
       if (!locked) submitAnswer(c.number);
     };
@@ -199,6 +173,10 @@ function updateGameUI(state) {
   });
 
   const otherDiv = document.getElementById("others");
+  const misclickInfo = state.misclicks?.length
+    ? "<br/><strong>お手つき:</strong> " + state.misclicks.map(m => `${m.name}（${m.number}）`).join(", ")
+    : "";
+
   otherDiv.innerHTML = "<h4>他のプレイヤー:</h4><ul>" + 
     state.players.map(p => {
       const name = p.name || "(未設定)";
@@ -206,7 +184,23 @@ function updateGameUI(state) {
       const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
         <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
       return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
-    }).join("") + "</ul>";
+    }).join("") + "</ul>" + misclickInfo;
 }
 
-window.onload = showCSVUploadUI;
+function animateYomifuda(text) {
+  const yomifudaDiv = document.getElementById("yomifuda");
+  yomifudaAnimating = true;
+  yomifudaDiv.textContent = "";
+  let i = 0;
+  const interval = setInterval(() => {
+    yomifudaDiv.textContent += text.slice(i, i + 5);
+    i += 5;
+    if (i >= text.length) {
+      clearInterval(interval);
+      yomifudaAnimating = false;
+      socket.emit("read_done", groupId);
+    }
+  }, showSpeed);
+}
+
+window.onload = showGroupSelectUI;
