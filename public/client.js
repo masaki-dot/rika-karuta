@@ -1,4 +1,4 @@
-// ✅ 修正済み client.js（2025年6月最新版）
+// ✅ 修正済み client.js（表示速度共有＋お手付き名表示）
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -108,10 +108,7 @@ function startGame() {
     alert("プレイヤー名を決定してください");
     return;
   }
-  showSpeed = Number(document.getElementById("speed")?.value || 2000);
-  numCards = Number(document.getElementById("numCards")?.value || 5);
-  maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
-  socket.emit("start", { groupId, numCards, maxQuestions, showSpeed });
+  socket.emit("start", { groupId }); // ← showSpeedなどは送らずサーバーの値を使う
 }
 
 socket.on("csv_ready", drawGroupButtons);
@@ -125,7 +122,7 @@ socket.on("user_count", (count) => {
 socket.on("state", (state) => {
   if (!state || !state.current) return;
   locked = false;
-  showSpeed = state.showSpeed || 2000; // ← 表示速度反映
+  showSpeed = state.showSpeed || 2000;
   updateGameUI(state);
 });
 
@@ -183,11 +180,12 @@ function updateGameUI(state) {
   const cardsDiv = document.getElementById("cards");
   state.current.cards.forEach((c) => {
     const div = document.createElement("div");
-    const isMisclicked = misclicks.some(m => m.number === c.number);
+    const mis = misclicks.find(m => m.number === c.number);
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
     if (c.correct) div.style.background = "yellow";
-    else if (isMisclicked) div.style.background = "red";
+    else if (mis) div.style.background = "red";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
+    if (mis) div.innerHTML += `<div style='font-size: 12px;'>${mis.name}がお手つき</div>`;
     div.onclick = () => {
       if (!locked) submitAnswer(c.number);
     };
