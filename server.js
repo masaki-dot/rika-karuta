@@ -1,4 +1,4 @@
-// ✅ Render対応＆不具合修正済み server.js（2025年6月版）
+// ✅ Render対応＆不具合完全修正版 server.js（2025年6月）
 
 const express = require("express");
 const http = require("http");
@@ -221,7 +221,8 @@ io.on("connection", (socket) => {
           text: c.text,
           correct: c.correct || false
         })) || []
-      }
+      },
+      misclicks: state.misclicks
     };
   }
 
