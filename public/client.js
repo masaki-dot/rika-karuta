@@ -1,4 +1,4 @@
-// ✅ 修正済み client.js（2025年6月版）
+// ✅ 修正済み client.js（2025年6月最新版）
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -111,7 +111,7 @@ function startGame() {
   showSpeed = Number(document.getElementById("speed")?.value || 2000);
   numCards = Number(document.getElementById("numCards")?.value || 5);
   maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
-  socket.emit("start", { groupId, numCards, maxQuestions });
+  socket.emit("start", { groupId, numCards, maxQuestions, showSpeed });
 }
 
 socket.on("csv_ready", drawGroupButtons);
@@ -125,7 +125,7 @@ socket.on("user_count", (count) => {
 socket.on("state", (state) => {
   if (!state || !state.current) return;
   locked = false;
-  showSpeed = state.showSpeed || 2000;
+  showSpeed = state.showSpeed || 2000; // ← 表示速度反映
   updateGameUI(state);
 });
 
@@ -148,7 +148,6 @@ function animateYomifuda(text) {
   yomifudaDiv.innerHTML = "";
   yomifudaAnimating = true;
   lastYomifudaText = text;
-
   let index = 0;
 
   function showNext() {
@@ -169,6 +168,7 @@ function animateYomifuda(text) {
 function updateGameUI(state) {
   const root = document.getElementById("game");
   const myHP = state.players.find(p => p.name === playerName)?.hp ?? 20;
+  const misclicks = state.misclicks || [];
 
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
@@ -183,9 +183,11 @@ function updateGameUI(state) {
   const cardsDiv = document.getElementById("cards");
   state.current.cards.forEach((c) => {
     const div = document.createElement("div");
+    const isMisclicked = misclicks.some(m => m.number === c.number);
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
-    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     if (c.correct) div.style.background = "yellow";
+    else if (isMisclicked) div.style.background = "red";
+    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     div.onclick = () => {
       if (!locked) submitAnswer(c.number);
     };
