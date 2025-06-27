@@ -1,4 +1,4 @@
-// ✅ Render対応＆不具合完全修正版 server.js（2025年6月）
+// ✅ Render対応＆全不具合修正済み server.js（2025年6月最新版）
 
 const express = require("express");
 const http = require("http");
@@ -70,7 +70,7 @@ io.on("connection", (socket) => {
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
-    if (!state || state.readingCompleted || state.waitingNext) return;
+    if (!state || state.readingCompleted || state.waitingNext || state.timeoutId) return;
 
     state.readingCompleted = true;
     state.timeoutId = setTimeout(() => {
@@ -183,6 +183,7 @@ io.on("connection", (socket) => {
     state.lockedPlayers = [];
     state.readingCompleted = false;
     state.waitingNext = false;
+    state.timeoutId = null;
     state.players.forEach(p => (p.answered = false));
 
     const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
@@ -212,6 +213,7 @@ io.on("connection", (socket) => {
   function safeState(state) {
     return {
       ...state,
+      showSpeed: globalSettings.showSpeed,
       current: {
         text: state.current?.text,
         pointValue: state.current?.pointValue,
