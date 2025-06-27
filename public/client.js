@@ -1,4 +1,4 @@
-// ✅ フルステップ対応 client.js
+// ✅ 修正済み client.js 全文（読み札アニメーション対応 & 表示速度反映）
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -18,29 +18,36 @@ let loadedCards = [];
 let yomifudaAnimating = false;
 let lastYomifudaText = "";
 let playerNameFixed = false;
-let currentStep = 1;
 
-function nextStep() {
-  currentStep++;
-  switch (currentStep) {
-    case 2: showSettingsInputUI(); break;
-    case 3: drawGroupButtons(); break;
-    case 4: showNameInputUI(); break;
-    case 5: showStartButton(); break;
-  }
+function animateYomifuda(text, targetDiv, speed) {
+  let i = 0;
+  yomifudaAnimating = true;
+  const interval = setInterval(() => {
+    if (i >= text.length) {
+      clearInterval(interval);
+      yomifudaAnimating = false;
+      socket.emit("read_done", groupId);
+    } else {
+      targetDiv.textContent += text.slice(i, i + 5);
+      i += 5;
+    }
+  }, speed);
 }
 
 function showCSVUploadUI() {
   const root = document.getElementById("root");
   root.innerHTML = `
-    <h2>① CSVをアップロードしてください</h2>
+    <h2>CSVをアップロードしてください</h2>
     <input type="file" id="csvFile" accept=".csv" />
     <br/><br/>
-    <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
+    <button id="csvSubmit">CSV決定</button>
   `;
-
-  document.getElementById("csvFile").addEventListener("change", () => {
+  document.getElementById("csvSubmit").onclick = () => {
     const file = document.getElementById("csvFile").files[0];
+    if (!file) {
+      alert("CSVを選択してください");
+      return;
+    }
     Papa.parse(file, {
       header: false,
       skipEmptyLines: true,
@@ -52,40 +59,41 @@ function showCSVUploadUI() {
           term: String(r[1]).trim(),
           text: String(r[2]).trim()
         })).filter(card => card.term && card.text);
-        nextStep();
+        showSettingsUI();
       }
     });
-  });
+  };
 }
 
-function showSettingsInputUI() {
+function showSettingsUI() {
   const root = document.getElementById("root");
   root.innerHTML = `
-    <h2>② 表示速度・取り札の数を設定してください</h2>
-    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
-    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
-    <br/><br/>
-    <button onclick="confirmSettings()">設定を確定</button>
+    <h2>設定</h2>
+    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label><br/>
+    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label><br/><br/>
+    <button onclick="submitSettings()">設定を確定</button>
   `;
 }
 
-function confirmSettings() {
+function submitSettings() {
   maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
   numCards = Number(document.getElementById("numCards").value || 5);
   showSpeed = Number(document.getElementById("speed").value || 2000);
 
   socket.emit("set_cards_and_settings", {
     cards: loadedCards,
-    settings: { maxQuestions, numCards, showSpeed }
+    settings: {
+      maxQuestions,
+      numCards,
+      showSpeed
+    }
   });
-
-  nextStep();
 }
 
-function drawGroupButtons() {
+socket.on("start_group_selection", () => {
   const root = document.getElementById("root");
-  root.innerHTML = "<h2>③ グループを選択してください</h2><div id='groupButtons'></div>";
+  root.innerHTML = "<h2>グループを選択してください</h2><div id='groupButtons'></div>";
   const area = document.getElementById("groupButtons");
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
@@ -93,16 +101,16 @@ function drawGroupButtons() {
     btn.onclick = () => {
       groupId = "group" + i;
       socket.emit("join", groupId);
-      nextStep();
+      showNameInputUI();
     };
     area.appendChild(btn);
   }
-}
+});
 
 function showNameInputUI() {
   const root = document.getElementById("root");
   root.innerHTML = `
-    <h2>④ プレイヤー名を入力してください</h2>
+    <h2>プレイヤー名を入力してください</h2>
     <input type="text" id="nameInput" placeholder="プレイヤー名" />
     <button onclick="fixPlayerName()">決定</button>
     <div id="game"></div>
@@ -118,12 +126,8 @@ function fixPlayerName() {
   playerName = name;
   playerNameFixed = true;
   document.getElementById("nameInput").disabled = true;
-  nextStep();
-}
-
-function showStartButton() {
   const gameDiv = document.getElementById("game");
-  gameDiv.innerHTML = `<button id="startBtn" onclick="startGame()">⑤ スタート</button>`;
+  gameDiv.innerHTML = `<button id="startBtn" onclick="startGame()">スタート</button>`;
 }
 
 function startGame() {
@@ -166,27 +170,28 @@ function updateGameUI(state) {
 
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda">${state.current.text}</div>
+    <div id="yomifuda"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">自分のHP: ${myHP}点</div>
     <div id="others"></div>
   `;
 
+  const yomifudaDiv = document.getElementById("yomifuda");
+  if (state.current.text !== lastYomifudaText) {
+    lastYomifudaText = state.current.text;
+    yomifudaDiv.textContent = "";
+    animateYomifuda(state.current.text, yomifudaDiv, showSpeed);
+  }
+
   const cardsDiv = document.getElementById("cards");
   state.current.cards.forEach((c) => {
     const div = document.createElement("div");
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
-
-    const misclickPlayer = state.misclicks?.find(m => m.number === c.number);
-    if (misclickPlayer) {
-      div.style.background = "red";
-    } else if (c.correct) {
-      div.style.background = "yellow";
-    }
-
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
-    if (misclickPlayer) div.innerHTML += `<div>（${misclickPlayer.name}がお手つき）</div>`;
-
+    if (c.correct) div.style.background = "yellow";
+    if (state.misclicks.some(m => m.number === c.number)) {
+      div.style.background = "#f88";
+    }
     div.onclick = () => {
       if (!locked) submitAnswer(c.number);
     };
@@ -198,7 +203,8 @@ function updateGameUI(state) {
     state.players.map(p => {
       const name = p.name || "(未設定)";
       const hp = typeof p.hp === "number" ? p.hp : 20;
-      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;"><div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
+      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
+        <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
       return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
     }).join("") + "</ul>";
 }
