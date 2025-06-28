@@ -46,11 +46,11 @@ io.on("connection", (socket) => {
     if (player) player.name = name;
   });
 
-  socket.on("start", (groupId) => {
-    const state = states[groupId];
-    if (!state) return;
-    nextQuestion(groupId);
-  });
+ socket.on("start", ({ groupId }) => {
+  const state = states[groupId];
+  if (!state) return;
+  nextQuestion(groupId);
+});
 
   socket.on("answer", ({ groupId, number }) => {
     const state = states[groupId];
