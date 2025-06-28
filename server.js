@@ -191,8 +191,11 @@ io.on("connection", (socket) => {
     const question = shuffle(remaining)[0];
     state.usedQuestions.push(question.text + "|" + question.number);
 
-    const distractors = shuffle(globalCards.filter(q => q.number !== question.number)).slice(0, state.numCards - 1);
-    const allCards = shuffle([...distractors, question]);
+    const distractors = shuffle(
+  globalCards.filter(q => q.number !== question.number)
+).slice(0, state.numCards - 1);  // 誤答の取り札
+
+const allCards = shuffle([...distractors, question]); // 正解＋誤答で合計 numCards 枚
 
     const rand = Math.random();
     let pointValue = 1;
