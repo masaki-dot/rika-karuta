@@ -60,22 +60,39 @@ io.on("connection", (socket) => {
 
     const correct = state.current.answer === number;
 
-    if (correct && !state.answered) {
-      state.answered = true;
-      state.waitingNext = true;
-      state.correctPlayer = player.name;
+    // 正解のとき
+if (correct && !state.answered) {
+  state.answered = true;
+  state.waitingNext = true;
+  state.correctPlayer = player.name;
 
-      state.players.forEach(p => {
-        if (p.id !== socket.id && p.hp > 0) p.hp -= state.current.point;
-      });
+  // 誰が選んだかをカードに記録
+  const card = state.current.cards.find(c => c.number === number);
+  if (card) {
+    card.correct = true;
+    card.chosenBy = player.name;
+  }
 
-      setTimeout(() => nextQuestion(groupId), 3000);
-    } else {
-      if (!state.misClicks.find(e => e.id === socket.id)) {
-        state.misClicks.push({ id: socket.id, name: player.name, number });
-        player.hp -= state.current.point;
-      }
+  state.players.forEach(p => {
+    if (p.id !== socket.id && p.hp > 0) p.hp -= state.current.point;
+  });
+
+  setTimeout(() => nextQuestion(groupId), 3000);
+} else {
+  // 不正解でもカードに記録
+  if (!state.misClicks.find(e => e.id === socket.id)) {
+    state.misClicks.push({ id: socket.id, name: player.name, number });
+
+    const card = state.current.cards.find(c => c.number === number);
+    if (card) {
+      card.incorrect = true;
+      card.chosenBy = player.name;
     }
+
+    player.hp -= state.current.point;
+  }
+}
+
 
     io.to(groupId).emit("state", sanitizeState(state));
   });
