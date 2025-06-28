@@ -88,7 +88,7 @@ io.on("connection", (socket) => {
     const state = states[groupId];
     if (!state || !state.current || state.waitingNext) return;
     const player = state.players.find(p => p.id === socket.id);
-    if (!player || player.hp <= 0) return;
+    if (!player || player.hp <= 0 || player.hasMissed) return;
 
     const correct = state.current.answer === number;
 
@@ -112,17 +112,19 @@ if (correct && !state.answered) {
   setTimeout(() => nextQuestion(groupId), 3000);
 } else {
   // 不正解でもカードに記録
-  if (!state.misClicks.find(e => e.id === socket.id)) {
-    state.misClicks.push({ id: socket.id, name: player.name, number });
+ if (!state.misClicks.find(e => e.id === socket.id)) {
+  state.misClicks.push({ id: socket.id, name: player.name, number });
 
-    const card = state.current.cards.find(c => c.number === number);
-    if (card) {
-      card.incorrect = true;
-      card.chosenBy = player.name;
-    }
-
-    player.hp -= state.current.point;
+  const card = state.current.cards.find(c => c.number === number);
+  if (card) {
+    card.incorrect = true;
+    card.chosenBy = player.name;
   }
+
+  player.hp -= state.current.point;
+  player.hasMissed = true; // 🔴 この行を追加：お手つきマーク
+}
+
 }
 
 
@@ -164,6 +166,8 @@ function nextQuestion(groupId) {
   state.waitingNext = false;
   state.misClicks = [];
 
+  state.players.forEach(p => p.hasMissed = false);
+  
   const remaining = globalCards.filter(q =>
     !state.usedQuestions.includes(q.text + q.number)
   );
