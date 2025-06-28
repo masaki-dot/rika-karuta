@@ -1,3 +1,4 @@
+// ✅ 修正版 server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -8,7 +9,6 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
-
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -73,7 +73,7 @@ io.on("connection", (socket) => {
     state.readingCompleted = true;
     state.timeoutId = setTimeout(() => {
       const st = states[groupId];
-      if (st && !st.waitingNext) {
+      if (st && st.readingCompleted && !st.waitingNext) {
         st.waitingNext = true;
         nextQuestion(groupId);
       }
@@ -89,12 +89,14 @@ io.on("connection", (socket) => {
       player = { socketId: socket.id, name, hp: 20, answered: false };
       state.players.push(player);
     }
+
+    if (player.answered) return; // 重複解答防止
     player.name = name;
+    player.answered = true;
 
     const correctCard = state.current.cards.find(c => c.number === number);
 
-    if (correctCard && correctCard._answer && !player.answered) {
-      player.answered = true;
+    if (correctCard && correctCard._answer) {
       state.readingCompleted = true;
       state.waitingNext = true;
 
@@ -124,29 +126,28 @@ io.on("connection", (socket) => {
       setTimeout(() => {
         nextQuestion(groupId);
       }, 3000);
+      return;
+    } else {
+      if (!state.lockedPlayers.includes(name)) {
+        state.lockedPlayers.push(name);
+        state.misclicks.push({ name, number });
 
-    } else if (!correctCard && !state.lockedPlayers.includes(name)) {
-      state.lockedPlayers.push(name);
-      state.misclicks.push({ name, number });
-
-      if (player.hp > 0) {
-        player.hp -= state.current.pointValue;
-        if (player.hp < 0) player.hp = 0;
-      }
-
-      state.current.cards = state.current.cards.map(c => {
-        if (c.number === number) {
-          return { ...c, incorrect: true };
+        if (player.hp > 0) {
+          player.hp -= state.current.pointValue;
+          if (player.hp < 0) player.hp = 0;
         }
-        return c;
-      });
 
-      socket.emit("lock", name);
+        state.current.cards = state.current.cards.map(c =>
+          c.number === number ? { ...c, incorrect: true } : c
+        );
 
-      io.to(groupId).emit("state", {
-        ...state,
-        waitingNext: false
-      });
+        socket.emit("lock", name);
+
+        io.to(groupId).emit("state", {
+          ...state,
+          waitingNext: false
+        });
+      }
     }
   });
 
@@ -183,7 +184,10 @@ io.on("connection", (socket) => {
     state.waitingNext = false;
     state.players.forEach(p => (p.answered = false));
 
-    const remaining = globalCards.filter(q => !state.usedQuestions.includes(q.text + "|" + q.number));
+    const remaining = globalCards.filter(q =>
+      !state.usedQuestions.includes(q.text + "|" + q.number)
+    );
+
     const question = shuffle(remaining)[0];
     state.usedQuestions.push(question.text + "|" + question.number);
 
@@ -216,7 +220,9 @@ io.on("connection", (socket) => {
         cards: state.current.cards.map(c => ({
           term: c.term,
           number: c.number,
-          text: c.text
+          text: c.text,
+          correct: c.correct,
+          incorrect: c.incorrect
         }))
       }
     });
