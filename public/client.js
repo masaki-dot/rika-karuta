@@ -1,4 +1,4 @@
-// ✅ 修正済み client.js
+// ✅ 修正版 client.js
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -15,10 +15,7 @@ let showSpeed = 2000;
 let numCards = 5;
 let maxQuestions = 10;
 let loadedCards = [];
-let yomifudaAnimating = false;
-let lastYomifudaText = "";
 let playerNameFixed = false;
-let animationTimeouts = [];
 
 function showGroupSelectUI() {
   const root = document.getElementById("root");
@@ -30,14 +27,12 @@ function showGroupSelectUI() {
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
     <br/><br/>
-    <button id="uploadBtn">設定して次へ</button>
+    <div id="groupButtons"></div>
     <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
   `;
 
-  document.getElementById("uploadBtn").addEventListener("click", () => {
+  document.getElementById("csvFile").addEventListener("change", () => {
     const file = document.getElementById("csvFile").files[0];
-    if (!file) return alert("CSVファイルを選択してください");
-
     Papa.parse(file, {
       header: false,
       skipEmptyLines: true,
@@ -111,32 +106,7 @@ function startGame() {
     alert("プレイヤー名を決定してください");
     return;
   }
-  socket.emit("start", { groupId, numCards, maxQuestions });
-}
-
-function animateYomifuda(text, speed) {
-  clearTimeouts();
-  yomifudaAnimating = true;
-  const yomifudaDiv = document.getElementById("yomifuda");
-  yomifudaDiv.textContent = "";
-  let index = 0;
-  while (index < text.length) {
-    const chunk = text.substr(index, 5);
-    const timeout = setTimeout(() => {
-      yomifudaDiv.textContent += chunk;
-      if (index + 5 >= text.length) {
-        yomifudaAnimating = false;
-        socket.emit("read_done", groupId);
-      }
-    }, (index / 5) * speed);
-    animationTimeouts.push(timeout);
-    index += 5;
-  }
-}
-
-function clearTimeouts() {
-  animationTimeouts.forEach(clearTimeout);
-  animationTimeouts = [];
+  socket.emit("start", { groupId });
 }
 
 socket.on("csv_ready", drawGroupButtons);
@@ -152,10 +122,6 @@ socket.on("state", (state) => {
   locked = false;
   showSpeed = state.showSpeed || 2000;
   updateGameUI(state);
-  if (lastYomifudaText !== state.current.text) {
-    lastYomifudaText = state.current.text;
-    animateYomifuda(lastYomifudaText, showSpeed);
-  }
 });
 
 socket.on("lock", () => {
@@ -178,10 +144,11 @@ function updateGameUI(state) {
 
   root.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda"></div>
+    <div id="yomifuda">${state.current.text}</div>
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">自分のHP: ${myHP}点</div>
     <div id="others"></div>
+    <div id="misclicks"></div>
   `;
 
   const cardsDiv = document.getElementById("cards");
@@ -197,21 +164,20 @@ function updateGameUI(state) {
     cardsDiv.appendChild(div);
   });
 
-  const misclickers = [...new Set(state.misclicks?.map(m => m.name))];
   const otherDiv = document.getElementById("others");
-  otherDiv.innerHTML = `
-    <h4>他のプレイヤー:</h4>
-    <ul>
-      ${state.players.map(p => {
-        const name = p.name || "(未設定)";
-        const hp = typeof p.hp === "number" ? p.hp : 20;
-        const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
-          <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
-        return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
-      }).join("")}
-    </ul>
-    <div><strong>お手付き:</strong> ${misclickers.join(", ")}</div>
-  `;
+  otherDiv.innerHTML = "<h4>他のプレイヤー:</h4><ul>" + 
+    state.players.map(p => {
+      const name = p.name || "(未設定)";
+      const hp = typeof p.hp === "number" ? p.hp : 20;
+      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;"><div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
+      return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
+    }).join("") + "</ul>";
+
+  const misclicksDiv = document.getElementById("misclicks");
+  if (state.misclicks?.length > 0) {
+    const names = [...new Set(state.misclicks.map(m => m.name))];
+    misclicksDiv.innerHTML = `<strong>お手付き:</strong> ${names.join(", ")}（赤札）`;
+  }
 }
 
 window.onload = showGroupSelectUI;
