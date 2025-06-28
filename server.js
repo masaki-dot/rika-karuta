@@ -21,10 +21,17 @@ const states = {};
 
 io.on("connection", (socket) => {
   socket.on("set_cards_and_settings", ({ cards, settings }) => {
-    globalCards = [...cards];
-    globalSettings = settings;
-    io.emit("start_group_selection");
-  });
+  globalCards = [...cards];
+  globalSettings = settings;
+
+  // 🔧 既存のグループ state をすべてリセット
+  for (const key in states) {
+    delete states[key];
+  }
+
+  io.emit("start_group_selection");
+});
+
 
   socket.on("join", (groupId) => {
     socket.join(groupId);
