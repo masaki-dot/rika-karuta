@@ -59,18 +59,23 @@ io.on("connection", (socket) => {
 
   state.readStarted = true;
 
-  // ✅ ここで「すでに正解されていれば return」で抜ける
+  // 🔁 タイマーが既にあればキャンセル
+  if (state.readTimer) clearTimeout(state.readTimer);
+
+  // 🔧 正解済み or 次に進む準備なら何もしない
   if (state.answered || state.waitingNext) return;
 
-  // ✅ まだ誰も正解していなければ、30秒待って自動で次へ
-  setTimeout(() => {
-    // 再度確認してまだ回答されていなければ次へ
+  // ⏱️ 30秒後に次の問題へ
+  state.readTimer = setTimeout(() => {
+    // もう次の問題に進んでいたら何もしない
     if (!state.answered && !state.waitingNext) {
       state.waitingNext = true;
       io.to(groupId).emit("state", sanitizeState(state));
       setTimeout(() => nextQuestion(groupId), 1000);
     }
   }, 30000);
+});
+
 
 });
 
@@ -140,7 +145,8 @@ function initState(groupId) {
     waitingNext: false,
     misClicks: [],
     usedQuestions: [],
-    readStarted: false
+    readStarted: false,
+    readTimer: null
   };
 }
 
@@ -151,7 +157,11 @@ function nextQuestion(groupId) {
     return;
   }
 
-  // 🔧 各ラウンド開始時にリセット
+  // ✅ 前のreadTimerをクリア
+  if (state.readTimer) clearTimeout(state.readTimer);
+  state.readTimer = null;
+
+  // ラウンド初期化
   state.readStarted = false;
   state.answered = false;
   state.waitingNext = false;
