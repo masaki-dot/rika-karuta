@@ -10,6 +10,8 @@ let loadedCards = [];
 let locked = false;
 let alreadyAnswered = false;
 let readInterval = null;
+let hasAnimated = false;
+
 
 
 window.onload = () => {
@@ -95,11 +97,15 @@ function startGame() {
 
 socket.on("state", (state) => {
   if (!state.current) return;
+
+  // 🔄 問題が切り替わったらリセット
+  hasAnimated = false;
   locked = false;
   alreadyAnswered = false;
   showSpeed = state.showSpeed || 2000;
   updateUI(state);
 });
+
 
 socket.on("lock", () => {
   locked = true;
