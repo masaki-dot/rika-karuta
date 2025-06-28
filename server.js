@@ -53,7 +53,21 @@ io.on("connection", (socket) => {
   if (player) player.name = name;
 });
 
+  socket.on("read_done", (groupId) => {
+    const state = states[groupId];
+    if (!state || state.readStarted) return;
 
+    state.readStarted = true;
+
+    setTimeout(() => {
+      if (!state.answered) {
+        state.waitingNext = true;
+        io.to(groupId).emit("state", sanitizeState(state));
+        setTimeout(() => nextQuestion(groupId), 1000);
+      }
+    }, 30000);
+  });
+  
  socket.on("start", ({ groupId }) => {
   const state = states[groupId];
   if (!state) return;
