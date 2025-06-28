@@ -116,17 +116,31 @@ function updateUI(state) {
   animateText("yomifuda", state.current.text, showSpeed);
 
   const cardsDiv = document.getElementById("cards");
-  state.current.cards.forEach(c => {
-    const div = document.createElement("div");
-    div.className = "card";
-    div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
-    if (c.correct) div.style.background = "yellow";
-    if (c.incorrect) div.style.background = "red";
-    div.onclick = () => {
-      if (!locked && !alreadyAnswered) submitAnswer(c.number);
-    };
-    cardsDiv.appendChild(div);
-  });
+cardsDiv.style.display = "grid";
+cardsDiv.style.gridTemplateColumns = `repeat(auto-fit, minmax(120px, 1fr))`;
+cardsDiv.style.gap = "10px";
+
+state.current.cards.forEach(c => {
+  const div = document.createElement("div");
+  div.className = "card";
+  div.style.border = "1px solid #ccc";
+  div.style.padding = "10px";
+  div.style.textAlign = "center";
+  div.style.borderRadius = "8px";
+  div.style.boxShadow = "2px 2px 5px rgba(0,0,0,0.1)";
+  div.style.cursor = "pointer";
+  div.style.background = "#fff";
+
+  if (c.correct) div.style.background = "yellow";
+  if (c.incorrect) div.style.background = "red";
+
+  div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${c.term}</div><div style="color:#666;">${c.number}</div>`;
+  div.onclick = () => {
+    if (!locked && !alreadyAnswered) submitAnswer(c.number);
+  };
+  cardsDiv.appendChild(div);
+});
+
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = `<h4>他プレイヤー</h4>`;
