@@ -158,13 +158,6 @@ function nextQuestion(groupId) {
 
   io.to(groupId).emit("state", sanitizeState(state));
 
-  setTimeout(() => {
-    if (!state.answered) {
-      state.waitingNext = true;
-      io.to(groupId).emit("state", sanitizeState(state));
-      setTimeout(() => nextQuestion(groupId), 1000);
-    }
-  }, 30000);
 }
 
 function sanitizeState(state) {
