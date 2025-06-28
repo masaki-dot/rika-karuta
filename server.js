@@ -129,7 +129,6 @@ if (correct && !state.answered) {
 
 
     io.to(groupId).emit("state", sanitizeState(state));
-  });
 });
 
 function initState(groupId) {
