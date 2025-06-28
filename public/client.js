@@ -125,9 +125,11 @@ function updateUI(state) {
     <div id="others"></div>
   `;
 
-  if (!state.answered && !state.waitingNext) {
+  if (!hasAnimated && !state.answered && !state.waitingNext) {
   animateText("yomifuda", state.current.text, showSpeed);
+  hasAnimated = true;
 }
+
 
 
   const cardsDiv = document.getElementById("cards");
