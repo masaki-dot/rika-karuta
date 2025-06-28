@@ -54,19 +54,25 @@ io.on("connection", (socket) => {
 });
 
   socket.on("read_done", (groupId) => {
-    const state = states[groupId];
-    if (!state || state.readStarted) return;
+  const state = states[groupId];
+  if (!state || state.readStarted) return;
 
-    state.readStarted = true;
+  // 問題文がすべて表示されたことを記録（1回だけ）
+  state.readStarted = true;
 
-    setTimeout(() => {
-      if (!state.answered) {
-        state.waitingNext = true;
-        io.to(groupId).emit("state", sanitizeState(state));
-        setTimeout(() => nextQuestion(groupId), 1000);
-      }
-    }, 30000);
-  });
+  // 正解済みの場合は何もしない（すでに3秒タイマーが動いているため）
+  if (state.answered) return;
+
+  // 30秒後にまだ未回答なら自動で次へ進む
+  setTimeout(() => {
+    if (!state.answered && !state.waitingNext) {
+      state.waitingNext = true;
+      io.to(groupId).emit("state", sanitizeState(state));
+      setTimeout(() => nextQuestion(groupId), 1000);
+    }
+  }, 30000);
+});
+
   
  socket.on("start", ({ groupId }) => {
   const state = states[groupId];
