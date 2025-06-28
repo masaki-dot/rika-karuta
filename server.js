@@ -76,9 +76,6 @@ io.on("connection", (socket) => {
   }, 30000);
 });
 
-
-});
-
   
  socket.on("start", ({ groupId }) => {
   const state = states[groupId];
