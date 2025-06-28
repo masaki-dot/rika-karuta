@@ -144,7 +144,8 @@ function nextQuestion(groupId) {
     return;
   }
 
-  state.questionCount++;
+  // 🔧 各ラウンド開始時にリセット
+  state.readStarted = false;
   state.answered = false;
   state.waitingNext = false;
   state.misClicks = [];
