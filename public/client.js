@@ -1,4 +1,4 @@
-// ✅ client.js 修正版全文
+// ✅ 修正済み client.js
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -16,9 +16,11 @@ let numCards = 5;
 let maxQuestions = 10;
 let loadedCards = [];
 let yomifudaAnimating = false;
+let lastYomifudaText = "";
 let playerNameFixed = false;
+let animationTimeouts = [];
 
-function showCSVUploadUI() {
+function showGroupSelectUI() {
   const root = document.getElementById("root");
   root.innerHTML = `
     <h2>CSVと共通設定をアップロードしてください</h2>
@@ -28,11 +30,11 @@ function showCSVUploadUI() {
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
     <br/><br/>
-    <button id="setCsvBtn">設定を決定してグループ選択へ</button>
+    <button id="uploadBtn">設定して次へ</button>
     <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
   `;
 
-  document.getElementById("setCsvBtn").onclick = () => {
+  document.getElementById("uploadBtn").addEventListener("click", () => {
     const file = document.getElementById("csvFile").files[0];
     if (!file) return alert("CSVファイルを選択してください");
 
@@ -62,7 +64,7 @@ function showCSVUploadUI() {
         });
       }
     });
-  };
+  });
 }
 
 function drawGroupButtons() {
@@ -112,6 +114,31 @@ function startGame() {
   socket.emit("start", { groupId, numCards, maxQuestions });
 }
 
+function animateYomifuda(text, speed) {
+  clearTimeouts();
+  yomifudaAnimating = true;
+  const yomifudaDiv = document.getElementById("yomifuda");
+  yomifudaDiv.textContent = "";
+  let index = 0;
+  while (index < text.length) {
+    const chunk = text.substr(index, 5);
+    const timeout = setTimeout(() => {
+      yomifudaDiv.textContent += chunk;
+      if (index + 5 >= text.length) {
+        yomifudaAnimating = false;
+        socket.emit("read_done", groupId);
+      }
+    }, (index / 5) * speed);
+    animationTimeouts.push(timeout);
+    index += 5;
+  }
+}
+
+function clearTimeouts() {
+  animationTimeouts.forEach(clearTimeout);
+  animationTimeouts = [];
+}
+
 socket.on("csv_ready", drawGroupButtons);
 socket.on("start_group_selection", drawGroupButtons);
 
@@ -125,7 +152,10 @@ socket.on("state", (state) => {
   locked = false;
   showSpeed = state.showSpeed || 2000;
   updateGameUI(state);
-  animateYomifuda(state.current.text);
+  if (lastYomifudaText !== state.current.text) {
+    lastYomifudaText = state.current.text;
+    animateYomifuda(lastYomifudaText, showSpeed);
+  }
 });
 
 socket.on("lock", () => {
@@ -140,26 +170,6 @@ socket.on("end", (players) => {
 function submitAnswer(number) {
   if (locked || !playerName) return;
   socket.emit("answer", { groupId, name: playerName, number });
-}
-
-function animateYomifuda(text) {
-  const yomifudaDiv = document.getElementById("yomifuda");
-  if (!yomifudaDiv) return;
-  yomifudaAnimating = true;
-  yomifudaDiv.textContent = "";
-  let index = 0;
-
-  const step = () => {
-    if (index < text.length) {
-      yomifudaDiv.textContent += text.slice(index, index + 5);
-      index += 5;
-      setTimeout(step, showSpeed);
-    } else {
-      yomifudaAnimating = false;
-      socket.emit("read_done", groupId);
-    }
-  };
-  step();
 }
 
 function updateGameUI(state) {
@@ -180,26 +190,28 @@ function updateGameUI(state) {
     div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     if (c.correct) div.style.background = "yellow";
-    if (c.incorrect) div.style.background = "#f88";
+    if (c.incorrect) div.style.background = "red";
     div.onclick = () => {
       if (!locked) submitAnswer(c.number);
     };
     cardsDiv.appendChild(div);
   });
 
+  const misclickers = [...new Set(state.misclicks?.map(m => m.name))];
   const otherDiv = document.getElementById("others");
-  otherDiv.innerHTML = "<h4>他のプレイヤー:</h4><ul>" +
-    state.players.map(p => {
-      const name = p.name || "(未設定)";
-      const hp = typeof p.hp === "number" ? p.hp : 20;
-      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
-        <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
-      return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
-    }).join("") + "</ul>";
-
-  if (state.misclicks?.length) {
-    otherDiv.innerHTML += `<div><strong>お手つき:</strong> ${state.misclicks.map(m => m.name).join(", ")}</div>`;
-  }
+  otherDiv.innerHTML = `
+    <h4>他のプレイヤー:</h4>
+    <ul>
+      ${state.players.map(p => {
+        const name = p.name || "(未設定)";
+        const hp = typeof p.hp === "number" ? p.hp : 20;
+        const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
+          <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
+        return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
+      }).join("")}
+    </ul>
+    <div><strong>お手付き:</strong> ${misclickers.join(", ")}</div>
+  `;
 }
 
-window.onload = showCSVUploadUI;
+window.onload = showGroupSelectUI;
