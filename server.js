@@ -133,6 +133,7 @@ function initState(groupId) {
     waitingNext: false,
     misClicks: [],
     usedQuestions: []
+    readStarted: false
   };
 }
 
