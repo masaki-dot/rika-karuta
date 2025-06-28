@@ -1,4 +1,4 @@
-// ✅ 修正済み client.js（表示速度反映・お手付き表示など対応）
+// ✅ 最新版 client.js
 
 window.onerror = function (msg, src, line, col, err) {
   const div = document.createElement("div");
@@ -29,7 +29,6 @@ function showGroupSelectUI() {
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
     <br/><br/>
-    <div id="groupButtons"></div>
     <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
   `;
 
@@ -59,6 +58,8 @@ function showGroupSelectUI() {
             showSpeed
           }
         });
+
+        drawGroupButtons();
       }
     });
   });
@@ -108,10 +109,7 @@ function startGame() {
     alert("プレイヤー名を決定してください");
     return;
   }
-  showSpeed = Number(document.getElementById("speed")?.value || 2000);
-  numCards = Number(document.getElementById("numCards")?.value || 5);
-  maxQuestions = Number(document.getElementById("maxQuestions")?.value || 10);
-  socket.emit("start", { groupId, numCards, maxQuestions });
+  socket.emit("start", { groupId });
 }
 
 socket.on("csv_ready", drawGroupButtons);
@@ -127,10 +125,7 @@ socket.on("state", (state) => {
   locked = false;
   showSpeed = state.showSpeed || 2000;
   updateGameUI(state);
-  if (lastYomifudaText !== state.current.text) {
-    lastYomifudaText = state.current.text;
-    animateYomifuda(state.current.text);
-  }
+  animateYomifuda(state.current.text, showSpeed);
 });
 
 socket.on("lock", () => {
@@ -141,6 +136,22 @@ socket.on("end", (players) => {
   const root = document.getElementById("game");
   root.innerHTML += "<h2>ゲーム終了！</h2>";
 });
+
+function animateYomifuda(text, speed) {
+  yomifudaAnimating = true;
+  const yomifuda = document.getElementById("yomifuda");
+  yomifuda.innerText = "";
+  let i = 0;
+  const interval = setInterval(() => {
+    yomifuda.innerText += text.slice(i, i + 5);
+    i += 5;
+    if (i >= text.length) {
+      clearInterval(interval);
+      yomifudaAnimating = false;
+      socket.emit("read_done", groupId);
+    }
+  }, speed);
+}
 
 function submitAnswer(number) {
   if (locked || !playerName) return;
@@ -157,6 +168,7 @@ function updateGameUI(state) {
     <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
     <div id="scores">自分のHP: ${myHP}点</div>
     <div id="others"></div>
+    <div id="misclicks"></div>
   `;
 
   const cardsDiv = document.getElementById("cards");
@@ -173,34 +185,20 @@ function updateGameUI(state) {
   });
 
   const otherDiv = document.getElementById("others");
-  const misclickInfo = state.misclicks?.length
-    ? "<br/><strong>お手つき:</strong> " + state.misclicks.map(m => `${m.name}（${m.number}）`).join(", ")
-    : "";
-
-  otherDiv.innerHTML = "<h4>他のプレイヤー:</h4><ul>" + 
+  otherDiv.innerHTML = "<h4>他のプレイヤー:</h4><ul>" +
     state.players.map(p => {
       const name = p.name || "(未設定)";
       const hp = typeof p.hp === "number" ? p.hp : 20;
       const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;">
         <div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
       return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
-    }).join("") + "</ul>" + misclickInfo;
-}
+    }).join("") + "</ul>";
 
-function animateYomifuda(text) {
-  const yomifudaDiv = document.getElementById("yomifuda");
-  yomifudaAnimating = true;
-  yomifudaDiv.textContent = "";
-  let i = 0;
-  const interval = setInterval(() => {
-    yomifudaDiv.textContent += text.slice(i, i + 5);
-    i += 5;
-    if (i >= text.length) {
-      clearInterval(interval);
-      yomifudaAnimating = false;
-      socket.emit("read_done", groupId);
-    }
-  }, showSpeed);
+  if (state.misclicks && state.misclicks.length > 0) {
+    const misDiv = document.getElementById("misclicks");
+    misDiv.innerHTML = "<h4>お手つき:</h4><ul>" +
+      state.misclicks.map(m => `<li>${m.name} → ${m.number}</li>`).join("") + "</ul>";
+  }
 }
 
 window.onload = showGroupSelectUI;
