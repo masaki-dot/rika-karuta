@@ -9,6 +9,8 @@ let maxQuestions = 10;
 let loadedCards = [];
 let locked = false;
 let alreadyAnswered = false;
+let readInterval = null;
+
 
 window.onload = () => {
   showCSVUploadUI();
@@ -184,11 +186,16 @@ function animateText(elementId, text, speed) {
   const element = document.getElementById(elementId);
   let i = 0;
   element.textContent = "";
-  const interval = setInterval(() => {
+
+  // 前のタイマーが動いていたら止める
+  if (readInterval) clearInterval(readInterval);
+
+  readInterval = setInterval(() => {
     element.textContent = text.slice(0, i);
     i += 5;
     if (i > text.length) {
-      clearInterval(interval);
+      clearInterval(readInterval);
+      readInterval = null;
       socket.emit("read_done", groupId);
     }
   }, speed);
