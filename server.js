@@ -40,11 +40,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("set_name", ({ groupId, name }) => {
-    const state = states[groupId];
-    if (!state) return;
-    const player = state.players.find(p => p.id === socket.id);
-    if (player) player.name = name;
-  });
+  const state = states[groupId];
+  if (!state) return;
+  const player = state.players.find(p => p.id === socket.id);
+  if (player) player.name = name;
+});
+
 
  socket.on("start", ({ groupId }) => {
   const state = states[groupId];
