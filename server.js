@@ -132,7 +132,7 @@ function initState(groupId) {
     answered: false,
     waitingNext: false,
     misClicks: [],
-    usedQuestions: []
+    usedQuestions: [],
     readStarted: false
   };
 }
