@@ -1,5 +1,3 @@
-// ✅ 修正済み server.js（お手付き処理＆30秒経過処理の不具合解消）
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -65,18 +63,14 @@ io.on("connection", (socket) => {
     const state = states[groupId] = initState();
     state.maxQuestions = maxQuestions;
     state.numCards = Math.min(Math.max(5, numCards), 10);
-    state.showSpeed = globalSettings.showSpeed;
     nextQuestion(groupId);
   });
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
-    if (!state || state.waitingNext) return;
-
-    if (state.timeoutId) clearTimeout(state.timeoutId);
+    if (!state || state.readingCompleted || state.waitingNext) return;
 
     state.readingCompleted = true;
-
     state.timeoutId = setTimeout(() => {
       const st = states[groupId];
       if (st && !st.waitingNext) {
@@ -95,7 +89,6 @@ io.on("connection", (socket) => {
       player = { socketId: socket.id, name, hp: 20, answered: false };
       state.players.push(player);
     }
-
     player.name = name;
 
     const correctCard = state.current.cards.find(c => c.number === number);
@@ -132,28 +125,28 @@ io.on("connection", (socket) => {
         nextQuestion(groupId);
       }, 3000);
 
-      return;
-    } else {
-      if (!state.lockedPlayers.includes(name)) {
-        state.lockedPlayers.push(name);
-        state.misclicks.push({ name, number });
+    } else if (!correctCard && !state.lockedPlayers.includes(name)) {
+      state.lockedPlayers.push(name);
+      state.misclicks.push({ name, number });
 
-        if (player.hp > 0) {
-          player.hp -= state.current.pointValue;
-          if (player.hp < 0) player.hp = 0;
-        }
-
-        state.current.cards = state.current.cards.map(c => ({
-          ...c,
-          incorrect: state.misclicks.some(m => m.number === c.number)
-        }));
-
-        socket.emit("lock", name);
-        io.to(groupId).emit("state", {
-          ...state,
-          waitingNext: false
-        });
+      if (player.hp > 0) {
+        player.hp -= state.current.pointValue;
+        if (player.hp < 0) player.hp = 0;
       }
+
+      state.current.cards = state.current.cards.map(c => {
+        if (c.number === number) {
+          return { ...c, incorrect: true };
+        }
+        return c;
+      });
+
+      socket.emit("lock", name);
+
+      io.to(groupId).emit("state", {
+        ...state,
+        waitingNext: false
+      });
     }
   });
 
@@ -165,7 +158,6 @@ io.on("connection", (socket) => {
       numCards: 5,
       maxQuestions: 10,
       questionCount: 0,
-      showSpeed: 2000,
       current: null,
       misclicks: [],
       lockedPlayers: [],
@@ -189,13 +181,9 @@ io.on("connection", (socket) => {
     state.lockedPlayers = [];
     state.readingCompleted = false;
     state.waitingNext = false;
-    state.current = null;
     state.players.forEach(p => (p.answered = false));
 
-    const remaining = globalCards.filter(q =>
-      !state.usedQuestions.includes(q.text + "|" + q.number)
-    );
-
+    const remaining = globalCards.filter(q => !state.usedQuestions.includes(q.text + "|" + q.number));
     const question = shuffle(remaining)[0];
     state.usedQuestions.push(question.text + "|" + question.number);
 
@@ -222,7 +210,7 @@ io.on("connection", (socket) => {
 
     io.to(groupId).emit("state", {
       ...state,
-      showSpeed: state.showSpeed,
+      showSpeed: globalSettings.showSpeed,
       current: {
         ...state.current,
         cards: state.current.cards.map(c => ({
