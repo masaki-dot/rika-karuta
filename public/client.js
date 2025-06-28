@@ -131,15 +131,25 @@ state.current.cards.forEach(c => {
   div.style.cursor = "pointer";
   div.style.background = "#fff";
 
-  if (c.correct) div.style.background = "yellow";
-  if (c.incorrect) div.style.background = "red";
+  // 色付けと名前表示
+  if (c.correct) {
+    div.style.background = "yellow";
+    div.innerHTML += `<div style="margin-top:5px;font-size:0.8em;">${c.chosenBy}</div>`;
+  } else if (c.incorrect) {
+    div.style.background = "red";
+    div.innerHTML += `<div style="margin-top:5px;font-size:0.8em;">${c.chosenBy}</div>`;
+  }
 
-  div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${c.term}</div><div style="color:#666;">${c.number}</div>`;
+  // 内容（上に書くことで常時表示）
+  div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${c.term}</div><div style="color:#666;">${c.number}</div>` + div.innerHTML;
+
   div.onclick = () => {
     if (!locked && !alreadyAnswered) submitAnswer(c.number);
   };
+
   cardsDiv.appendChild(div);
 });
+
 
 
   const otherDiv = document.getElementById("others");
