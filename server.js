@@ -61,9 +61,9 @@ io.on("connection", (socket) => {
   socket.on("start", (data) => {
     const { groupId, numCards, maxQuestions } = data;
     const state = states[groupId] = initState();
-    state.maxQuestions = maxQuestions;
-    state.numCards = Math.min(Math.max(5, numCards), 10);
-    nextQuestion(groupId);
+     state.maxQuestions = maxQuestions;
+  state.numCards = Math.min(Math.max(5, numCards), 10);  // 取り札数を5～10で制限して保存
+
   });
 
   socket.on("read_done", (groupId) => {
