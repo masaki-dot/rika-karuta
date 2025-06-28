@@ -57,20 +57,21 @@ io.on("connection", (socket) => {
   const state = states[groupId];
   if (!state || state.readStarted) return;
 
-  // 問題文がすべて表示されたことを記録（1回だけ）
   state.readStarted = true;
 
-  // 正解済みの場合は何もしない（すでに3秒タイマーが動いているため）
-  if (state.answered) return;
+  // ✅ ここで「すでに正解されていれば return」で抜ける
+  if (state.answered || state.waitingNext) return;
 
-  // 30秒後にまだ未回答なら自動で次へ進む
+  // ✅ まだ誰も正解していなければ、30秒待って自動で次へ
   setTimeout(() => {
+    // 再度確認してまだ回答されていなければ次へ
     if (!state.answered && !state.waitingNext) {
       state.waitingNext = true;
       io.to(groupId).emit("state", sanitizeState(state));
       setTimeout(() => nextQuestion(groupId), 1000);
     }
   }, 30000);
+
 });
 
   
