@@ -80,8 +80,12 @@ function fixName() {
   playerName = document.getElementById("nameInput").value.trim();
   if (!playerName) return alert("名前を入力してください");
 
+  // 🔧 これを忘れずに！
+  socket.emit("set_name", { groupId, name: playerName });
+
   document.body.innerHTML = `<button onclick="startGame()">スタート</button><div id="game"></div>`;
 }
+
 
 function startGame() {
   socket.emit("start", { groupId, numCards, maxQuestions });
