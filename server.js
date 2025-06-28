@@ -208,6 +208,10 @@ function shuffle(arr) {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
+// ここで socket.io の connection ハンドラーを閉じる
+});  
+
+// サーバーを起動
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
