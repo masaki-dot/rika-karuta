@@ -1,3 +1,5 @@
+// ✅ 修正済み server.js（お手付き処理＆30秒経過処理の不具合解消）
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -8,6 +10,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
+
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -58,23 +61,25 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start", (data) => {
-    const { groupId } = data;
+    const { groupId, numCards, maxQuestions } = data;
     const state = states[groupId] = initState();
-    state.maxQuestions = globalSettings.maxQuestions;
-    state.numCards = globalSettings.numCards;
+    state.maxQuestions = maxQuestions;
+    state.numCards = Math.min(Math.max(5, numCards), 10);
     state.showSpeed = globalSettings.showSpeed;
     nextQuestion(groupId);
   });
 
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
-    if (!state || state.readingCompleted || state.waitingNext) return;
+    if (!state || state.waitingNext) return;
+
+    if (state.timeoutId) clearTimeout(state.timeoutId);
 
     state.readingCompleted = true;
-    if (state.timeoutId) clearTimeout(state.timeoutId);
+
     state.timeoutId = setTimeout(() => {
       const st = states[groupId];
-      if (st && st.readingCompleted && !st.waitingNext) {
+      if (st && !st.waitingNext) {
         st.waitingNext = true;
         nextQuestion(groupId);
       }
@@ -126,6 +131,7 @@ io.on("connection", (socket) => {
       setTimeout(() => {
         nextQuestion(groupId);
       }, 3000);
+
       return;
     } else {
       if (!state.lockedPlayers.includes(name)) {
@@ -137,15 +143,12 @@ io.on("connection", (socket) => {
           if (player.hp < 0) player.hp = 0;
         }
 
-        state.current.cards = state.current.cards.map(c => {
-          if (c.number === number) {
-            return { ...c, incorrect: true };
-          }
-          return c;
-        });
+        state.current.cards = state.current.cards.map(c => ({
+          ...c,
+          incorrect: state.misclicks.some(m => m.number === c.number)
+        }));
 
         socket.emit("lock", name);
-
         io.to(groupId).emit("state", {
           ...state,
           waitingNext: false
@@ -162,13 +165,13 @@ io.on("connection", (socket) => {
       numCards: 5,
       maxQuestions: 10,
       questionCount: 0,
+      showSpeed: 2000,
       current: null,
       misclicks: [],
       lockedPlayers: [],
       waitingNext: false,
       readingCompleted: false,
-      timeoutId: null,
-      showSpeed: 2000
+      timeoutId: null
     };
   }
 
@@ -186,6 +189,7 @@ io.on("connection", (socket) => {
     state.lockedPlayers = [];
     state.readingCompleted = false;
     state.waitingNext = false;
+    state.current = null;
     state.players.forEach(p => (p.answered = false));
 
     const remaining = globalCards.filter(q =>
@@ -224,9 +228,7 @@ io.on("connection", (socket) => {
         cards: state.current.cards.map(c => ({
           term: c.term,
           number: c.number,
-          text: c.text,
-          correct: c.correct,
-          incorrect: c.incorrect
+          text: c.text
         }))
       }
     });
