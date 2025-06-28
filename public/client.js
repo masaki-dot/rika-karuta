@@ -119,7 +119,10 @@ function updateUI(state) {
     <div id="others"></div>
   `;
 
+  if (!state.answered && !state.waitingNext) {
   animateText("yomifuda", state.current.text, showSpeed);
+}
+
 
   const cardsDiv = document.getElementById("cards");
 cardsDiv.style.display = "grid";
