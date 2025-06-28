@@ -45,6 +45,7 @@ io.on("connection", (socket) => {
 
     io.to(groupId).emit("state", sanitizeState(state));
   });
+   });
 
   socket.on("set_name", ({ groupId, name }) => {
   const state = states[groupId];
