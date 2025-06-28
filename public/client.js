@@ -198,16 +198,20 @@ function animateText(elementId, text, speed) {
   let i = 0;
   element.textContent = "";
 
-  // 前のタイマーが動いていたら止める
   if (readInterval) clearInterval(readInterval);
 
   readInterval = setInterval(() => {
     element.textContent = text.slice(0, i);
     i += 5;
-    if (i > text.length) {
+    
+    if (i >= text.length) {
       clearInterval(readInterval);
       readInterval = null;
-      socket.emit("read_done", groupId);
+
+      // ✅ 100msほど待ってから確実に全文が表示された後に送信
+      setTimeout(() => {
+        socket.emit("read_done", groupId);
+      }, 100);
     }
   }, speed);
 }
