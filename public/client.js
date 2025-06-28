@@ -1,127 +1,98 @@
-// ✅ 修正版 client.js
-
-window.onerror = function (msg, src, line, col, err) {
-  const div = document.createElement("div");
-  div.style = "position: fixed; top: 0; left: 0; background: red; color: white; padding: 10px; z-index: 9999; font-size: 14px;";
-  div.textContent = `[JavaScriptエラー] ${msg} (${src}:${line})`;
-  document.body.appendChild(div);
-};
+// public/client.js
 
 let socket = io();
 let playerName = "";
 let groupId = "";
-let locked = false;
 let showSpeed = 2000;
 let numCards = 5;
 let maxQuestions = 10;
 let loadedCards = [];
-let playerNameFixed = false;
+let locked = false;
+let alreadyAnswered = false;
 
-function showGroupSelectUI() {
-  const root = document.getElementById("root");
-  root.innerHTML = `
-    <h2>CSVと共通設定をアップロードしてください</h2>
-    <input type="file" id="csvFile" accept=".csv" />
-    <br/><br/>
-    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label>
-    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" max="5000" /></label>
-    <br/><br/>
-    <div id="groupButtons"></div>
-    <div id="userCountDisplay" style="position: fixed; top: 10px; right: 10px; background: #eee; padding: 5px 10px; border-radius: 8px;">接続中: 0人</div>
+window.onload = () => {
+  showCSVUploadUI();
+};
+
+function showCSVUploadUI() {
+  document.body.innerHTML = `
+    <h2>CSVファイルをアップロード</h2>
+    <input type="file" id="csvFile" accept=".csv" /><br/><br/>
+    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label><br/>
+    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
+    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" /></label><br/><br/>
   `;
+  const input = document.createElement("button");
+  input.textContent = "決定してグループ選択へ";
+  input.onclick = handleCSVUpload;
+  document.body.appendChild(input);
+}
 
-  document.getElementById("csvFile").addEventListener("change", () => {
-    const file = document.getElementById("csvFile").files[0];
-    Papa.parse(file, {
-      header: false,
-      skipEmptyLines: true,
-      complete: (result) => {
-        const rows = result.data;
-        const dataRows = rows.slice(1);
-        loadedCards = dataRows.map((r) => ({
-          number: String(r[0]).trim(),
-          term: String(r[1]).trim(),
-          text: String(r[2]).trim()
-        })).filter(card => card.term && card.text);
+function handleCSVUpload() {
+  const file = document.getElementById("csvFile").files[0];
+  if (!file) return alert("CSVファイルを選んでください");
 
-        maxQuestions = Number(document.getElementById("maxQuestions").value || 10);
-        numCards = Number(document.getElementById("numCards").value || 5);
-        showSpeed = Number(document.getElementById("speed").value || 2000);
+  Papa.parse(file, {
+    header: false,
+    skipEmptyLines: true,
+    complete: (result) => {
+      const rows = result.data;
+      loadedCards = rows.slice(1).map(r => ({
+        number: String(r[0]).trim(),
+        term: String(r[1]).trim(),
+        text: String(r[2]).trim()
+      })).filter(c => c.term && c.text);
 
-        socket.emit("set_cards_and_settings", {
-          cards: loadedCards,
-          settings: {
-            maxQuestions,
-            numCards,
-            showSpeed
-          }
-        });
-      }
-    });
+      maxQuestions = parseInt(document.getElementById("maxQuestions").value);
+      numCards = parseInt(document.getElementById("numCards").value);
+      showSpeed = parseInt(document.getElementById("speed").value);
+
+      socket.emit("set_cards_and_settings", {
+        cards: loadedCards,
+        settings: { maxQuestions, numCards, showSpeed }
+      });
+    }
   });
 }
 
-function drawGroupButtons() {
-  const root = document.getElementById("root");
-  root.innerHTML = "<h2>グループを選択してください</h2><div id='groupButtons'></div>";
-  const area = document.getElementById("groupButtons");
+socket.on("start_group_selection", () => {
+  document.body.innerHTML = `<h2>グループを選択してください</h2>`;
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
-    btn.textContent = "グループ " + i;
+    btn.textContent = `グループ ${i}`;
     btn.onclick = () => {
       groupId = "group" + i;
       socket.emit("join", groupId);
       showNameInputUI();
     };
-    area.appendChild(btn);
+    document.body.appendChild(btn);
   }
-}
+});
 
 function showNameInputUI() {
-  const root = document.getElementById("root");
-  root.innerHTML = `
-    <h2>プレイヤー名を入力してください</h2>
-    <input type="text" id="nameInput" placeholder="プレイヤー名" />
-    <button onclick="fixPlayerName()">決定</button>
-    <div id="game"></div>
+  document.body.innerHTML = `
+    <h2>プレイヤー名を入力</h2>
+    <input id="nameInput" /><button onclick="fixName()">決定</button>
   `;
 }
 
-function fixPlayerName() {
-  const name = document.getElementById("nameInput").value.trim();
-  if (name.length === 0) {
-    alert("名前を入力してください");
-    return;
-  }
-  playerName = name;
-  playerNameFixed = true;
-  document.getElementById("nameInput").disabled = true;
-  const gameDiv = document.getElementById("game");
-  gameDiv.innerHTML = `<button id="startBtn" onclick="startGame()">スタート</button>`;
+function fixName() {
+  playerName = document.getElementById("nameInput").value.trim();
+  if (!playerName) return alert("名前を入力してください");
+
+  document.body.innerHTML = `<button onclick="startGame()">スタート</button><div id="game"></div>`;
 }
 
 function startGame() {
-  if (!playerNameFixed) {
-    alert("プレイヤー名を決定してください");
-    return;
-  }
-  socket.emit("start", { groupId });
+  socket.emit("start", { groupId, numCards, maxQuestions });
 }
 
-socket.on("csv_ready", drawGroupButtons);
-socket.on("start_group_selection", drawGroupButtons);
-
-socket.on("user_count", (count) => {
-  const div = document.getElementById("userCountDisplay");
-  if (div) div.textContent = `接続中: ${count}人`;
-});
-
 socket.on("state", (state) => {
-  if (!state || !state.current) return;
+  if (!state.current) return;
   locked = false;
+  alreadyAnswered = false;
   showSpeed = state.showSpeed || 2000;
-  updateGameUI(state);
+  updateUI(state);
 });
 
 socket.on("lock", () => {
@@ -129,55 +100,68 @@ socket.on("lock", () => {
 });
 
 socket.on("end", (players) => {
-  const root = document.getElementById("game");
-  root.innerHTML += "<h2>ゲーム終了！</h2>";
+  document.getElementById("game").innerHTML = `<h2>ゲーム終了！</h2>`;
 });
 
-function submitAnswer(number) {
-  if (locked || !playerName) return;
-  socket.emit("answer", { groupId, name: playerName, number });
-}
-
-function updateGameUI(state) {
-  const root = document.getElementById("game");
-  const myHP = state.players.find(p => p.name === playerName)?.hp ?? 20;
-
-  root.innerHTML = `
+function updateUI(state) {
+  const game = document.getElementById("game");
+  game.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
-    <div id="yomifuda">${state.current.text}</div>
-    <div id="cards" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
-    <div id="scores">自分のHP: ${myHP}点</div>
+    <div id="yomifuda"></div>
+    <div id="cards" style="display: flex; flex-wrap: wrap;"></div>
+    <div>自分のHP: ${getMyHP(state)}点</div>
     <div id="others"></div>
-    <div id="misclicks"></div>
   `;
 
+  animateText("yomifuda", state.current.text, showSpeed);
+
   const cardsDiv = document.getElementById("cards");
-  state.current.cards.forEach((c) => {
+  state.current.cards.forEach(c => {
     const div = document.createElement("div");
-    div.style = "border: 1px solid #aaa; margin: 5px; padding: 10px; cursor: pointer;";
+    div.className = "card";
     div.innerHTML = `<div>${c.term}</div><div>${c.number}</div>`;
     if (c.correct) div.style.background = "yellow";
     if (c.incorrect) div.style.background = "red";
     div.onclick = () => {
-      if (!locked) submitAnswer(c.number);
+      if (!locked && !alreadyAnswered) submitAnswer(c.number);
     };
     cardsDiv.appendChild(div);
   });
 
   const otherDiv = document.getElementById("others");
-  otherDiv.innerHTML = "<h4>他のプレイヤー:</h4><ul>" + 
-    state.players.map(p => {
-      const name = p.name || "(未設定)";
-      const hp = typeof p.hp === "number" ? p.hp : 20;
-      const hpBar = `<div style="background: #ccc; width: 100px; height: 10px;"><div style="background: green; height: 10px; width: ${Math.max(0, hp / 20 * 100)}%;"></div></div>`;
-      return `<li>${name}: HP ${hp}点 ${hpBar}</li>`;
-    }).join("") + "</ul>";
+  otherDiv.innerHTML = `<h4>他プレイヤー</h4>`;
+  state.players.forEach(p => {
+    if (p.name !== playerName) {
+      const hpPercent = Math.max(0, p.hp / 20 * 100);
+      otherDiv.innerHTML += `<div>${p.name} HP: ${p.hp}<div style="background: #ccc; width: 100px; height: 10px;"><div style="background: green; width: ${hpPercent}%; height: 10px;"></div></div></div>`;
+    }
+  });
 
-  const misclicksDiv = document.getElementById("misclicks");
   if (state.misclicks?.length > 0) {
-    const names = [...new Set(state.misclicks.map(m => m.name))];
-    misclicksDiv.innerHTML = `<strong>お手付き:</strong> ${names.join(", ")}（赤札）`;
+    const list = state.misclicks.map(m => `${m.name}: ${m.number}`).join("<br>");
+    otherDiv.innerHTML += `<div><strong>お手付き</strong><br>${list}</div>`;
   }
 }
 
-window.onload = showGroupSelectUI;
+function getMyHP(state) {
+  return state.players.find(p => p.name === playerName)?.hp ?? 20;
+}
+
+function submitAnswer(number) {
+  socket.emit("answer", { groupId, name: playerName, number });
+  alreadyAnswered = true;
+}
+
+function animateText(elementId, text, speed) {
+  const element = document.getElementById(elementId);
+  let i = 0;
+  element.textContent = "";
+  const interval = setInterval(() => {
+    element.textContent = text.slice(0, i);
+    i += 5;
+    if (i > text.length) {
+      clearInterval(interval);
+      socket.emit("read_done", groupId);
+    }
+  }, speed);
+}
