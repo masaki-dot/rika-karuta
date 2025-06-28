@@ -201,17 +201,14 @@ function animateText(elementId, text, speed) {
   if (readInterval) clearInterval(readInterval);
 
   readInterval = setInterval(() => {
-    element.textContent = text.slice(0, i);
-    i += 5;
-    
-    if (i >= text.length) {
-      clearInterval(readInterval);
-      readInterval = null;
+  element.textContent = text.slice(0, i);
+  i += 5;
+  if (i >= text.length) { // ← ここを変更
+    element.textContent = text; // 念のため全文を表示
+    clearInterval(readInterval);
+    readInterval = null;
+    socket.emit("read_done", groupId);
+  }
+}, speed);
 
-      // ✅ 100msほど待ってから確実に全文が表示された後に送信
-      setTimeout(() => {
-        socket.emit("read_done", groupId);
-      }, 100);
-    }
-  }, speed);
 }
