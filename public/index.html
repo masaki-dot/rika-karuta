@@ -13,6 +13,12 @@
   <!-- アプリ表示エリア -->
   <div id="root"></div>
 
+  <!-- 🔽 ここから追加 -->
+  <div id="point-popup" class="hidden" style="position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 64px; font-weight: bold; color: gold; text-shadow: 2px 2px 8px black; z-index: 1000;"></div>
+
+  <div id="current-point" style="position: fixed; top: 10px; right: 20px; font-size: 24px; font-weight: bold; background: rgba(0,0,0,0.5); color: white; padding: 5px 10px; border-radius: 8px; z-index: 1000;"></div>
+  <!-- 🔼 ここまで追加 -->
+
   <!-- エラーを画面に赤く表示 -->
   <script>
     window.onerror = function (msg, src, line, col, err) {
