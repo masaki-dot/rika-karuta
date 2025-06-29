@@ -164,23 +164,24 @@ function nextQuestion(groupId) {
     return;
   }
 
-  // ✅ 前のreadTimerをクリア
-  if (state.readTimer) clearTimeout(state.readTimer);
-  state.readTimer = null;
-
-  // ラウンド初期化
-  state.readStarted = false;
-  state.answered = false;
-  state.waitingNext = false;
-  state.misClicks = [];
-
-  state.players.forEach(p => p.hasMissed = false);
+  // 🔍 デバッグログ追加
+  console.log("📦 全カード数:", globalCards.length);
+  console.log("🟨 使用済み:", state.usedQuestions);
   
+  // ✅ 空白や改行による不一致を防ぐ
   const remaining = globalCards.filter(q =>
-    !state.usedQuestions.includes(q.text + q.number)
+    !state.usedQuestions.includes(q.text.trim() + q.number)
   );
+  console.log("✅ 残り問題数:", remaining.length);
+
+  if (remaining.length === 0) {
+    io.to(groupId).emit("end", state);
+    return;
+  }
+
   const question = remaining[Math.floor(Math.random() * remaining.length)];
-  state.usedQuestions.push(question.text + question.number);
+  const key = question.text.trim() + question.number;
+  state.usedQuestions.push(key);
 
   const distractors = shuffle(globalCards.filter(c => c.number !== question.number)).slice(0, state.numCards - 1);
   const cards = shuffle([...distractors, question]);
@@ -198,9 +199,11 @@ function nextQuestion(groupId) {
     cards: cards.map(c => ({ number: c.number, term: c.term }))
   };
 
-  io.to(groupId).emit("state", sanitizeState(state));
+  state.questionCount++; // ✅ これがないとずっと0のまま
 
+  io.to(groupId).emit("state", sanitizeState(state));
 }
+
 
 function sanitizeState(state) {
   return {
