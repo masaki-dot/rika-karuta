@@ -98,8 +98,10 @@ function fixName() {
   // 🔧 これを忘れずに！
   socket.emit("set_name", { groupId, name: playerName });
 
+  // ✅ ここで <div id="game"> を出している
   document.body.innerHTML = `<button onclick="startGame()">スタート</button><div id="game"></div>`;
 }
+
 
 
 function startGame() {
