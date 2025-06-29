@@ -109,6 +109,7 @@ function startGame() {
 
 
 socket.on("state", (state) => {
+console.log("📦 state 受信", state); 
   if (!state.current) return;
 
   // 🔄 問題が切り替わったらリセット
@@ -137,6 +138,7 @@ socket.on("end", (players) => {
 });
 
 function updateUI(state) {
+console.log("🎯 updateUI called", state); // ← 追加
   const game = document.getElementById("game");
   game.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
