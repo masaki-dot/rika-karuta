@@ -82,13 +82,6 @@ socket.on("read_done", (groupId) => {
   const alivePlayers = group.players.filter(p => p.hp > 0);
   const finishedCount = state.readDone.size;
 
-  // 全生存プレイヤーが読み終えたら即次の問題へ
-  if (finishedCount >= alivePlayers.length && !state.answered && !state.waitingNext) {
-    state.waitingNext = true;
-    io.to(groupId).emit("state", sanitizeState(state));
-    setTimeout(() => nextQuestion(groupId), 1000);
-  }
-
   // 念のため 30秒経過後にも進む保険
   if (state.readTimer) clearTimeout(state.readTimer);
   state.readTimer = setTimeout(() => {
