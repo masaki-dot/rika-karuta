@@ -164,11 +164,10 @@ function nextQuestion(groupId) {
     return;
   }
 
-  // 🔍 デバッグログ追加
+  // 🔍 デバッグログ
   console.log("📦 全カード数:", globalCards.length);
   console.log("🟨 使用済み:", state.usedQuestions);
-  
-  // ✅ 空白や改行による不一致を防ぐ
+
   const remaining = globalCards.filter(q =>
     !state.usedQuestions.includes(q.text.trim() + q.number)
   );
@@ -199,10 +198,13 @@ function nextQuestion(groupId) {
     cards: cards.map(c => ({ number: c.number, term: c.term }))
   };
 
-  state.questionCount++; // ✅ これがないとずっと0のまま
+  state.questionCount++; // ← 重要
+
+  console.log("✅ 問題設定完了:", state.current);
 
   io.to(groupId).emit("state", sanitizeState(state));
 }
+
 
 
 function sanitizeState(state) {
