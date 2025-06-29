@@ -54,21 +54,17 @@ io.on("connection", (socket) => {
   if (player) player.name = name;
 });
 
-  socket.on("read_done", (groupId) => {
+socket.on("read_done", (groupId) => {
   const state = states[groupId];
   if (!state || state.readStarted) return;
 
   state.readStarted = true;
 
-  // 🔁 タイマーが既にあればキャンセル
   if (state.readTimer) clearTimeout(state.readTimer);
-
-  // 🔧 正解済み or 次に進む準備なら何もしない
   if (state.answered || state.waitingNext) return;
 
-  // ⏱️ 30秒後に次の問題へ
+  // ⏱️ 30秒後に自動で次の問題へ
   state.readTimer = setTimeout(() => {
-    // もう次の問題に進んでいたら何もしない
     if (!state.answered && !state.waitingNext) {
       state.waitingNext = true;
       io.to(groupId).emit("state", sanitizeState(state));
