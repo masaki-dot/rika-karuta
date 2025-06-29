@@ -80,6 +80,21 @@ function showNameInputUI() {
   `;
 }
 
+function fixName() {
+  playerName = document.getElementById("nameInput").value.trim();
+  if (!playerName) return alert("名前を入力してください");
+
+  socket.emit("set_name", { groupId, name: playerName });
+
+  // ゲーム開始画面に切り替え
+  document.body.innerHTML = `
+    <button onclick="startGame()">スタート</button>
+    <div id="point-popup" class="hidden" style="font-size: 3em; color: red; position: fixed; top: 40%; left: 40%; z-index: 999;"></div>
+    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+    <div id="game"></div>
+  `;
+}
+
 function showPointPopup(point) {
   const popup = document.getElementById("point-popup");
   popup.textContent = `${point}点！`;
@@ -89,17 +104,6 @@ function showPointPopup(point) {
     popup.classList.add("hidden");
   }, 1500); // 1.5秒で消える
 }
-
-
-document.body.innerHTML = `
-  <button onclick="startGame()">スタート</button>
-  <div id="point-popup" class="hidden" style="font-size: 3em; color: red; position: fixed; top: 40%; left: 40%; z-index: 999;"></div>
-  <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
-  <div id="game"></div>
-`;
-}
-
-
 
 function startGame() {
   console.log("startGame called");
