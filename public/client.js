@@ -80,6 +80,17 @@ function showNameInputUI() {
   `;
 }
 
+function showPointPopup(point) {
+  const popup = document.getElementById("point-popup");
+  popup.textContent = `${point}点！`;
+  popup.classList.remove("hidden");
+
+  setTimeout(() => {
+    popup.classList.add("hidden");
+  }, 1500); // 1.5秒で消える
+}
+
+
 function fixName() {
   playerName = document.getElementById("nameInput").value.trim();
   if (!playerName) return alert("名前を入力してください");
@@ -103,8 +114,16 @@ socket.on("state", (state) => {
   locked = false;
   alreadyAnswered = false;
   showSpeed = state.showSpeed || 2000;
+
+  // ✅ 得点表示（ドンっと & 常時）
+  if (state.current && typeof state.current.point === "number") {
+    showPointPopup(state.current.point); // ドンっと表示
+    document.getElementById("current-point").textContent = `${state.current.point}点`; // 常時表示
+  }
+
   updateUI(state);
 });
+
 
 
 socket.on("lock", () => {
