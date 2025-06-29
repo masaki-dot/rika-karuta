@@ -112,7 +112,8 @@ function startGame() {
 
 
 socket.on("state", (state) => {
-console.log("📦 state 受信", state); 
+  console.log("📦 state 受信", state); 
+
   if (!state.current) return;
 
   // 🔄 問題が切り替わったらリセット
@@ -123,12 +124,20 @@ console.log("📦 state 受信", state);
 
   // ✅ 得点表示（ドンっと & 常時）
   if (state.current && typeof state.current.point === "number") {
-    showPointPopup(state.current.point); // ドンっと表示
-    document.getElementById("current-point").textContent = `${state.current.point}点`; // 常時表示
+    const popup = document.getElementById("point-popup");
+    const currentPoint = document.getElementById("current-point");
+    if (popup && currentPoint) {
+      showPointPopup(state.current.point);
+      currentPoint.textContent = `${state.current.point}点`;
+    }
   }
+
+  // 🛑 ここを追加：game がなければ何もしない
+  if (!document.getElementById("game")) return;
 
   updateUI(state);
 });
+
 
 
 
