@@ -5,6 +5,45 @@
   <title>理科カルタ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <!-- 🔽 CSSはhead内に入れる -->
+  <style>
+    #point-popup {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 72px;
+      font-weight: bold;
+      color: gold;
+      background-color: rgba(0,0,0,0.7);
+      padding: 30px 50px;
+      border-radius: 20px;
+      z-index: 1000;
+      animation: popup 1.5s ease-out;
+    }
+
+    #point-popup.hidden {
+      display: none;
+    }
+
+    @keyframes popup {
+      0% { transform: scale(0.2) translate(-50%, -50%); opacity: 0; }
+      50% { transform: scale(1.1) translate(-50%, -50%); opacity: 1; }
+      100% { transform: scale(1.0) translate(-50%, -50%); opacity: 0; }
+    }
+
+    #current-point {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      font-size: 24px;
+      color: white;
+      background: rgba(0,0,0,0.5);
+      padding: 10px 20px;
+      border-radius: 10px;
+    }
+  </style>
+
   <!-- Socket.IOとCSV読み込み -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
@@ -13,11 +52,9 @@
   <!-- アプリ表示エリア -->
   <div id="root"></div>
 
-  <!-- 🔽 ここから追加 -->
-  <div id="point-popup" class="hidden" style="position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 64px; font-weight: bold; color: gold; text-shadow: 2px 2px 8px black; z-index: 1000;"></div>
-
-  <div id="current-point" style="position: fixed; top: 10px; right: 20px; font-size: 24px; font-weight: bold; background: rgba(0,0,0,0.5); color: white; padding: 5px 10px; border-radius: 8px; z-index: 1000;"></div>
-  <!-- 🔼 ここまで追加 -->
+  <!-- 🔽 点数ポップアップ表示用 -->
+  <div id="point-popup" class="hidden"></div>
+  <div id="current-point"></div>
 
   <!-- エラーを画面に赤く表示 -->
   <script>
