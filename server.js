@@ -55,15 +55,26 @@ io.on("connection", (socket) => {
 });
 
 socket.on("read_done", (groupId) => {
+  const group = groups[groupId];
   const state = states[groupId];
-  if (!state || state.readStarted) return;
+  if (!group || !state) return;
 
-  state.readStarted = true;
+  // 読み終わったプレイヤーの記録
+  if (!state.readDone) state.readDone = new Set();
+  state.readDone.add(socket.id);
 
+  const alivePlayers = group.players.filter(p => p.hp > 0);
+  const finishedCount = state.readDone.size;
+
+  // 全生存プレイヤーが読み終えたら即次の問題へ
+  if (finishedCount >= alivePlayers.length && !state.answered && !state.waitingNext) {
+    state.waitingNext = true;
+    io.to(groupId).emit("state", sanitizeState(state));
+    setTimeout(() => nextQuestion(groupId), 1000);
+  }
+
+  // 念のため 30秒経過後にも進む保険
   if (state.readTimer) clearTimeout(state.readTimer);
-  if (state.answered || state.waitingNext) return;
-
-  // ⏱️ 30秒後に自動で次の問題へ
   state.readTimer = setTimeout(() => {
     if (!state.answered && !state.waitingNext) {
       state.waitingNext = true;
@@ -72,6 +83,7 @@ socket.on("read_done", (groupId) => {
     }
   }, 30000);
 });
+
 
   
 socket.on("start", ({ groupId }) => {
