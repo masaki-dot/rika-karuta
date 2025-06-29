@@ -100,52 +100,34 @@ socket.on("start", ({ groupId }) => {
 
 
 
-  socket.on("answer", ({ groupId, number }) => {
-    const state = states[groupId];
-    if (!state || !state.current || state.waitingNext) return;
-    const player = state.players.find(p => p.id === socket.id);
-    if (!player || player.hp <= 0 || player.hasMissed) return;
+socket.on("answer", ({ groupId, name, number }) => {
+  const state = states[groupId];
+  const group = groups[groupId];
+  if (!state || !group || !state.current) return;
 
-    const correct = state.current.answer === number;
+  if (state.answered || state.locked) return;
 
-    // 正解のとき
-if (correct && !state.answered) {
-  state.answered = true;
-  state.waitingNext = true;
-  state.correctPlayer = player.name;
+  const correct = state.current.answer === number;
+  const player = group.players.find(p => p.name === name);
+  if (!player) return;
 
-  // 誰が選んだかをカードに記録
-  const card = state.current.cards.find(c => c.number === number);
-  if (card) {
-    card.correct = true;
-    card.chosenBy = player.name;
+  if (correct) {
+    player.score += state.current.point;
+    state.current.cards = state.current.cards.map(c =>
+      c.number === number ? { ...c, correct: true, chosenBy: name } : c
+    );
+    state.answered = true;
+  } else {
+    player.hp -= state.current.point;
+    state.misclicks.push({ name, number });
+    state.current.cards = state.current.cards.map(c =>
+      c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
+    );
   }
 
-  state.players.forEach(p => {
-    if (p.id !== socket.id && p.hp > 0) p.hp -= state.current.point;
-  });
-
-  setTimeout(() => nextQuestion(groupId), 3000);
-} else {
-  // 不正解でもカードに記録
- if (!state.misClicks.find(e => e.id === socket.id)) {
-  state.misClicks.push({ id: socket.id, name: player.name, number });
-
-  const card = state.current.cards.find(c => c.number === number);
-  if (card) {
-    card.incorrect = true;
-    card.chosenBy = player.name;
-  }
-
-  player.hp -= state.current.point;
-  player.hasMissed = true; // 🔴 この行を追加：お手つきマーク
-}
-
-}
-
-
-    io.to(groupId).emit("state", sanitizeState(state));
+  io.to(groupId).emit("state", sanitizeState(state));
 });
+
 
 function initState(groupId) {
   return {
