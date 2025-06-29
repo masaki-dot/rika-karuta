@@ -78,11 +78,17 @@ io.on("connection", (socket) => {
 });
 
   
- socket.on("start", ({ groupId }) => {
+ socket.on("start", ({ groupId, numCards, maxQuestions }) => {
   const state = states[groupId];
   if (!state) return;
+
+  // 🔧 設定値を反映
+  state.maxQuestions = maxQuestions;
+  state.numCards = numCards;
+
   nextQuestion(groupId);
 });
+
 
   socket.on("answer", ({ groupId, number }) => {
     const state = states[groupId];
