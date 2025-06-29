@@ -127,19 +127,20 @@ socket.on("answer", ({ groupId, name, number }) => {
   const player = group.players.find(p => p.name === name);
   if (!player) return;
 
-  if (correct) {
-    player.score += state.current.point;
-    state.current.cards = state.current.cards.map(c =>
-      c.number === number ? { ...c, correct: true, chosenBy: name } : c
-    );
-    state.answered = true;
-  } else {
-    player.hp -= state.current.point;
-    state.misclicks.push({ name, number });
-    state.current.cards = state.current.cards.map(c =>
-      c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
-    );
+ if (correct) {
+  player.score += state.current.point;
+  state.current.cards = state.current.cards.map(c =>
+    c.number === number ? { ...c, correct: true, chosenBy: name } : c
+  );
+  state.answered = true;
+
+  // ✅ 正解したら3秒後に次の問題へ（重複防止のために waitingNext チェック）
+  if (!state.waitingNext) {
+    state.waitingNext = true;
+    io.to(groupId).emit("state", sanitizeState(state));
+    setTimeout(() => nextQuestion(groupId), 3000);
   }
+}
 
   io.to(groupId).emit("state", sanitizeState(state));
 });
