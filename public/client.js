@@ -105,9 +105,10 @@ function fixName() {
 
 
 function startGame() {
-  console.log("startGame called"); // 追加
-  socket.emit("start", { groupId, numCards, maxQuestions });
+  console.log("startGame called");
+  socket.emit("start", { groupId }); // ← 不要な numCards などを送らない
 }
+
 
 
 socket.on("state", (state) => {
