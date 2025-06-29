@@ -233,14 +233,15 @@ function animateText(elementId, text, speed) {
   if (readInterval) clearInterval(readInterval);
 
   readInterval = setInterval(() => {
-  element.textContent = text.slice(0, i);
-  i += 5;
-  if (i >= text.length) { // ← ここを変更
-    element.textContent = text; // 念のため全文を表示
-    clearInterval(readInterval);
-    readInterval = null;
-    socket.emit("read_done", groupId);
-  }
-}, speed);
+    element.textContent = text.slice(0, i);
+    i += 5;
+    if (i >= text.length) {
+      element.textContent = text;
+      clearInterval(readInterval);
+      readInterval = null;
 
+      // ✅ ここでちゃんと送ってる？
+      socket.emit("read_done", groupId);
+    }
+  }, speed);
 }
