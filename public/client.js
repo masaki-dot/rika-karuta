@@ -91,15 +91,12 @@ function showPointPopup(point) {
 }
 
 
-function fixName() {
-  playerName = document.getElementById("nameInput").value.trim();
-  if (!playerName) return alert("名前を入力してください");
-
-  // 🔧 これを忘れずに！
-  socket.emit("set_name", { groupId, name: playerName });
-
-  // ✅ ここで <div id="game"> を出している
-  document.body.innerHTML = `<button onclick="startGame()">スタート</button><div id="game"></div>`;
+document.body.innerHTML = `
+  <button onclick="startGame()">スタート</button>
+  <div id="point-popup" class="hidden" style="font-size: 3em; color: red; position: fixed; top: 40%; left: 40%; z-index: 999;"></div>
+  <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+  <div id="game"></div>
+`;
 }
 
 
