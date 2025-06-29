@@ -225,9 +225,15 @@ function getMyHP(state) {
 }
 
 function submitAnswer(number) {
+  if (locked || alreadyAnswered) {
+    console.log("回答ブロック中");
+    return;
+  }
+  console.log("✅ 回答送信", number);
   socket.emit("answer", { groupId, name: playerName, number });
   alreadyAnswered = true;
 }
+
 
 function animateText(elementId, text, speed) {
   const element = document.getElementById(elementId);
