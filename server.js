@@ -18,6 +18,7 @@ let globalSettings = {
 };
 
 const states = {};
+const groups = {};
 
 io.on("connection", (socket) => {
   socket.on("set_cards_and_settings", ({ cards, settings }) => {
@@ -34,25 +35,40 @@ io.on("connection", (socket) => {
 
 
   socket.on("join", (groupId) => {
-    socket.join(groupId);
+  socket.join(groupId);
 
-    if (!states[groupId]) states[groupId] = initState(groupId);
-    const state = states[groupId];
+  // ✅ グループ初期化（追加）
+  if (!groups[groupId]) groups[groupId] = { players: [] };
 
-    if (!state.players.find(p => p.id === socket.id)) {
-      state.players.push({ id: socket.id, name: "未設定", hp: 20 });
-    }
+  // ✅ プレイヤーがいなければ追加（追加）
+  if (!groups[groupId].players.find(p => p.id === socket.id)) {
+    groups[groupId].players.push({ id: socket.id, name: "未設定", hp: 20, score: 0 });
+  }
 
-    io.to(groupId).emit("state", sanitizeState(state));
-  });
+  if (!states[groupId]) states[groupId] = initState(groupId);
+  const state = states[groupId];
+
+  if (!state.players.find(p => p.id === socket.id)) {
+    state.players.push({ id: socket.id, name: "未設定", hp: 20 });
+  }
+
+  io.to(groupId).emit("state", sanitizeState(state));
+});
+
   
 
   socket.on("set_name", ({ groupId, name }) => {
   const state = states[groupId];
   if (!state) return;
+
   const player = state.players.find(p => p.id === socket.id);
   if (player) player.name = name;
+
+  // ✅ 追加：groups側も更新
+  const gplayer = groups[groupId]?.players.find(p => p.id === socket.id);
+  if (gplayer) gplayer.name = name;
 });
+
 
 socket.on("read_done", (groupId) => {
   const group = groups[groupId];
