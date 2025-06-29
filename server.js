@@ -78,16 +78,18 @@ io.on("connection", (socket) => {
 });
 
   
- socket.on("start", ({ groupId, numCards, maxQuestions }) => {
+socket.on("start", ({ groupId }) => {
+  console.log(`▶ 強制スタート: ${groupId}`);
   const state = states[groupId];
   if (!state) return;
 
-  // 🔧 設定値を反映
-  state.maxQuestions = maxQuestions;
-  state.numCards = numCards;
+  // 応急で設定を強制（あとで消してもOK）
+  state.maxQuestions = 5;
+  state.numCards = 5;
 
   nextQuestion(groupId);
 });
+
 
 
   socket.on("answer", ({ groupId, number }) => {
