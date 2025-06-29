@@ -103,8 +103,10 @@ function fixName() {
 
 
 function startGame() {
+  console.log("startGame called"); // 追加
   socket.emit("start", { groupId, numCards, maxQuestions });
 }
+
 
 socket.on("state", (state) => {
   if (!state.current) return;
