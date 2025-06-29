@@ -244,8 +244,7 @@ function animateText(elementId, text, speed) {
       clearInterval(readInterval);
       readInterval = null;
 
-      // ✅ ここでちゃんと送ってる？
-      socket.emit("read_done", groupId);
+      socket.emit("read_done", groupId); // ✅ ここでemitされてるか
     }
   }, speed);
 }
