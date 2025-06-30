@@ -214,7 +214,7 @@ state.current.cards.forEach(c => {
     }
   });
 
-  if (state.misclicks?.length > 0) {
+  if (state.misClicks?.length > 0) {
     const list = state.misclicks.map(m => `${m.name}: ${m.number}`).join("<br>");
     otherDiv.innerHTML += `<div><strong>お手付き</strong><br>${list}</div>`;
   }
