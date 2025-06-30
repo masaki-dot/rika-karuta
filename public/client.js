@@ -142,26 +142,6 @@ socket.on("state", (state) => {
 });
 
 
-
-  // ✅ 得点表示（ドンっと & 常時）
-  if (state.current && typeof state.current.point === "number") {
-    const popup = document.getElementById("point-popup");
-    const currentPoint = document.getElementById("current-point");
-    if (popup && currentPoint) {
-      showPointPopup(state.current.point);
-      currentPoint.textContent = `${state.current.point}点`;
-    }
-  }
-
-  // 🛑 ここを追加：game がなければ何もしない
-  if (!document.getElementById("game")) return;
-
-  updateUI(state);
-});
-
-
-
-
 socket.on("lock", () => {
   locked = true;
 });
