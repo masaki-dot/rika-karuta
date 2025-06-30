@@ -89,7 +89,9 @@ function fixName() {
   // ゲーム開始画面に切り替え
   document.body.innerHTML = `
     <button onclick="startGame()">スタート</button>
-    <div id="point-popup" class="hidden" style="font-size: 3em; color: red; position: fixed; top: 40%; left: 40%; z-index: 999;"></div>
+    <div id="point-popup" class="hidden" 
+  style="font-size: 8em; color: red; position: fixed; top: 40%; left: 50%; transform: translateX(-50%) scale(1); z-index: 999; transition: none;">
+</div>
     <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
     <div id="game"></div>
   `;
