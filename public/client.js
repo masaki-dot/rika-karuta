@@ -98,12 +98,23 @@ function fixName() {
 function showPointPopup(point) {
   const popup = document.getElementById("point-popup");
   popup.textContent = `${point}点！`;
+  popup.style.transform = "scale(3)";
   popup.classList.remove("hidden");
 
+  // 1秒後に縮小アニメーション
+  setTimeout(() => {
+    popup.style.transition = "transform 1s ease";
+    popup.style.transform = "scale(0)";
+  }, 1000);
+
+  // 完全に非表示
   setTimeout(() => {
     popup.classList.add("hidden");
-  }, 1500); // 1.5秒で消える
+    popup.style.transition = "";
+    popup.style.transform = "scale(1)";
+  }, 2000);
 }
+
 
 function startGame() {
   console.log("startGame called");
