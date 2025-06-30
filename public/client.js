@@ -139,14 +139,21 @@ socket.on("state", (state) => {
   }
 
   // ✅ 得点表示（ドンっと & 常時）
-  if (state.current && typeof state.current.point === "number") {
-    const popup = document.getElementById("point-popup");
-    const currentPoint = document.getElementById("current-point");
-    if (popup && currentPoint) {
-      showPointPopup(state.current.point);
-      currentPoint.textContent = `${state.current.point}点`;
-    }
+if (state.current.text !== lastQuestionText) {
+  hasAnimated = false;
+  locked = false;
+  alreadyAnswered = false;
+  lastQuestionText = state.current.text;
+
+  // ✅ 得点ポップアップは問題が変わったときだけ
+  const popup = document.getElementById("point-popup");
+  const currentPoint = document.getElementById("current-point");
+  if (popup && currentPoint && typeof state.current.point === "number") {
+    showPointPopup(state.current.point);
+    currentPoint.textContent = `${state.current.point}点`;
   }
+}
+
 
   // 🛑 game がなければ何もしない
   if (!document.getElementById("game")) return;
