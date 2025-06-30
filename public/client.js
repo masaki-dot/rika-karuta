@@ -233,7 +233,9 @@ function submitAnswer(number) {
   console.log("✅ 回答送信", number);
   socket.emit("answer", { groupId, name: playerName, number });
   alreadyAnswered = true;
+  hasAnimated = true; // 🔧 追加：アニメーションを止めないため
 }
+
 
 
 function animateText(elementId, text, speed) {
