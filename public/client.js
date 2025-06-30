@@ -115,7 +115,6 @@ let lastQuestionText = "";
 
 socket.on("state", (state) => {
   console.log("📦 state 受信", state); 
-
   if (!state.current) return;
 
   // ✅ 問題が変わったときだけリセット
@@ -126,10 +125,22 @@ socket.on("state", (state) => {
     lastQuestionText = state.current.text;
   }
 
-  // 🔄 UI 更新などはそのまま
+  // ✅ 得点表示（ドンっと & 常時）
+  if (state.current && typeof state.current.point === "number") {
+    const popup = document.getElementById("point-popup");
+    const currentPoint = document.getElementById("current-point");
+    if (popup && currentPoint) {
+      showPointPopup(state.current.point);
+      currentPoint.textContent = `${state.current.point}点`;
+    }
+  }
+
+  // 🛑 game がなければ何もしない
   if (!document.getElementById("game")) return;
+
   updateUI(state);
 });
+
 
 
   // ✅ 得点表示（ドンっと & 常時）
