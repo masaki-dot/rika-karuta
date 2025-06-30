@@ -200,9 +200,14 @@ function nextQuestion(groupId) {
 
   state.questionCount++; // ← 重要
 
-  console.log("✅ 問題設定完了:", state.current);
+ console.log("✅ 問題設定完了:", state.current);
+io.to(groupId).emit("state", sanitizeState(state));
 
-  io.to(groupId).emit("state", sanitizeState(state));
+// ✅ ここを追加！
+state.waitingNext = false;
+state.answered = false;
+state.readDone = new Set();
+
 }
 
 
