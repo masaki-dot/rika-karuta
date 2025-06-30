@@ -111,17 +111,26 @@ function startGame() {
 }
 
 
+let lastQuestionText = "";
 
 socket.on("state", (state) => {
   console.log("📦 state 受信", state); 
 
   if (!state.current) return;
 
-  // 🔄 問題が切り替わったらリセット
-  hasAnimated = false;
-  locked = false;
-  alreadyAnswered = false;
-  showSpeed = state.showSpeed || 2000;
+  // ✅ 問題が変わったときだけリセット
+  if (state.current.text !== lastQuestionText) {
+    hasAnimated = false;
+    locked = false;
+    alreadyAnswered = false;
+    lastQuestionText = state.current.text;
+  }
+
+  // 🔄 UI 更新などはそのまま
+  if (!document.getElementById("game")) return;
+  updateUI(state);
+});
+
 
   // ✅ 得点表示（ドンっと & 常時）
   if (state.current && typeof state.current.point === "number") {
