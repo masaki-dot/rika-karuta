@@ -161,12 +161,15 @@ console.log("🎯 updateUI called", state); // ← 追加
     <div id="others"></div>
   `;
 
- if (!hasAnimated && state.current && state.current.text) {
+if (!hasAnimated && state.current && state.current.text) {
   animateText("yomifuda", state.current.text, showSpeed);
   hasAnimated = true;
+} else if (hasAnimated && state.current && state.current.text) {
+  const yomifuda = document.getElementById("yomifuda");
+  if (yomifuda && yomifuda.textContent !== state.current.text) {
+    yomifuda.textContent = state.current.text;
+  }
 }
-
-
 
 
   const cardsDiv = document.getElementById("cards");
