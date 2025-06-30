@@ -161,10 +161,11 @@ console.log("🎯 updateUI called", state); // ← 追加
     <div id="others"></div>
   `;
 
-  if (!hasAnimated && !state.answered && !state.waitingNext) {
+ if (!hasAnimated && state.current && state.current.text) {
   animateText("yomifuda", state.current.text, showSpeed);
   hasAnimated = true;
 }
+
 
 
 
