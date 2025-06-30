@@ -212,8 +212,8 @@ io.to(groupId).emit("state", sanitizeState(state));
 
 // ✅ ここを追加！
 state.waitingNext = false;
-state.answered = false;
-state.readDone = new Set();
+  state.answered = false;
+  state.readDone = new Set();
 
 }
 
