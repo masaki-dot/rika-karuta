@@ -155,14 +155,12 @@ socket.on("state", (state) => {
     }
   }
 
-  // ✅ 終了画面が表示されていれば何もしない
-  if (document.querySelector("#nextGameBtn")) return;
-
   // 🛑 game がなければ何もしない
   if (!document.getElementById("game")) return;
 
   updateUI(state);
 });
+
 
 
 socket.on("lock", () => {
