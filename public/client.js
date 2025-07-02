@@ -274,7 +274,25 @@ state.players.forEach(p => {
     `;
   }
 });
- }
+// updateUI(state) の中のどこか（たとえば最下部）に追加
+const existingTimer = document.getElementById("countdown-timer");
+if (!existingTimer) {
+  const timerDiv = document.createElement("div");
+  timerDiv.id = "countdown-timer";
+  timerDiv.style.position = "fixed";
+  timerDiv.style.bottom = "10px";
+  timerDiv.style.right = "10px";
+  timerDiv.style.fontSize = "1.5em";
+  timerDiv.style.background = "white";
+  timerDiv.style.border = "1px solid #ccc";
+  timerDiv.style.padding = "5px 10px";
+  timerDiv.style.borderRadius = "10px";
+  timerDiv.style.boxShadow = "2px 2px 5px rgba(0,0,0,0.2)";
+  document.body.appendChild(timerDiv);
+}
+
+
+}
 
 function getMyHP(state) {
   return state.players.find(p => p.name === playerName)?.hp ?? 20;
