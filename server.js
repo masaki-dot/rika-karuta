@@ -99,14 +99,30 @@ socket.on("read_done", (groupId) => {
 socket.on("start", ({ groupId }) => {
   console.log(`▶ 強制スタート: ${groupId}`);
   const state = states[groupId];
-  if (!state) return;
+  const group = groups[groupId];
+  if (!state || !group) return;
 
-  // 応急で設定を強制（あとで消してもOK）
-  state.maxQuestions = 5;
-  state.numCards = 5;
+  // プレイヤー状態を初期化（HP, スコア, 脱落記録など）
+  state.players.forEach(p => {
+    p.hp = 20;
+    p.score = 0;
+  });
+  group.players.forEach(p => {
+    p.hp = 20;
+    p.score = 0;
+  });
+
+  state.eliminatedOrder = [];
+  state.questionCount = 0;
+  state.usedQuestions = [];
+  state.readDone = new Set();
+  state.answered = false;
+  state.waitingNext = false;
+  state.misClicks = [];
 
   nextQuestion(groupId);
 });
+
 
 
 
