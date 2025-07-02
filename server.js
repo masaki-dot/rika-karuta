@@ -103,6 +103,7 @@ socket.on("start", ({ groupId }) => {
   const state = states[groupId];
   const group = groups[groupId];
   if (!state || !group) return;
+   state.locked = false;
 
   // プレイヤー状態を初期化（HP, スコア, 脱落記録など）
   state.players.forEach(p => {
