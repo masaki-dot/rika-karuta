@@ -244,7 +244,8 @@ function initState(groupId) {
 
 function nextQuestion(groupId) {
   const state = states[groupId];
-  if (!state) return;
+  if (!state || state.locked) return; // ✅ 終了していれば出題しない
+
 
   // ✅ 既存のタイマーをリセット（ここを追加！）
   if (state.readTimer) {
