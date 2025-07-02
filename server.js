@@ -224,7 +224,8 @@ function initState(groupId) {
     misClicks: [],
     usedQuestions: [],
     readStarted: false,
-    readTimer: null
+    readTimer: null,
+    eliminatedOrder: []
   };
 }
 
