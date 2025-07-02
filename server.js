@@ -214,15 +214,6 @@ function checkGameEnd(groupId) {
     io.to(groupId).emit("end", finalRanking);
     return;
   }
-
-  // 🔹問題数が15問に到達したら終了
-  if (state.questionCount >= 15) {
-    const remaining = survivors.sort((a, b) => b.hp - a.hp);
-    const eliminated = [...(state.eliminatedOrder || [])].reverse();
-    const finalRanking = [...remaining, ...eliminated.map(name => state.players.find(p => p.name === name))];
-    io.to(groupId).emit("end", finalRanking);
-    return;
-  }
 }
 
 
