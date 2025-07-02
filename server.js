@@ -120,6 +120,10 @@ socket.on("answer", ({ groupId, name, number }) => {
   const player = group.players.find(p => p.name === name);
   if (!player) return;
 
+  if (player.hp <= 0) {
+  return; // 脱落者は回答できない
+}
+  
   const point = state.current.point;
 
   if (correct) {
@@ -130,19 +134,28 @@ socket.on("answer", ({ groupId, name, number }) => {
   state.answered = true;
 
   // ✅ 正解した人以外を減点
-  group.players.forEach(p => {
-    if (p.name !== name) {
-      p.hp = Math.max(0, p.hp - state.current.point);
-      const sp = state.players.find(sp => sp.id === p.id);
-      if (sp) sp.hp = p.hp;  // ← state側も更新
+ group.players.forEach(p => {
+  if (p.name !== name) {
+    p.hp = Math.max(0, p.hp - point);
+    const sp = state.players.find(sp => sp.id === p.id);
+    if (sp) sp.hp = p.hp;
+
+    // ✅【ここに追加】HPが0以下になったら脱落記録
+    if (p.hp <= 0) {
+      if (!state.eliminatedOrder.includes(p.name)) {
+        state.eliminatedOrder.push(p.name);
+      }
     }
-  });
+  }
+});
+
 
   if (!state.waitingNext) {
     state.waitingNext = true;
     io.to(groupId).emit("state", sanitizeState(state));
     setTimeout(() => nextQuestion(groupId), 3000);
   }
+    checkGameEnd(groupId);
 }
 else {
   // ✅ 不正解時の処理
@@ -150,16 +163,50 @@ else {
   const sp = state.players.find(sp => sp.id === player.id);
   if (sp) sp.hp = player.hp;  // ← state側も更新
 
+  // ✅【ここに追加】HPが0以下になったら脱落記録
+  if (player.hp <= 0) {
+    player.hp = 0;
+    if (!state.eliminatedOrder.includes(player.name)) {
+      state.eliminatedOrder.push(player.name);
+    }
+  }
+
   state.misClicks.push({ name, number });
   state.current.cards = state.current.cards.map(c =>
     c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
   );
 }
 
-
   io.to(groupId).emit("state", sanitizeState(state));
+  checkGameEnd(groupId);
 });
 
+// 他の関数（例：nextQuestionなど）の下あたりに追加
+function checkGameEnd(groupId) {
+  const state = states[groupId]; // ✅ これが正解
+
+  if (!state) return;
+
+  // 生き残りプレイヤーの数を確認
+  const survivors = state.players.filter(p => p.hp > 0);
+
+  // 🔹最後の1人なら勝者として終了
+  if (survivors.length === 1) {
+    const eliminated = [...(state.eliminatedOrder || [])].reverse();
+    const finalRanking = [survivors[0], ...eliminated.map(name => state.players.find(p => p.name === name))];
+    io.to(groupId).emit("end", finalRanking);
+    return;
+  }
+
+  // 🔹問題数が15問に到達したら終了
+  if (state.questionCount >= 15) {
+    const remaining = survivors.sort((a, b) => b.hp - a.hp);
+    const eliminated = [...(state.eliminatedOrder || [])].reverse();
+    const finalRanking = [...remaining, ...eliminated.map(name => state.players.find(p => p.name === name))];
+    io.to(groupId).emit("end", finalRanking);
+    return;
+  }
+}
 
 
 
