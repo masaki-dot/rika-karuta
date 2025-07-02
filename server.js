@@ -229,9 +229,15 @@ function initState(groupId) {
   };
 }
 
-function nextQuestion(groupId) {
+ffunction nextQuestion(groupId) {
   const state = states[groupId];
   if (!state) return;
+
+  // ✅ 既存のタイマーをリセット（ここを追加！）
+  if (state.readTimer) {
+    clearTimeout(state.readTimer);
+    state.readTimer = null;
+  }
 
   // 🔍 デバッグログ
   console.log("📦 全カード数:", globalCards.length);
