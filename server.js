@@ -120,21 +120,32 @@ socket.on("answer", ({ groupId, name, number }) => {
   const player = group.players.find(p => p.name === name);
   if (!player) return;
 
+  const point = state.current.point;
+
   if (correct) {
-    player.score += state.current.point;
+    player.score += point;
     state.current.cards = state.current.cards.map(c =>
       c.number === number ? { ...c, correct: true, chosenBy: name } : c
     );
     state.answered = true;
 
+    // ✅ 正解した人以外は減点
+    group.players.forEach(p => {
+      if (p.name !== name) {
+        p.hp = Math.max(0, p.hp - point);
+      }
+    });
+
+    // 次の問題へ
     if (!state.waitingNext) {
       state.waitingNext = true;
       io.to(groupId).emit("state", sanitizeState(state));
       setTimeout(() => nextQuestion(groupId), 3000);
     }
+
   } else {
-    // ✅ 不正解時の処理（これが今ありません）
-    player.hp -= state.current.point;
+    // ✅ お手付きのみ減点
+    player.hp = Math.max(0, player.hp - point);
     state.misClicks.push({ name, number });
     state.current.cards = state.current.cards.map(c =>
       c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
@@ -143,6 +154,7 @@ socket.on("answer", ({ groupId, name, number }) => {
 
   io.to(groupId).emit("state", sanitizeState(state));
 });
+
 
 
 
