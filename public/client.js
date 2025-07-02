@@ -192,8 +192,6 @@ game.innerHTML += `
   <div id="others"></div>
 `;
 
-  `;
-
 if (!hasAnimated && state.current && state.current.text) {
   animateText("yomifuda", state.current.text, showSpeed);
   hasAnimated = true;
