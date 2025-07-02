@@ -93,7 +93,7 @@ socket.on("read_done", (groupId) => {
 
 // ✅ タイマー開始時にクライアントに通知（new）
 io.to(groupId).emit("timer_start", { seconds: 30 });
-
+});
 
 
 
