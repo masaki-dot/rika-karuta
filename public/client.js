@@ -180,17 +180,23 @@ function updateUI(state) {
     <div id="yomifuda"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap;"></div>
   `;
-    const myHP = getMyHP(state);
+   const myHP = getMyHP(state);
+const myHPPercent = Math.max(0, myHP / 20 * 100);
+let myHPColor = "green";
+if (myHP <= 5) myHPColor = "red";
+else if (myHP <= 10) myHPColor = "yellow";
+
 game.innerHTML += `
   <div style="margin-top:10px;">
     <h4>自分</h4>
     <div style="font-size: 1.5em;">HP: ${myHP}</div>
-    <div style="background: #ccc; width: 200px; height: 16px;">
-      <div style="background: green; width: ${Math.max(0, myHP / 20 * 100)}%; height: 100%;"></div>
+    <div style="background: #ccc; width: 200px; height: 20px;">
+      <div style="background: ${myHPColor}; width: ${myHPPercent}%; height: 100%;"></div>
     </div>
   </div>
   <div id="others"></div>
 `;
+
 
 if (!hasAnimated && state.current && state.current.text) {
   animateText("yomifuda", state.current.text, showSpeed);
