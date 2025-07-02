@@ -73,25 +73,26 @@ io.on("connection", (socket) => {
 socket.on("read_done", (groupId) => {
   const group = groups[groupId];
   const state = states[groupId];
-  if (!group || !state) return;
+  if (!group || !state || !state.current) return;
 
   // 読み終わったプレイヤーの記録
   if (!state.readDone) state.readDone = new Set();
   state.readDone.add(socket.id);
 
-  const alivePlayers = group.players.filter(p => p.hp > 0);
-  const finishedCount = state.readDone.size;
+  const latestText = state.current.text; // ✅ この問題の識別子
 
   // 念のため 30秒経過後にも進む保険
   if (state.readTimer) clearTimeout(state.readTimer);
   state.readTimer = setTimeout(() => {
-    if (!state.answered && !state.waitingNext) {
+    // ✅ 条件を厳密化：誤進行を防止
+    if (!state.answered && !state.waitingNext && state.current && state.current.text === latestText) {
       state.waitingNext = true;
       io.to(groupId).emit("state", sanitizeState(state));
       setTimeout(() => nextQuestion(groupId), 1000);
     }
   }, 30000);
 });
+
 
 
   
