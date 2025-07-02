@@ -210,12 +210,15 @@ function checkGameEnd(groupId) {
   const survivors = state.players.filter(p => p.hp > 0);
 
   // 🔹最後の1人なら勝者として終了
-  if (survivors.length === 1) {
-    const eliminated = [...(state.eliminatedOrder || [])].reverse();
-    const finalRanking = [survivors[0], ...eliminated.map(name => state.players.find(p => p.name === name))];
-    io.to(groupId).emit("end", finalRanking);
-    return;
-  }
+ if (survivors.length === 1) {
+  const eliminated = [...(state.eliminatedOrder || [])].reverse();
+  const finalRanking = [survivors[0], ...eliminated.map(name => state.players.find(p => p.name === name))];
+  io.to(groupId).emit("end", finalRanking);
+  
+  state.locked = true; // ✅ 終了フラグを立てる（次の問題に進ませない）
+  return;
+}
+
 }
 
 
