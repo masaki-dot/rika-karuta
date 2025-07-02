@@ -166,9 +166,18 @@ socket.on("lock", () => {
   locked = true;
 });
 
-socket.on("end", (players) => {
-  document.getElementById("game").innerHTML = `<h2>ゲーム終了！</h2>`;
+socket.on("end", (ranking) => {
+  const game = document.getElementById("game");
+  game.innerHTML = `<h2>🎉 ゲーム終了！</h2><ol style="font-size: 1.5em;">${
+    ranking.map(p => `<li>${p.name}（HP: ${p.hp}）</li>`).join("")
+  }</ol><button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`;
+
+  // 次のゲームへボタンのイベント（今は機能なし）
+  document.getElementById("nextGameBtn").onclick = () => {
+    console.log("▶ 次のゲームボタンが押されました（まだ何もしない）");
+  };
 });
+
 
 function updateUI(state) {
   console.log("🎯 updateUI called", state); // ← 追加
