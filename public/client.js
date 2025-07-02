@@ -266,7 +266,7 @@ state.players.forEach(p => {
     `;
   }
 });
-
+ }
 
 function getMyHP(state) {
   return state.players.find(p => p.name === playerName)?.hp ?? 20;
