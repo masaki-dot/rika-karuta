@@ -100,21 +100,23 @@ function fixName() {
 function showPointPopup(point) {
   const popup = document.getElementById("point-popup");
   popup.textContent = `${point}点！`;
-  popup.style.transform = "scale(3)";
-  popup.classList.remove("hidden");
+popup.style.transition = "none";
+popup.style.transform = "scale(5)";
+popup.classList.remove("hidden");
 
-  // 1秒後に縮小アニメーション
-  setTimeout(() => {
-    popup.style.transition = "transform 1s ease";
-    popup.style.transform = "scale(0)";
-  }, 1000);
+// 1秒間そのまま止まる
+setTimeout(() => {
+  popup.style.transition = "transform 1s ease";
+  popup.style.transform = "scale(0)";
+}, 1000);
 
-  // 完全に非表示
-  setTimeout(() => {
-    popup.classList.add("hidden");
-    popup.style.transition = "";
-    popup.style.transform = "scale(1)";
-  }, 2000);
+// さらに1秒後に非表示
+setTimeout(() => {
+  popup.classList.add("hidden");
+  popup.style.transition = "";
+  popup.style.transform = "scale(1)";
+}, 2000);
+
 }
 
 
