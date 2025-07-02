@@ -22,7 +22,6 @@ function showCSVUploadUI() {
   document.body.innerHTML = `
     <h2>CSVファイルをアップロード</h2>
     <input type="file" id="csvFile" accept=".csv" /><br/><br/>
-    <label>問題数: <input type="number" id="maxQuestions" value="10" min="1" /></label><br/>
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
     <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" /></label><br/><br/>
   `;
@@ -47,7 +46,6 @@ function handleCSVUpload() {
         text: String(r[2]).trim()
       })).filter(c => c.term && c.text);
 
-      maxQuestions = parseInt(document.getElementById("maxQuestions").value);
       numCards = parseInt(document.getElementById("numCards").value);
       showSpeed = parseInt(document.getElementById("speed").value);
 
