@@ -248,18 +248,25 @@ state.current.cards.forEach(c => {
 
   const otherDiv = document.getElementById("others");
   otherDiv.innerHTML = `<h4>他プレイヤー</h4>`;
-  state.players.forEach(p => {
-    if (p.name !== playerName) {
-      const hpPercent = Math.max(0, p.hp / 20 * 100);
-      otherDiv.innerHTML += `<div>${p.name} HP: ${p.hp}<div style="background: #ccc; width: 100px; height: 10px;"><div style="background: green; width: ${hpPercent}%; height: 10px;"></div></div></div>`;
-    }
-  });
+state.players.forEach(p => {
+  if (p.name !== playerName) {
+    const hpPercent = Math.max(0, p.hp / 20 * 100);
+    let hpColor = "green";
+    if (p.hp <= 5) hpColor = "red";
+    else if (p.hp <= 10) hpColor = "yellow";
 
-  if (state.misClicks?.length > 0) {
-    const list = state.misclicks.map(m => `${m.name}: ${m.number}`).join("<br>");
-    otherDiv.innerHTML += `<div><strong>お手付き</strong><br>${list}</div>`;
+    otherDiv.innerHTML += `
+      <div style="margin-top:10px;">
+        <strong>${p.name}</strong>
+        <div style="font-size: 1.5em;">HP: ${p.hp}</div>
+        <div style="background: #ccc; width: 200px; height: 20px;">
+          <div style="background: ${hpColor}; width: ${hpPercent}%; height: 100%;"></div>
+        </div>
+      </div>
+    `;
   }
-}
+});
+
 
 function getMyHP(state) {
   return state.players.find(p => p.name === playerName)?.hp ?? 20;
