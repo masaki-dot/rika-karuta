@@ -174,7 +174,7 @@ function updateUI(state) {
   console.log("🎯 updateUI called", state); // ← 追加
   const game = document.getElementById("game");
   game.innerHTML = `
-    <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
+  <div><strong>問題 ${state.questionCount} / 15</strong></div>
     <div id="yomifuda"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap;"></div>
   `;
