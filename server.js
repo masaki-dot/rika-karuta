@@ -231,10 +231,7 @@ function initState(groupId) {
 
 function nextQuestion(groupId) {
   const state = states[groupId];
-  if (!state || state.questionCount >= state.maxQuestions) {
-    io.to(groupId).emit("end", state);
-    return;
-  }
+  if (!state) return;
 
   // 🔍 デバッグログ
   console.log("📦 全カード数:", globalCards.length);
