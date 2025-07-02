@@ -230,7 +230,7 @@ function initState(groupId) {
   };
 }
 
-ffunction nextQuestion(groupId) {
+function nextQuestion(groupId) {
   const state = states[groupId];
   if (!state) return;
 
