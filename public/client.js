@@ -173,14 +173,25 @@ socket.on("end", (players) => {
 });
 
 function updateUI(state) {
-console.log("🎯 updateUI called", state); // ← 追加
+  console.log("🎯 updateUI called", state); // ← 追加
   const game = document.getElementById("game");
   game.innerHTML = `
     <div><strong>問題 ${state.questionCount} / ${state.maxQuestions}</strong></div>
     <div id="yomifuda"></div>
     <div id="cards" style="display: flex; flex-wrap: wrap;"></div>
-    <div>自分のHP: ${getMyHP(state)}点</div>
-    <div id="others"></div>
+  `;
+    const myHP = getMyHP(state);
+game.innerHTML += `
+  <div style="margin-top:10px;">
+    <h4>自分</h4>
+    <div style="font-size: 1.5em;">HP: ${myHP}</div>
+    <div style="background: #ccc; width: 200px; height: 16px;">
+      <div style="background: green; width: ${Math.max(0, myHP / 20 * 100)}%; height: 100%;"></div>
+    </div>
+  </div>
+  <div id="others"></div>
+`;
+
   `;
 
 if (!hasAnimated && state.current && state.current.text) {
