@@ -329,4 +329,19 @@ function animateText(elementId, text, speed) {
       socket.emit("read_done", groupId); // ✅ ここでemitされてるか
     }
   }, speed);
+
+  // animateText の全文表示後（全文出たとき）に次を追加
+let countdown = 30;
+const timer = document.getElementById("countdown-timer");
+if (timer) timer.textContent = `⏳ ${countdown}s`;
+const intervalId = setInterval(() => {
+  countdown--;
+  if (timer) timer.textContent = `⏳ ${countdown}s`;
+  if (countdown <= 0) {
+    clearInterval(intervalId);
+    if (timer) timer.textContent = "";
+  }
+}, 1000);
+
+
 }
