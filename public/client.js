@@ -1,6 +1,7 @@
 // public/client.js
 
 let socket = io();
+let countdownIntervalId = null;
 let playerName = "";
 let groupId = "";
 let showSpeed = 2000;
