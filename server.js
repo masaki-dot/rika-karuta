@@ -84,14 +84,16 @@ socket.on("read_done", (groupId) => {
   // 念のため 30秒経過後にも進む保険
   if (state.readTimer) clearTimeout(state.readTimer);
   state.readTimer = setTimeout(() => {
-    // ✅ 条件を厳密化：誤進行を防止
-    if (!state.answered && !state.waitingNext && state.current && state.current.text === latestText) {
-      state.waitingNext = true;
-      io.to(groupId).emit("state", sanitizeState(state));
-      setTimeout(() => nextQuestion(groupId), 1000);
-    }
-  }, 30000);
-});
+  if (!state.answered && !state.waitingNext && state.current && state.current.text === latestText) {
+    state.waitingNext = true;
+    io.to(groupId).emit("state", sanitizeState(state));
+    setTimeout(() => nextQuestion(groupId), 1000);
+  }
+}, 30000);
+
+// ✅ タイマー開始時にクライアントに通知（new）
+io.to(groupId).emit("timer_start", { seconds: 30 });
+
 
 
 
