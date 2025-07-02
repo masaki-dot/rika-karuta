@@ -181,22 +181,30 @@ socket.on("end", (ranking) => {
 });
 
 socket.on("timer_start", ({ seconds }) => {
+  if (countdownIntervalId) {
+    clearInterval(countdownIntervalId);
+    countdownIntervalId = null;
+  }
+
   let countdown = seconds;
   const timer = document.getElementById("countdown-timer");
   if (!timer) return;
 
   timer.textContent = `⏳ ${countdown}s`;
 
-  const intervalId = setInterval(() => {
+  countdownIntervalId = setInterval(() => {
     countdown--;
     if (countdown >= 0) {
       timer.textContent = `⏳ ${countdown}s`;
     }
     if (countdown <= 0) {
-      clearInterval(intervalId);
+      clearInterval(countdownIntervalId);
+      countdownIntervalId = null;
+      timer.textContent = "";
     }
   }, 1000);
 });
+
 
 
 
