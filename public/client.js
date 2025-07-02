@@ -88,36 +88,45 @@ function fixName() {
 
   // ゲーム開始画面に切り替え
   document.body.innerHTML = `
-    <button onclick="startGame()">スタート</button>
-    <div id="point-popup" class="hidden" 
-  style="font-size: 8em; color: red; position: fixed; top: 40%; left: 50%; transform: translateX(-50%) scale(1); z-index: 999; transition: none;">
-</div>
-    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
-    <div id="game"></div>
-  `;
+  <button onclick="startGame()">スタート</button>
+  <div id="point-popup" class="hidden"
+    style="font-size: 10em; font-weight: bold; color: red;
+           position: fixed; top: 50%; left: 50%;
+           transform: translate(-50%, -50%) scale(1);
+           z-index: 9999; transition: none; opacity: 1;">
+  </div>
+  <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+  <div id="game"></div>
+`;
+
 }
 
 function showPointPopup(point) {
   const popup = document.getElementById("point-popup");
   popup.textContent = `${point}点！`;
-popup.style.transition = "none";
-popup.style.transform = "scale(5)";
-popup.classList.remove("hidden");
 
-// 1秒間そのまま止まる
-setTimeout(() => {
-  popup.style.transition = "transform 1s ease";
-  popup.style.transform = "scale(0)";
-}, 1000);
+  // 初期表示：拡大状態
+  popup.style.transition = "none";
+  popup.style.transform = "translate(-50%, -50%) scale(3)";
+  popup.style.opacity = "1";
+  popup.classList.remove("hidden");
 
-// さらに1秒後に非表示
-setTimeout(() => {
-  popup.classList.add("hidden");
-  popup.style.transition = "";
-  popup.style.transform = "scale(1)";
-}, 2000);
+  // 1秒後に縮小・フェードアウト
+  setTimeout(() => {
+    popup.style.transition = "transform 1s ease, opacity 1s ease";
+    popup.style.transform = "translate(-50%, -50%) scale(0)";
+    popup.style.opacity = "0";
+  }, 1000);
 
+  // 非表示に戻す
+  setTimeout(() => {
+    popup.classList.add("hidden");
+    popup.style.transition = "";
+    popup.style.transform = "translate(-50%, -50%) scale(1)";
+    popup.style.opacity = "1";
+  }, 2000);
 }
+
 
 
 function startGame() {
