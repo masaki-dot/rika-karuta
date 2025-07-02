@@ -123,34 +123,39 @@ socket.on("answer", ({ groupId, name, number }) => {
   const point = state.current.point;
 
   if (correct) {
-    player.score += point;
-    state.current.cards = state.current.cards.map(c =>
-      c.number === number ? { ...c, correct: true, chosenBy: name } : c
-    );
-    state.answered = true;
+  player.score += state.current.point;
+  state.current.cards = state.current.cards.map(c =>
+    c.number === number ? { ...c, correct: true, chosenBy: name } : c
+  );
+  state.answered = true;
 
-    // ✅ 正解した人以外は減点
-    group.players.forEach(p => {
-      if (p.name !== name) {
-        p.hp = Math.max(0, p.hp - point);
-      }
-    });
-
-    // 次の問題へ
-    if (!state.waitingNext) {
-      state.waitingNext = true;
-      io.to(groupId).emit("state", sanitizeState(state));
-      setTimeout(() => nextQuestion(groupId), 3000);
+  // ✅ 正解した人以外を減点
+  group.players.forEach(p => {
+    if (p.name !== name) {
+      p.hp = Math.max(0, p.hp - state.current.point);
+      const sp = state.players.find(sp => sp.id === p.id);
+      if (sp) sp.hp = p.hp;  // ← state側も更新
     }
+  });
 
-  } else {
-    // ✅ お手付きのみ減点
-    player.hp = Math.max(0, player.hp - point);
-    state.misClicks.push({ name, number });
-    state.current.cards = state.current.cards.map(c =>
-      c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
-    );
+  if (!state.waitingNext) {
+    state.waitingNext = true;
+    io.to(groupId).emit("state", sanitizeState(state));
+    setTimeout(() => nextQuestion(groupId), 3000);
   }
+}
+else {
+  // ✅ 不正解時の処理
+  player.hp -= state.current.point;
+  const sp = state.players.find(sp => sp.id === player.id);
+  if (sp) sp.hp = player.hp;  // ← state側も更新
+
+  state.misClicks.push({ name, number });
+  state.current.cards = state.current.cards.map(c =>
+    c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
+  );
+}
+
 
   io.to(groupId).emit("state", sanitizeState(state));
 });
