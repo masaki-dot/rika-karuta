@@ -109,10 +109,12 @@ socket.on("start", ({ groupId }) => {
   state.players.forEach(p => {
     p.hp = 20;
     p.score = 0;
+    p.correctCount = 0;
   });
   group.players.forEach(p => {
     p.hp = 20;
     p.score = 0;
+    p.correctCount = 0;
   });
 
   state.eliminatedOrder = [];
