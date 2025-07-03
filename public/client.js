@@ -138,7 +138,11 @@ let lastQuestionText = "";
 
 socket.on("state", (state) => {
   console.log("📦 state 受信", state); 
-  if (!state.current) return;
+if (!state.current) return;
+
+// ✅ 表示速度を state から取得（同期用）
+showSpeed = state.showSpeed;
+
 
   // ✅ 問題が変わったときだけ初期化＆得点ポップアップ
   if (state.current.text !== lastQuestionText) {
