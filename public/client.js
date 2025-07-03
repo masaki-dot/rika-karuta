@@ -330,6 +330,10 @@ function getMyHP(state) {
   return state.players.find(p => p.name === playerName)?.hp ?? 20;
 }
 
+function getMyCorrectCount(state) {
+  return state.players.find(p => p.name === playerName)?.correctCount ?? 0;
+}
+
 function submitAnswer(number) {
   if (locked || alreadyAnswered) {
     console.log("回答ブロック中");
