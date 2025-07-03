@@ -175,7 +175,10 @@ socket.on("lock", () => {
 socket.on("end", (ranking) => {
   const game = document.getElementById("game");
   game.innerHTML = `<h2>🎉 ゲーム終了！</h2><ol style="font-size: 1.5em;">${
-    ranking.map(p => `<li>${p.name}（HP: ${p.hp}）</li>`).join("")
+    ranking.map(p =>
+  `<li>${p.name}（スコア: ${p.finalScore}｜正解数: ${p.correctCount ?? 0}）</li>`
+).join("")
+
   }</ol><button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`;
 
   // 次のゲームへボタンのイベント（今は機能なし）
