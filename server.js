@@ -223,22 +223,23 @@ function checkGameEnd(groupId) {
   // 🔹最後の1人なら勝者として終了
  if (survivors.length === 1) {
   const eliminated = [...(state.eliminatedOrder || [])].reverse();
-  const ranked = [survivors[0], ...eliminated.map(name => state.players.find(p => p.name === name))];
 
-// スコア計算：正解数 × 10 + 順位ボーナス
-ranked.forEach((p, i) => {
-  const correctCount = p.correctCount || 0;
-  let bonus = 0;
-  if (i === 0) bonus = 200;
-  else if (i === 1) bonus = 100;
-  p.finalScore = correctCount * 10 + bonus;
-});
+  const ranked = [survivors[0], ...eliminated
+    .map(name => state.players.find(p => p.name === name))
+    .filter(p => p !== undefined)]; // ← undefined除外！
 
-// スコア順に並べ替え（※重要）
-ranked.sort((a, b) => b.finalScore - a.finalScore);
+  ranked.forEach((p, i) => {
+    const correctCount = p.correctCount || 0;
+    let bonus = 0;
+    if (i === 0) bonus = 200;
+    else if (i === 1) bonus = 100;
+    p.finalScore = correctCount * 10 + bonus;
+  });
 
-io.to(groupId).emit("end", ranked); // ← 結果送信
-state.locked = true;
+  ranked.sort((a, b) => b.finalScore - a.finalScore);
+
+  io.to(groupId).emit("end", ranked);
+  state.locked = true;
 // ✅ 終了フラグを立てる（次の問題に進ませない）
   return;
 }
