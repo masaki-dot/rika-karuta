@@ -183,9 +183,9 @@ socket.on("end", (ranking) => {
   }</ol><button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`;
 
   // 次のゲームへボタンのイベント（今は機能なし）
-  document.getElementById("nextGameBtn").onclick = () => {
-    console.log("▶ 次のゲームボタンが押されました（まだ何もしない）");
-  };
+ document.getElementById("nextGameBtn").onclick = () => {
+  socket.emit("start", { groupId }); // ✅ 同じ設定のまま再スタート
+};
 });
 
 socket.on("timer_start", ({ seconds }) => {
