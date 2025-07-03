@@ -298,7 +298,7 @@ state.players.forEach(p => {
     otherDiv.innerHTML += `
       <div style="margin-top:10px;">
         <strong>${p.name}</strong>
-        <div style="font-size: 1.5em;">HP: ${p.hp}</div>
+        <div style="font-size: 1.5em;">HP: ${p.hp}｜正解数: ${p.correctCount ?? 0}</div>
         <div style="background: #ccc; width: 200px; height: 20px;">
           <div style="background: ${hpColor}; width: ${hpPercent}%; height: 100%;"></div>
         </div>
