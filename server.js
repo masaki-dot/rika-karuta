@@ -234,6 +234,18 @@ function checkGameEnd(groupId) {
     if (i === 0) bonus = 200;
     else if (i === 1) bonus = 100;
     p.finalScore = correctCount * 10 + bonus;
+    ranked.forEach((p, i) => {
+  const correctCount = p.correctCount || 0;
+  let bonus = 0;
+  if (i === 0) bonus = 200;
+  else if (i === 1) bonus = 100;
+  p.finalScore = correctCount * 10 + bonus;
+
+  const gPlayer = groups[groupId].players.find(gp => gp.id === p.id);
+  if (gPlayer) {
+    gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
+    p.totalScore = gPlayer.totalScore; // ✅ クライアント送信用に埋め込む
+  }
   });
 
   ranked.sort((a, b) => b.finalScore - a.finalScore);
