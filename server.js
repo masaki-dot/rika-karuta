@@ -150,6 +150,7 @@ socket.on("answer", ({ groupId, name, number }) => {
 
   if (correct) {
   player.score += state.current.point;
+  player.correctCount = (player.correctCount || 0) + 1;
   state.current.cards = state.current.cards.map(c =>
     c.number === number ? { ...c, correct: true, chosenBy: name } : c
   );
