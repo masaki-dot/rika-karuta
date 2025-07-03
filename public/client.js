@@ -229,7 +229,7 @@ else if (myHP <= 10) myHPColor = "yellow";
 game.innerHTML += `
   <div style="margin-top:10px;">
     <h4>自分</h4>
-    <div style="font-size: 1.5em;">HP: ${myHP}</div>
+<div style="font-size: 1.5em;">HP: ${myHP}｜正解数: ${getMyCorrectCount(state)}</div>
     <div style="background: #ccc; width: 200px; height: 20px;">
       <div style="background: ${myHPColor}; width: ${myHPPercent}%; height: 100%;"></div>
     </div>
