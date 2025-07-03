@@ -42,7 +42,7 @@ io.on("connection", (socket) => {
 
   // ✅ プレイヤーがいなければ追加（追加）
   if (!groups[groupId].players.find(p => p.id === socket.id)) {
-    groups[groupId].players.push({ id: socket.id, name: "未設定", hp: 20, score: 0 });
+    groups[groupId].players.push({ id: socket.id, name: "未設定", hp: 20, score: 0,　correctCount: 0 });
   }
 
   if (!states[groupId]) states[groupId] = initState(groupId);
