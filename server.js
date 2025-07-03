@@ -148,9 +148,16 @@ socket.on("answer", ({ groupId, name, number }) => {
   
   const point = state.current.point;
 
-  if (correct) {
+ if (correct) {
   player.score += state.current.point;
+
+  // ✅ 正解数カウント追加（group用）
   player.correctCount = (player.correctCount || 0) + 1;
+
+  // ✅ 正解数カウント追加（state用）
+  const sp = state.players.find(sp => sp.id === player.id);
+  if (sp) sp.correctCount = (sp.correctCount || 0) + 1;
+
   state.current.cards = state.current.cards.map(c =>
     c.number === number ? { ...c, correct: true, chosenBy: name } : c
   );
