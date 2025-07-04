@@ -201,6 +201,7 @@ else {
   // ✅【ここに追加】HPが0以下になったら脱落記録
   if (player.hp <= 0) {
     player.hp = 0;
+    if (sp) sp.hp = 0;
     if (!state.eliminatedOrder.includes(player.name)) {
       state.eliminatedOrder.push(player.name);
     }
