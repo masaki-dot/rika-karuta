@@ -27,8 +27,12 @@ io.on("connection", (socket) => {
 
   // 🔧 既存のグループ state をすべてリセット
   for (const key in states) {
-    delete states[key];
-  }
+  delete states[key];
+}
+for (const key in groups) {
+  delete groups[key]; // ✅ ← groups もリセット
+}
+
 
   io.emit("start_group_selection");
 });
