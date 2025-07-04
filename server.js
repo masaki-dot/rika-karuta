@@ -147,75 +147,67 @@ socket.on("answer", ({ groupId, name, number }) => {
   const player = group.players.find(p => p.name === name);
   if (!player) return;
 
-  if (player.hp <= 0) {
-  return; // 脱落者は回答できない
-}
-  
+  if (player.hp <= 0) return;
+
   const point = state.current.point;
 
- if (correct) {
-  player.score += state.current.point;
+  if (correct) {
+    player.score += point;
+    player.correctCount = (player.correctCount || 0) + 1;
 
-  // ✅ 正解数カウント追加（group用）
-  player.correctCount = (player.correctCount || 0) + 1;
+    const sp = state.players.find(sp => sp.id === player.id);
+    if (sp) sp.correctCount = (sp.correctCount || 0) + 1;
 
-  // ✅ 正解数カウント追加（state用）
-  const sp = state.players.find(sp => sp.id === player.id);
-  if (sp) sp.correctCount = (sp.correctCount || 0) + 1;
+    state.current.cards = state.current.cards.map(c =>
+      c.number === number ? { ...c, correct: true, chosenBy: name } : c
+    );
+    state.answered = true;
 
-  state.current.cards = state.current.cards.map(c =>
-    c.number === number ? { ...c, correct: true, chosenBy: name } : c
-  );
-  state.answered = true;
+    group.players.forEach(p => {
+      if (p.name !== name) {
+        p.hp = Math.max(0, p.hp - point);
+        const sp = state.players.find(sp => sp.id === p.id);
+        if (sp) sp.hp = p.hp;
 
-  // ✅ 正解した人以外を減点
- group.players.forEach(p => {
-  if (p.name !== name) {
-    p.hp = Math.max(0, p.hp - point);
-    const sp = state.players.find(sp => sp.id === p.id);
-    if (sp) sp.hp = p.hp;
+        if (p.hp <= 0 && !state.eliminatedOrder.includes(p.name)) {
+          state.eliminatedOrder.push(p.name);
+        }
+      }
+    });
 
-    // ✅【ここに追加】HPが0以下になったら脱落記録
-    if (p.hp <= 0) {
-      if (!state.eliminatedOrder.includes(p.name)) {
-        state.eliminatedOrder.push(p.name);
+    if (!state.waitingNext) {
+      state.waitingNext = true;
+      io.to(groupId).emit("state", sanitizeState(state));
+
+      checkGameEnd(groupId);
+      if (!state.locked) {
+        setTimeout(() => nextQuestion(groupId), 3000);
       }
     }
-  }
-});
+  } else {
+    // ✅ これが正しく「不正解時」に対応！
+    player.hp -= point;
+    const sp = state.players.find(sp => sp.id === player.id);
+    if (sp) sp.hp = player.hp;
 
-
-  if (!state.waitingNext) {
-    state.waitingNext = true;
-    io.to(groupId).emit("state", sanitizeState(state));
-    setTimeout(() => nextQuestion(groupId), 3000);
-  }
-    checkGameEnd(groupId);
-}
-else {
-  // ✅ 不正解時の処理
-  player.hp -= state.current.point;
-  const sp = state.players.find(sp => sp.id === player.id);
-  if (sp) sp.hp = player.hp;  // ← state側も更新
-
-  // ✅【ここに追加】HPが0以下になったら脱落記録
-  if (player.hp <= 0) {
-    player.hp = 0;
-    if (sp) sp.hp = 0;
-    if (!state.eliminatedOrder.includes(player.name)) {
-      state.eliminatedOrder.push(player.name);
+    if (player.hp <= 0) {
+      player.hp = 0;
+      if (sp) sp.hp = 0;
+      if (!state.eliminatedOrder.includes(player.name)) {
+        state.eliminatedOrder.push(player.name);
+      }
     }
+
+    state.misClicks.push({ name, number });
+    state.current.cards = state.current.cards.map(c =>
+      c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
+    );
+
+    io.to(groupId).emit("state", sanitizeState(state));
+    checkGameEnd(groupId);
   }
-
-  state.misClicks.push({ name, number });
-  state.current.cards = state.current.cards.map(c =>
-    c.number === number ? { ...c, incorrect: true, chosenBy: name } : c
-  );
-}
-
-  io.to(groupId).emit("state", sanitizeState(state));
-  checkGameEnd(groupId);
 });
+
 
 // 他の関数（例：nextQuestionなど）の下あたりに追加
 function checkGameEnd(groupId) {
