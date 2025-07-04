@@ -220,6 +220,8 @@ function checkGameEnd(groupId) {
   const state = states[groupId];
   if (!state) return;
 
+  if (state.locked) return; // ✅ すでに終了処理したら二重実行させない
+
   const survivors = state.players.filter(p => p.hp > 0);
 
   if (survivors.length === 1) {
