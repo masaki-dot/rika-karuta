@@ -107,9 +107,10 @@ socket.on("start", ({ groupId }) => {
   const state = states[groupId];
   const group = groups[groupId];
   if (!state || !group) return;
-   state.locked = false;
 
-  // プレイヤー状態を初期化（HP, スコア, 脱落記録など）
+  state.locked = false; // ✅ ここで locked フラグを解除して再スタートできるようにする
+
+  // プレイヤー状態を初期化
   state.players.forEach(p => {
     p.hp = 20;
     p.score = 0;
