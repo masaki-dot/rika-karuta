@@ -217,44 +217,45 @@ else {
 
 // 他の関数（例：nextQuestionなど）の下あたりに追加
 function checkGameEnd(groupId) {
-  const state = states[groupId]; // ✅ これが正解
-
+  const state = states[groupId];
   if (!state) return;
 
-  // 生き残りプレイヤーの数を確認
   const survivors = state.players.filter(p => p.hp > 0);
 
-  // 🔹最後の1人なら勝者として終了
- if (survivors.length === 1) {
-  const eliminated = [...(state.eliminatedOrder || [])].reverse();
+  if (survivors.length === 1) {
+    const eliminated = [...(state.eliminatedOrder || [])].reverse();
 
-  const ranked = [survivors[0], ...eliminated
-    .map(name => state.players.find(p => p.name === name))
-    .filter(p => p !== undefined)]; // ← undefined除外！
+    const ranked = [survivors[0], ...eliminated
+      .map(name => state.players.find(p => p.name === name))
+      .filter(p => p !== undefined)];
 
-  ranked.forEach((p, i) => {
-    const correctCount = p.correctCount || 0;
-    let bonus = 0;
-    if (i === 0) bonus = 200;
-    else if (i === 1) bonus = 100;
-    p.finalScore = correctCount * 10 + bonus;
+    const alreadyUpdated = new Set(); // ✅ 2重加算防止
 
-  const gPlayer = groups[groupId].players.find(gp => gp.id === p.id);
-  if (gPlayer) {
-    gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
-    p.totalScore = gPlayer.totalScore; // ✅ クライアント送信用に埋め込む
+    ranked.forEach((p, i) => {
+      const correctCount = p.correctCount || 0;
+      let bonus = 0;
+      if (i === 0) bonus = 200;
+      else if (i === 1) bonus = 100;
+      p.finalScore = correctCount * 10 + bonus;
+
+      const gPlayer = groups[groupId].players.find(gp => gp.id === p.id);
+      if (gPlayer && !alreadyUpdated.has(gPlayer.id)) {
+        gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
+        p.totalScore = gPlayer.totalScore;
+        alreadyUpdated.add(gPlayer.id); // ✅ 一度だけ加算
+      } else {
+        p.totalScore = gPlayer?.totalScore ?? p.finalScore;
+      }
+    });
+
+    ranked.sort((a, b) => b.finalScore - a.finalScore);
+
+    io.to(groupId).emit("end", ranked);
+    state.locked = true;
+    return;
   }
-  });
-
-  ranked.sort((a, b) => b.finalScore - a.finalScore);
-
-  io.to(groupId).emit("end", ranked);
-  state.locked = true;
-// ✅ 終了フラグを立てる（次の問題に進ませない）
-  return;
 }
 
-}
 
 
 
