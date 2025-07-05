@@ -112,18 +112,21 @@ function showStartUI() {
 
 
 function startGameUI() {
+  if (isHost) {
+    socket.emit("host_start");
+  } else {
+    // スタートボタンを無効化（プレイヤーからは送らせない）
+    alert("ホストがゲームを開始します。");
+    return;
+  }
+
   document.body.innerHTML = `
-    <div id="point-popup" class="hidden"
-      style="font-size: 10em; font-weight: bold; color: red;
-             position: fixed; top: 50%; left: 50%;
-             transform: translate(-50%, -50%) scale(1);
-             z-index: 9999; transition: none; opacity: 1;">
-    </div>
-    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+    <div id="point-popup" class="hidden" ...></div>
+    <div id="current-point" ...></div>
     <div id="game"></div>
   `;
-  socket.emit("start", { groupId });  // ゲーム開始イベント送信
 }
+
 
 function backToGroupSelection() {
   groupId = "";
