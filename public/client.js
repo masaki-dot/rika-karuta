@@ -214,33 +214,27 @@ let lastQuestionText = "";
 
 socket.on("state", (state) => {
   console.log("📦 state 受信", state); 
-if (!state.current) return;
 
-// ✅ 表示速度を state から取得（同期用）
-showSpeed = state.showSpeed;
-
-
-  // ✅ 問題が変わったときだけ初期化＆得点ポップアップ
-  if (state.current.text !== lastQuestionText) {
-    hasAnimated = false;
-    locked = false;
-    alreadyAnswered = false;
-    lastQuestionText = state.current.text;
-
-    // ✅ 得点ポップアップ（1回のみ）
-    const popup = document.getElementById("point-popup");
-    const currentPoint = document.getElementById("current-point");
-    if (popup && currentPoint && typeof state.current.point === "number") {
-      showPointPopup(state.current.point);
-      currentPoint.textContent = `${state.current.point}点`;
-    }
+  // ✅ ゲーム画面が未表示なら、自動で表示
+  if (!document.getElementById("game")) {
+    document.body.innerHTML = `
+      <div id="point-popup" class="hidden"
+        style="font-size: 10em; font-weight: bold; color: red;
+               position: fixed; top: 50%; left: 50%;
+               transform: translate(-50%, -50%) scale(1);
+               z-index: 9999; transition: none; opacity: 1;">
+      </div>
+      <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+      <div id="game"></div>
+    `;
   }
 
-  // 🛑 game がなければ何もしない
-  if (!document.getElementById("game")) return;
+  if (!state.current) return;
 
+  showSpeed = state.showSpeed;
   updateUI(state);
 });
+
 
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
