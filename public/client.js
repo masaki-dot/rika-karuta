@@ -79,36 +79,46 @@ function fixName() {
   socket.emit("set_name", { groupId, name: playerName });
 
   // ゲーム開始画面に切り替え
- document.body.innerHTML = `
-  <h2 style="margin-bottom:10px;">🎮 ゲームのルール</h2>
-  <div style="text-align:left; font-size:1.1em; line-height:1.6;">
-    <p><strong style="color:darkred;">🩸 HPが0になると脱落！</strong><br>
-       回答を間違えると、その問題のポイント分だけHPが減ります。</p>
+ showStartUI();  // スタート画面を関数で表示（次ステップで作る）
 
-    <p><strong style="color:green;">✅ 正解すると得点ゲット</strong><br>
-       ・1問正解ごとに <strong style="color:green;">＋10点</strong><br>
-       ・さらに最後の1人なら <strong style="color:gold;">＋200点</strong><br>
-       ・2番目に脱落しなかった人には <strong style="color:orange;">＋100点</strong></p>
 
-    <p><strong style="color:crimson;">⚠ 他のプレイヤーに減点効果</strong><br>
-       自分が正解すると、他の全員のHPがその問題の点数分減ります。</p>
+}
 
-    <p><strong style="color:gray;">📉 不正解は自分だけが減点</strong><br>
-       他の人に影響せず、自分のHPだけが減ります。</p>
-  </div>
+function showStartUI() {
+  document.body.innerHTML = `
+    <h2>🎮 ゲームのルール</h2>
+    <div style="text-align:left; font-size:1.1em; line-height:1.6;">
+      <p><strong style="color:darkred;">🩸 HPが0になると脱落！</strong><br>
+         回答を間違えると、その問題のポイント分だけHPが減ります。</p>
 
-  <button onclick="startGame()" style="margin-top:20px; font-size:1.2em;">スタート</button>
+      <p><strong style="color:green;">✅ 正解すると得点ゲット</strong><br>
+         ・1問正解ごとに <strong style="color:green;">＋10点</strong><br>
+         ・さらに最後の1人なら <strong style="color:gold;">＋200点</strong><br>
+         ・2番目に脱落しなかった人には <strong style="color:orange;">＋100点</strong></p>
 
-  <div id="point-popup" class="hidden"
-    style="font-size: 10em; font-weight: bold; color: red;
-           position: fixed; top: 50%; left: 50%;
-           transform: translate(-50%, -50%) scale(1);
-           z-index: 9999; transition: none; opacity: 1;">
-  </div>
-  <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
-  <div id="game"></div>
-`;
+      <p><strong style="color:crimson;">⚠ 他のプレイヤーに減点効果</strong><br>
+         自分が正解すると、他の全員のHPがその問題の点数分減ります。</p>
 
+      <p><strong style="color:gray;">📉 不正解は自分だけが減点</strong><br>
+         他の人に影響せず、自分のHPだけが減ります。</p>
+    </div>
+
+    <button onclick="startGameUI()" style="margin-top:20px; font-size:1.2em;">スタート</button>
+  `;
+}
+
+function startGameUI() {
+  document.body.innerHTML = `
+    <div id="point-popup" class="hidden"
+      style="font-size: 10em; font-weight: bold; color: red;
+             position: fixed; top: 50%; left: 50%;
+             transform: translate(-50%, -50%) scale(1);
+             z-index: 9999; transition: none; opacity: 1;">
+    </div>
+    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+    <div id="game"></div>
+  `;
+  socket.emit("start", { groupId });  // ゲーム開始イベント送信
 }
 
 function backToGroupSelection() {
