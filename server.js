@@ -10,6 +10,8 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
+let hostSocketId = null;
+
 let globalCards = [];
 let globalSettings = {
   maxQuestions: 10,
@@ -99,7 +101,65 @@ socket.on("read_done", (groupId) => {
 io.to(groupId).emit("timer_start", { seconds: 30 });
 });
 
+socket.on("host_join", () => {
+  hostSocketId = socket.id;
+  console.log("👑 ホストが接続しました:", socket.id);
+});
 
+socket.on("host_request_state", () => {
+  if (socket.id !== hostSocketId) return; // ホスト以外は無視
+
+  const result = {};
+
+  for (const [groupId, group] of Object.entries(groups)) {
+    result[groupId] = {
+      players: group.players.map(p => ({
+        name: p.name,
+        hp: p.hp,
+        correctCount: p.correctCount,
+        totalScore: p.totalScore
+      }))
+    };
+  }
+
+  socket.emit("host_state", result);
+});
+
+socket.on("host_start", () => {
+  if (socket.id !== hostSocketId) return; // ホスト以外は無視
+
+  console.log("▶ ホストが全体スタートを実行");
+
+  for (const groupId of Object.keys(groups)) {
+    const state = states[groupId];
+    const group = groups[groupId];
+    if (!state || !group) continue;
+
+    // 初期化
+    state.locked = false;
+    state.players.forEach(p => {
+      p.hp = 20;
+      p.score = 0;
+      p.correctCount = 0;
+    });
+
+    group.players.forEach(p => {
+      p.hp = 20;
+      p.score = 0;
+      p.correctCount = 0;
+    });
+
+    state.eliminatedOrder = [];
+    state.questionCount = 0;
+    state.usedQuestions = [];
+    state.readDone = new Set();
+    state.answered = false;
+    state.waitingNext = false;
+    state.misClicks = [];
+
+    nextQuestion(groupId);
+  }
+});
 
   
 socket.on("start", ({ groupId }) => {
@@ -353,6 +413,8 @@ function shuffle(arr) {
 
 // ここで socket.io の connection ハンドラーを閉じる
 });  
+
+
 
 // サーバーを起動
 const PORT = process.env.PORT || 3000;
