@@ -59,17 +59,7 @@ function handleCSVUpload() {
 }
 
 socket.on("start_group_selection", () => {
-  document.body.innerHTML = `<h2>グループを選択してください</h2>`;
-  for (let i = 1; i <= 10; i++) {
-    const btn = document.createElement("button");
-    btn.textContent = `グループ ${i}`;
-    btn.onclick = () => {
-      groupId = "group" + i;
-      socket.emit("join", groupId);
-      showNameInputUI();
-    };
-    document.body.appendChild(btn);
-  }
+  showGroupSelectionUI();  // ← 直接関数を呼び出すだけにする
 });
 
 function showNameInputUI() {
@@ -123,8 +113,23 @@ function fixName() {
 
 function backToGroupSelection() {
   groupId = "";
-  socket.emit("start_group_selection");
+  showGroupSelectionUI();  // ← 次の②で定義する関数をここで使う
 }
+
+function showGroupSelectionUI() {
+  document.body.innerHTML = `<h2>グループを選択してください</h2>`;
+  for (let i = 1; i <= 10; i++) {
+    const btn = document.createElement("button");
+    btn.textContent = `グループ ${i}`;
+    btn.onclick = () => {
+      groupId = "group" + i;
+      socket.emit("join", groupId);
+      showNameInputUI();  // これはすでに定義されているはずです
+    };
+    document.body.appendChild(btn);
+  }
+}
+
 
 
 function showPointPopup(point) {
