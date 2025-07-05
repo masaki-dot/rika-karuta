@@ -173,6 +173,7 @@ socket.on("host_start", () => {
 
   
 socket.on("start", ({ groupId }) => {
+  if (socket.id !== hostSocketId) return; // ← 追加
   console.log(`▶ 強制スタート: ${groupId}`);
   const state = states[groupId];
   const group = groups[groupId];
