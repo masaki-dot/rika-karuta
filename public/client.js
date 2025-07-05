@@ -75,9 +75,12 @@ socket.on("start_group_selection", () => {
 function showNameInputUI() {
   document.body.innerHTML = `
     <h2>プレイヤー名を入力</h2>
-    <input id="nameInput" /><button onclick="fixName()">決定</button>
+    <input id="nameInput" />
+    <button onclick="fixName()">決定</button><br/><br/>
+    <button onclick="backToGroupSelection()">グループ選択に戻る</button>
   `;
 }
+
 
 function fixName() {
   playerName = document.getElementById("nameInput").value.trim();
