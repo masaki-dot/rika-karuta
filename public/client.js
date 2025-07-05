@@ -121,6 +121,12 @@ function fixName() {
 
 }
 
+function backToGroupSelection() {
+  groupId = "";
+  socket.emit("start_group_selection");
+}
+
+
 function showPointPopup(point) {
   const popup = document.getElementById("point-popup");
   popup.textContent = `${point}点！`;
