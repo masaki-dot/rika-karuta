@@ -1,6 +1,7 @@
 // public/client.js
 
 let socket = io();
+let isHost = false;
 let countdownIntervalId = null;
 let playerName = "";
 let groupId = "";
@@ -103,9 +104,12 @@ function showStartUI() {
          他の人に影響せず、自分のHPだけが減ります。</p>
     </div>
 
-    <button onclick="startGameUI()" style="margin-top:20px; font-size:1.2em;">スタート</button>
+    ${isHost
+      ? `<p style="color:gray;">※ホストがゲームを開始します</p>`
+      : `<button onclick="startGameUI()" style="margin-top:20px; font-size:1.2em;">スタート</button>`}
   `;
 }
+
 
 function startGameUI() {
   document.body.innerHTML = `
@@ -132,15 +136,42 @@ function showGroupSelectionUI() {
     const btn = document.createElement("button");
     btn.textContent = `グループ ${i}`;
     btn.onclick = () => {
+      isHost = false;
       groupId = "group" + i;
       socket.emit("join", groupId);
-      showNameInputUI();  // これはすでに定義されているはずです
+      showNameInputUI();
     };
     document.body.appendChild(btn);
   }
+
+  // ✅ ホストボタンを追加
+  const hostBtn = document.createElement("button");
+  hostBtn.textContent = "👑 ホストとして参加";
+  hostBtn.style.marginTop = "20px";
+  hostBtn.onclick = () => {
+    isHost = true;
+    socket.emit("host_join");  // サーバーにホストとして通知
+    showHostUI();
+  };
+  document.body.appendChild(document.createElement("br"));
+  document.body.appendChild(hostBtn);
 }
 
+function showHostUI() {
+  document.body.innerHTML = `
+    <h2>👑 ホスト画面</h2>
+    <div id="hostStatus"></div>
+    <button onclick="hostStartAllGroups()" style="margin-top:20px;font-size:1.2em;">全グループでゲーム開始</button>
+  `;
 
+  // 状態を定期的に取得
+  socket.emit("host_request_state");
+  setInterval(() => socket.emit("host_request_state"), 2000);
+}
+
+function hostStartAllGroups() {
+  socket.emit("host_start");
+}
 
 function showPointPopup(point) {
   const popup = document.getElementById("point-popup");
@@ -208,6 +239,24 @@ showSpeed = state.showSpeed;
   updateUI(state);
 });
 
+socket.on("host_state", (allGroups) => {
+  const div = document.getElementById("hostStatus");
+  if (!div) return;
+
+  div.innerHTML = Object.entries(allGroups).map(([group, data]) => {
+    const members = data.players.map(p => {
+      const extra = p.hp != null ? `｜HP: ${p.hp}｜正解数: ${p.correctCount ?? 0}` : "";
+      return `<li>${p.name}${extra}</li>`;
+    }).join("");
+
+    return `
+      <div style="margin-bottom:20px;">
+        <strong>${group}（${data.players.length}人）</strong>
+        <ul>${members}</ul>
+      </div>
+    `;
+  }).join("");
+});
 
 
 socket.on("lock", () => {
@@ -216,19 +265,25 @@ socket.on("lock", () => {
 
 socket.on("end", (ranking) => {
   const game = document.getElementById("game");
+
   game.innerHTML = `<h2>🎉 ゲーム終了！</h2><ol style="font-size: 1.5em;">${
     ranking.map(p =>
-  `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}｜正解数: ${p.correctCount ?? 0}）</li>`
-).join("")
+      `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}｜正解数: ${p.correctCount ?? 0}）</li>`
+    ).join("")
+  }</ol>${
+    isHost
+      ? `<button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`
+      : `<p style="color:gray;">※ホストが次のゲームを開始します</p>`
+  }`;
 
-
-  }</ol><button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`;
-
-  // 次のゲームへボタンのイベント（今は機能なし）
- document.getElementById("nextGameBtn").onclick = () => {
-  socket.emit("start", { groupId }); // ✅ 同じ設定のまま再スタート
-};
+  // ✅ ホストだけに次ゲーム処理を割り当て
+  if (isHost) {
+    document.getElementById("nextGameBtn").onclick = () => {
+      socket.emit("host_start");
+    };
+  }
 });
+
 
 socket.on("timer_start", ({ seconds }) => {
   if (countdownIntervalId) {
