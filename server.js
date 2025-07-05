@@ -126,29 +126,38 @@ socket.on("host_request_state", () => {
 });
 
 socket.on("host_start", () => {
-  if (socket.id !== hostSocketId) return; // ホスト以外は無視
+  if (socket.id !== hostSocketId) return;
 
   console.log("▶ ホストが全体スタートを実行");
 
-  for (const groupId of Object.keys(groups)) {
+  // グループ1～10まで強制的に全て扱う
+  for (let i = 1; i <= 10; i++) {
+    const groupId = `group${i}`;
+
+    // 必要に応じて初期化
+    if (!groups[groupId]) groups[groupId] = { players: [] };
+    if (!states[groupId]) states[groupId] = initState(groupId);
+
     const state = states[groupId];
     const group = groups[groupId];
-    if (!state || !group) continue;
 
-    // 初期化
-    state.locked = false;
-    state.players.forEach(p => {
-      p.hp = 20;
-      p.score = 0;
-      p.correctCount = 0;
-    });
+    // プレイヤーが存在しないグループにも空の初期化状態を与える
+    state.players = group.players.map(p => ({
+      id: p.id,
+      name: p.name || "未設定",
+      hp: 20,
+      score: 0,
+      correctCount: 0
+    }));
 
+    // スコアなどを初期化
     group.players.forEach(p => {
       p.hp = 20;
       p.score = 0;
       p.correctCount = 0;
     });
 
+    state.locked = false;
     state.eliminatedOrder = [];
     state.questionCount = 0;
     state.usedQuestions = [];
@@ -157,9 +166,10 @@ socket.on("host_start", () => {
     state.waitingNext = false;
     state.misClicks = [];
 
-    nextQuestion(groupId);
+    nextQuestion(groupId); // 強制出題（プレイヤー0人でも）
   }
 });
+
 
   
 socket.on("start", ({ groupId }) => {
