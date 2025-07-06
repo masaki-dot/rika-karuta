@@ -410,11 +410,12 @@ function sanitizeState(state) {
     players: state.players,
     questionCount: state.questionCount,
     maxQuestions: state.maxQuestions,
-    current: {
-      text: state.current?.text ?? "",
-      cards: state.current?.cards ?? [],
-      pointValue: state.current?.point ?? null // ← ★これが重要！
-    },
+    current: state.current
+      ? {
+          ...state.current,
+          pointValue: state.current.point // ← 追加しても構造は維持！
+        }
+      : null,
     misClicks: state.misClicks,
     showSpeed: state.showSpeed,
     waitingNext: state.waitingNext,
