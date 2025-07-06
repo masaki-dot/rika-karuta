@@ -227,16 +227,7 @@ socket.on("state", (state) => {
     alreadyAnswered = false;   // ← これも！
     lastQuestionText = state.current.text;
     if (!document.getElementById("game")) {
-  document.body.innerHTML = `
-    <div id="point-popup" class="hidden"
-      style="font-size: 10em; font-weight: bold; color: red;
-             position: fixed; top: 50%; left: 50%;
-             transform: translate(-50%, -50%) scale(1);
-             z-index: 9999; transition: none; opacity: 1;">
-    </div>
-    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
-    <div id="game"></div>
-  `;
+    document.body.innerHTML = `...`;
 }
 
   // ✅ ゲーム画面が未表示なら、自動で表示
