@@ -410,13 +410,18 @@ function sanitizeState(state) {
     players: state.players,
     questionCount: state.questionCount,
     maxQuestions: state.maxQuestions,
-    current: state.current,
+    current: {
+      text: state.current?.text ?? "",
+      cards: state.current?.cards ?? [],
+      pointValue: state.current?.point ?? null // ← ★これが重要！
+    },
     misClicks: state.misClicks,
     showSpeed: state.showSpeed,
     waitingNext: state.waitingNext,
     answered: state.answered
   };
 }
+
 
 function shuffle(arr) {
   return [...arr].sort(() => Math.random() - 0.5);
