@@ -413,15 +413,17 @@ function sanitizeState(state) {
     current: state.current
       ? {
           ...state.current,
-          pointValue: state.current.point // ← 追加しても構造は維持！
+          pointValue: state.current.point
         }
       : null,
     misClicks: state.misClicks,
     showSpeed: state.showSpeed,
     waitingNext: state.waitingNext,
-    answered: state.answered
+    answered: state.answered,
+    locked: state.locked   // ← ✅ 追加（ゲーム終了フラグ）
   };
 }
+
 
 
 function shuffle(arr) {
