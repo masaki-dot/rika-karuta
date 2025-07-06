@@ -113,6 +113,7 @@ socket.on("host_request_state", () => {
 
   for (const [groupId, group] of Object.entries(groups)) {
     result[groupId] = {
+      locked: states[groupId]?.locked ?? false, 
       players: group.players.map(p => ({
         name: p.name,
         hp: p.hp,
