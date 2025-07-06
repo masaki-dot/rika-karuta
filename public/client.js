@@ -236,6 +236,38 @@ socket.on("state", (state) => {
     `;
   }
 
+  // 得点ポップアップと右上表示
+if (state.current.pointValue != null) {
+  const popup = document.getElementById("point-popup");
+  popup.textContent = `${state.current.pointValue}点`;
+  popup.classList.remove("hidden");
+
+  // 拡大表示 → 縮小フェード → 非表示
+  popup.style.transition = "none";
+  popup.style.transform = "translate(-50%, -50%) scale(3)";
+  popup.style.opacity = "1";
+
+  setTimeout(() => {
+    popup.style.transition = "transform 1s ease, opacity 1s ease";
+    popup.style.transform = "translate(-50%, -50%) scale(0)";
+    popup.style.opacity = "0";
+  }, 1000);
+
+  setTimeout(() => {
+    popup.classList.add("hidden");
+    popup.style.transition = "";
+    popup.style.transform = "translate(-50%, -50%) scale(1)";
+    popup.style.opacity = "1";
+  }, 2000);
+
+  // 右上の得点表示
+  const currentPointDiv = document.getElementById("current-point");
+  if (currentPointDiv) {
+    currentPointDiv.textContent = `この問題：${state.current.pointValue}点`;
+  }
+}
+
+  
   // ✅ 問題が新しくなった時のみフラグを更新
   if (state.current.text !== lastQuestionText) {
     hasAnimated = false;
