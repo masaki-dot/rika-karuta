@@ -218,19 +218,11 @@ let lastQuestionText = "";
 socket.on("state", (state) => {
   console.log("📦 state 受信", state); 
 
-  // ✅ 先に state.current をチェック
-  if (!state.current) return;
-// ✅ 問題が変わったときだけ初期化
-  if (state.current.text !== lastQuestionText) {
-    hasAnimated = false;
-    locked = false;            // ← これが重要！
-    alreadyAnswered = false;   // ← これも！
-    lastQuestionText = state.current.text;
-    if (!document.getElementById("game")) {
-    document.body.innerHTML = `...`;
-}
+  showSpeed = state.showSpeed;
 
-  // ✅ ゲーム画面が未表示なら、自動で表示
+  if (!state.current) return;
+
+  // 💡 必ずゲーム画面が表示されるようにここで描画（条件を外す）
   if (!document.getElementById("game")) {
     document.body.innerHTML = `
       <div id="point-popup" class="hidden"
@@ -244,9 +236,18 @@ socket.on("state", (state) => {
     `;
   }
 
-  showSpeed = state.showSpeed;
+  // ✅ 問題が新しくなった時のみフラグを更新
+  if (state.current.text !== lastQuestionText) {
+    hasAnimated = false;
+    locked = false;
+    alreadyAnswered = false;
+    lastQuestionText = state.current.text;
+  }
+
+  // ✅ 必ずUI更新（上の if 文の外にする）
   updateUI(state);
 });
+
 
 
 
