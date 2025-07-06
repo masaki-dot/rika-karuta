@@ -218,6 +218,9 @@ let lastQuestionText = "";
 socket.on("state", (state) => {
   console.log("📦 state 受信", state); 
 
+  // ✅ 先に state.current をチェック
+  if (!state.current) return;
+
   // ✅ ゲーム画面が未表示なら、自動で表示
   if (!document.getElementById("game")) {
     document.body.innerHTML = `
@@ -232,11 +235,10 @@ socket.on("state", (state) => {
     `;
   }
 
-  if (!state.current) return;
-
   showSpeed = state.showSpeed;
   updateUI(state);
 });
+
 
 
 socket.on("host_state", (allGroups) => {
