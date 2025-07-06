@@ -292,6 +292,9 @@ socket.on("host_state", (allGroups) => {
   if (!div) return;
 
   div.innerHTML = Object.entries(allGroups).map(([group, data]) => {
+    const isLocked = data.locked;  // ← ここで取得
+    const groupColor = isLocked ? "red" : "black";  // ← 色分け
+
     const members = data.players.map(p => {
       const extra = p.hp != null ? `｜HP: ${p.hp}｜正解数: ${p.correctCount ?? 0}` : "";
       return `<li>${p.name}${extra}</li>`;
@@ -299,12 +302,13 @@ socket.on("host_state", (allGroups) => {
 
     return `
       <div style="margin-bottom:20px;">
-        <strong>${group}（${data.players.length}人）</strong>
+        <strong style="color:${groupColor};">${group}（${data.players.length}人）</strong>
         <ul>${members}</ul>
       </div>
     `;
   }).join("");
 });
+
 
 
 socket.on("lock", () => {
