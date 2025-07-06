@@ -220,6 +220,24 @@ socket.on("state", (state) => {
 
   // ✅ 先に state.current をチェック
   if (!state.current) return;
+// ✅ 問題が変わったときだけ初期化
+  if (state.current.text !== lastQuestionText) {
+    hasAnimated = false;
+    locked = false;            // ← これが重要！
+    alreadyAnswered = false;   // ← これも！
+    lastQuestionText = state.current.text;
+    if (!document.getElementById("game")) {
+  document.body.innerHTML = `
+    <div id="point-popup" class="hidden"
+      style="font-size: 10em; font-weight: bold; color: red;
+             position: fixed; top: 50%; left: 50%;
+             transform: translate(-50%, -50%) scale(1);
+             z-index: 9999; transition: none; opacity: 1;">
+    </div>
+    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
+    <div id="game"></div>
+  `;
+}
 
   // ✅ ゲーム画面が未表示なら、自動で表示
   if (!document.getElementById("game")) {
@@ -445,7 +463,6 @@ function submitAnswer(number) {
   console.log("✅ 回答送信", number);
   socket.emit("answer", { groupId, name: playerName, number });
   alreadyAnswered = true;
-  hasAnimated = true; // 🔧 追加：アニメーションを止めないため
 }
 
 
@@ -466,6 +483,7 @@ function animateText(elementId, text, speed) {
       readInterval = null;
 
       socket.emit("read_done", groupId); // ✅ ここでemitされてるか
+      hasAnimated = true;  // ✅←ここで設定
     }
   }, speed);
 
