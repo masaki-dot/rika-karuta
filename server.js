@@ -164,13 +164,30 @@ socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount })
   });
 
   // グローバルgroupsを上書き
-  for (let i = 1; i <= groupCount; i++) {
-    const groupId = `group${i}`;
-    const players = newGroups[groupId] || [];
-    groups[groupId] = { players };
-    states[groupId] = initState(groupId);
-    states[groupId].players = players.map(p => ({ id: p.id, name: p.name, hp: 20 }));
-  }
+ // グローバルgroupsを上書き & statesも完全に再初期化
+for (let i = 1; i <= groupCount; i++) {
+  const groupId = `group${i}`;
+  const players = newGroups[groupId] || [];
+
+  // 🔄 完全上書き（旧データ削除）
+  groups[groupId] = { players };
+
+  // 🔄 以前のstateを削除（ここが重要！）
+  if (states[groupId]) delete states[groupId];
+
+  // 新たにstate初期化
+  states[groupId] = initState(groupId);
+
+  // プレイヤーを新たに構築（←残存データを防止）
+  states[groupId].players = players.map(p => ({
+    id: p.id,
+    name: p.name,
+    hp: 20,
+    score: 0,
+    correctCount: 0
+  }));
+}
+
 
   // 各プレイヤーにグループ番号を通知
   for (const [groupId, group] of Object.entries(groups)) {
