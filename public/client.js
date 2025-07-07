@@ -132,8 +132,11 @@ function startGameUI() {
 }
 
 function backToGroupSelection() {
-  groupId = "";
-  showGroupSelectionUI();  // ← 次の②で定義する関数をここで使う
+  if (groupId) {
+    socket.emit("leave_group", { groupId });  // ← グループから離脱をサーバーに通知
+    groupId = "";
+  }
+  showGroupSelectionUI();
 }
 
 function showGroupSelectionUI() {
