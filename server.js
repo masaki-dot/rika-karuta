@@ -403,6 +403,27 @@ socket.on("answer", ({ groupId, name, number }) => {
 
     io.to(groupId).emit("state", sanitizeState(state));
     checkGameEnd(groupId);
+    // 全員お手つきチェック（生存者のみ対象）
+const activePlayers = state.players.filter(p => p.hp > 0);
+const misSet = new Set(state.misClicks.map(mc => mc.name));
+const allMisclicked = activePlayers.every(p => misSet.has(p.name));
+
+if (allMisclicked && !state.waitingNext) {
+  console.log("⚠ 全員お手つき");
+
+  // 正解カードを目立たせる（正解表示用フラグを追加）
+  state.current.cards = state.current.cards.map(c =>
+    c.number === state.current.answer
+      ? { ...c, correctAnswer: true }
+      : c
+  );
+
+  state.waitingNext = true;
+  io.to(groupId).emit("state", sanitizeState(state));
+
+  setTimeout(() => nextQuestion(groupId), 3000);
+}
+
   }
 });
 
