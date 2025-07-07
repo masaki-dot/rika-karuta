@@ -61,7 +61,26 @@ for (const key in groups) {
   io.to(groupId).emit("state", sanitizeState(state));
 });
 
-  
+  // サーバー側に追加
+socket.on("request_global_ranking", () => {
+  const allPlayers = [];
+
+  for (const group of Object.values(groups)) {
+    for (const p of group.players) {
+      allPlayers.push({
+        name: p.name,
+        totalScore: p.totalScore || 0
+      });
+    }
+  }
+
+  const sorted = allPlayers
+    .filter(p => p.name !== "未設定")
+    .sort((a, b) => b.totalScore - a.totalScore);
+
+  socket.emit("global_ranking", sorted);
+});
+
 
   socket.on("set_name", ({ groupId, name }) => {
   const state = states[groupId];
