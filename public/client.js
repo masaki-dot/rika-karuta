@@ -479,6 +479,11 @@ state.current.cards.forEach(c => {
     div.style.background = "red";
     div.innerHTML += `<div style="margin-top:5px;font-size:0.8em;">${c.chosenBy}</div>`;
   }
+    else if (c.correctAnswer) {
+    div.style.background = "lightgreen"; // 正解札の色
+    div.style.border = "2px solid green"; // 強調
+  }
+
 
   // 内容（上に書くことで常時表示）
   div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${c.term}</div><div style="color:#666;">${c.number}</div>` + div.innerHTML;
