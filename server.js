@@ -564,14 +564,15 @@ function sanitizeState(state) {
     current: state.current
       ? {
           ...state.current,
-          pointValue: state.current.point
+          pointValue: state.current.point,
+          cards: state.current.cards   // ← ★これを追加！
         }
       : null,
     misClicks: state.misClicks,
     showSpeed: state.showSpeed,
     waitingNext: state.waitingNext,
     answered: state.answered,
-    locked: state.locked   // ← ✅ 追加（ゲーム終了フラグ）
+    locked: state.locked
   };
 }
 
