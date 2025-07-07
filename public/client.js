@@ -337,11 +337,16 @@ socket.on("host_state", (allGroups) => {
 
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
+
+  // 再びjoinイベントを送って、サーバー側でグループ再参加させる（←これが重要）
+  socket.emit("join", groupId);
+
   document.body.innerHTML = `
-    <h2>あなたは <strong>${newGroupId}</strong> に割り振られました</h2>
+    <h2>あなたは <strong>${groupId}</strong> に割り振られました</h2>
     <p>ホストが開始するまでお待ちください。</p>
   `;
 });
+
 
 socket.on("lock", () => {
   locked = true;
