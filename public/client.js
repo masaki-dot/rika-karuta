@@ -170,17 +170,26 @@ function showHostUI() {
       <div id="hostStatus" style="flex:1;"></div>
       <div id="globalRanking" style="flex:1; padding-left:20px;"></div>
     </div>
+
+    <h3>🔀 グループ割り振り設定</h3>
+    <label>グループ数：<input id="groupCount" type="number" value="5" min="2" max="10"></label><br/>
+    <label>各グループの人数：<input id="playersPerGroup" type="number" value="3" min="1"></label><br/>
+    <label>上位何グループにスコア上位を集中させるか：<input id="topGroupCount" type="number" value="1" min="1" max="2"></label><br/>
+    <button onclick="submitGrouping()" style="margin-top:10px;">グループ割り振りを実行</button>
+
+    <hr/>
+
     <button onclick="hostStartAllGroups()" style="margin-top:20px;font-size:1.2em;">全グループでゲーム開始</button>
   `;
 
-  // 状態を定期的に取得
   socket.emit("host_request_state");
-  socket.emit("request_global_ranking"); // ← ランキングも取得
+  socket.emit("request_global_ranking");
   setInterval(() => {
     socket.emit("host_request_state");
     socket.emit("request_global_ranking");
   }, 2000);
 }
+
 
 
 function hostStartAllGroups() {
@@ -526,6 +535,17 @@ function submitAnswer(number) {
   alreadyAnswered = true;
 }
 
+function submitGrouping() {
+  const groupCount = parseInt(document.getElementById("groupCount").value);
+  const playersPerGroup = parseInt(document.getElementById("playersPerGroup").value);
+  const topGroupCount = parseInt(document.getElementById("topGroupCount").value);
+
+  socket.emit("host_assign_groups", {
+    groupCount,
+    playersPerGroup,
+    topGroupCount
+  });
+}
 
 
 function animateText(elementId, text, speed) {
