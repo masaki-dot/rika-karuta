@@ -120,6 +120,69 @@ socket.on("read_done", (groupId) => {
 io.to(groupId).emit("timer_start", { seconds: 30 });
 });
 
+socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
+  if (socket.id !== hostSocketId) return;
+
+  const allPlayers = [];
+  for (const group of Object.values(groups)) {
+    for (const p of group.players) {
+      if (p.name !== "未設定") {
+        allPlayers.push(p);
+      }
+    }
+  }
+
+  // スコア順にソート（降順）
+  allPlayers.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+
+  // グループの枠を用意
+  const newGroups = {};
+  for (let i = 1; i <= groupCount; i++) {
+    newGroups[`group${i}`] = [];
+  }
+
+  // 上位者を topGroupCount グループに優先割り振り
+  const topCount = topGroupCount * playersPerGroup;
+  const topPlayers = allPlayers.slice(0, topCount);
+  const others = allPlayers.slice(topCount);
+
+  // 上位者を round-robin でグループ1～topGroupCount に入れる
+  topPlayers.forEach((p, idx) => {
+    const gnum = (idx % topGroupCount) + 1;
+    newGroups[`group${gnum}`].push(p);
+  });
+
+  // 残りのプレイヤーをランダムに group(topGroupCount+1)～groupCount に分ける
+  const restGroups = [];
+  for (let i = topGroupCount + 1; i <= groupCount; i++) {
+    restGroups.push(`group${i}`);
+  }
+
+  shuffle(others).forEach((p, idx) => {
+    const groupId = restGroups[idx % restGroups.length];
+    newGroups[groupId].push(p);
+  });
+
+  // グローバルgroupsを上書き
+  for (let i = 1; i <= groupCount; i++) {
+    const groupId = `group${i}`;
+    const players = newGroups[groupId] || [];
+    groups[groupId] = { players };
+    states[groupId] = initState(groupId);
+    states[groupId].players = players.map(p => ({ id: p.id, name: p.name, hp: 20 }));
+  }
+
+  // 各プレイヤーにグループ番号を通知
+  for (const [groupId, group] of Object.entries(groups)) {
+    for (const p of group.players) {
+      io.to(p.id).emit("assigned_group", groupId);
+    }
+  }
+
+  console.log("✅ グループ割り振り完了");
+});
+
+  
 socket.on("host_join", () => {
   hostSocketId = socket.id;
   console.log("👑 ホストが接続しました:", socket.id);
