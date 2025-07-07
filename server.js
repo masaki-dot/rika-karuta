@@ -81,7 +81,24 @@ socket.on("request_global_ranking", () => {
   socket.emit("global_ranking", sorted);
 });
 
+socket.on("leave_group", ({ groupId }) => {
+  const group = groups[groupId];
+  const state = states[groupId];
+  if (!group || !state) return;
 
+  // groups から削除
+  group.players = group.players.filter(p => p.id !== socket.id);
+
+  // states から削除
+  state.players = state.players.filter(p => p.id !== socket.id);
+
+  // Socket.IO のルームからも抜ける
+  socket.leave(groupId);
+
+  console.log(`🚪 ${socket.id} が ${groupId} を離脱`);
+});
+
+  
   socket.on("set_name", ({ groupId, name }) => {
   const state = states[groupId];
   if (!state) return;
