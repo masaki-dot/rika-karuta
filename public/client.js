@@ -335,7 +335,13 @@ socket.on("host_state", (allGroups) => {
   }).join("");
 });
 
-
+socket.on("assigned_group", (newGroupId) => {
+  groupId = newGroupId;
+  document.body.innerHTML = `
+    <h2>あなたは <strong>${newGroupId}</strong> に割り振られました</h2>
+    <p>ホストが開始するまでお待ちください。</p>
+  `;
+});
 
 socket.on("lock", () => {
   locked = true;
