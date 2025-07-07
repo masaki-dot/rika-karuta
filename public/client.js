@@ -166,14 +166,22 @@ function showGroupSelectionUI() {
 function showHostUI() {
   document.body.innerHTML = `
     <h2>👑 ホスト画面</h2>
-    <div id="hostStatus"></div>
+    <div style="display:flex;">
+      <div id="hostStatus" style="flex:1;"></div>
+      <div id="globalRanking" style="flex:1; padding-left:20px;"></div>
+    </div>
     <button onclick="hostStartAllGroups()" style="margin-top:20px;font-size:1.2em;">全グループでゲーム開始</button>
   `;
 
   // 状態を定期的に取得
   socket.emit("host_request_state");
-  setInterval(() => socket.emit("host_request_state"), 2000);
+  socket.emit("request_global_ranking"); // ← ランキングも取得
+  setInterval(() => {
+    socket.emit("host_request_state");
+    socket.emit("request_global_ranking");
+  }, 2000);
 }
+
 
 function hostStartAllGroups() {
   socket.emit("host_start");
@@ -284,7 +292,16 @@ if (state.current.pointValue != null) {
   updateUI(state);
 });
 
+socket.on("global_ranking", (ranking) => {
+  const div = document.getElementById("globalRanking");
+  if (!div) return;
 
+  div.innerHTML = `<h3>🌏 全体ランキング</h3><ol style="font-size:1.1em;">${
+    ranking.map(p =>
+      `<li>${p.name}（累計: ${p.totalScore}点）</li>`
+    ).join("")
+  }</ol>`;
+});
 
 
 socket.on("host_state", (allGroups) => {
@@ -318,23 +335,35 @@ socket.on("lock", () => {
 socket.on("end", (ranking) => {
   const game = document.getElementById("game");
 
-  game.innerHTML = `<h2>🎉 ゲーム終了！</h2><ol style="font-size: 1.5em;">${
-    ranking.map(p =>
-      `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}｜正解数: ${p.correctCount ?? 0}）</li>`
-    ).join("")
-  }</ol>${
-    isHost
-      ? `<button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`
-      : `<p style="color:gray;">※ホストが次のゲームを開始します</p>`
-  }`;
+  game.innerHTML = `
+    <div style="display:flex;">
+      <div style="flex:1;">
+        <h2>🎉 ゲーム終了！</h2>
+        <ol style="font-size: 1.5em;">
+          ${ranking.map(p =>
+            `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}｜正解数: ${p.correctCount ?? 0}）</li>`
+          ).join("")}
+        </ol>
+        ${
+          isHost
+            ? `<button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`
+            : `<p style="color:gray;">※ホストが次のゲームを開始します</p>`
+        }
+      </div>
+      <div id="globalRanking" style="flex:1; padding-left:20px;"></div>
+    </div>
+  `;
 
-  // ✅ ホストだけに次ゲーム処理を割り当て
   if (isHost) {
     document.getElementById("nextGameBtn").onclick = () => {
       socket.emit("host_start");
     };
   }
+
+  // 全体ランキングのリクエスト
+  socket.emit("request_global_ranking");
 });
+
 
 
 socket.on("timer_start", ({ seconds }) => {
