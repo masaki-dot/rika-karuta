@@ -408,10 +408,13 @@ const activePlayers = state.players.filter(p => p.hp > 0);
 const misSet = new Set(state.misClicks.map(mc => mc.name));
 const allMisclicked = activePlayers.every(p => misSet.has(p.name));
 
-if (allMisclicked && !state.waitingNext) {
-  console.log("⚠ 全員お手つき");
+// 🔒 正解が選ばれていない、かつすべてのカードが誰かに押されている場合のみ進行
+const allCardsClicked = state.current.cards.every(c => c.correct || c.incorrect);
+const noCorrect = !state.current.cards.some(c => c.correct);
 
-  // 正解カードを目立たせる（正解表示用フラグを追加）
+if (allMisclicked && allCardsClicked && noCorrect && !state.waitingNext) {
+  console.log("⚠ 全員お手つき（正解者なし & 全カード選択済）");
+
   state.current.cards = state.current.cards.map(c =>
     c.number === state.current.answer
       ? { ...c, correctAnswer: true }
