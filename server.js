@@ -195,6 +195,24 @@ for (let i = 1; i <= groupCount; i++) {
       io.to(p.id).emit("assigned_group", groupId);
     }
   }
+// 各プレイヤーにグループ番号を通知＆正しいルームにjoinさせる
+for (const [groupId, group] of Object.entries(groups)) {
+  for (const p of group.players) {
+    const socketInstance = io.sockets.sockets.get(p.id);
+    if (socketInstance) {
+      // 🔄 すべての既存ルームから一旦離脱
+      for (const room of socketInstance.rooms) {
+        if (room !== p.id) socketInstance.leave(room);
+      }
+
+      // ✅ 新しいグループに join
+      socketInstance.join(groupId);
+
+      // ✅ クライアントに新グループIDを通知
+      socketInstance.emit("assigned_group", groupId);
+    }
+  }
+}
 
   console.log("✅ グループ割り振り完了");
 });
