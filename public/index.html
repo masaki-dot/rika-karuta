@@ -4,60 +4,90 @@
   <meta charset="UTF-8" />
   <title>理科カルタ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- 🔽 CSSはhead内に入れる -->
+  
+  <!-- CSSライブラリ -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.css">
+  
+  <!-- アプリケーションのスタイル -->
   <style>
+    body {
+      padding: 20px;
+    }
+    #app-container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .card {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: center;
+      border-radius: 8px;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+      cursor: pointer;
+      background: #fff;
+      transition: transform 0.1s ease-in-out;
+    }
+    .card:hover {
+      transform: scale(1.05);
+    }
+    #cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+    }
+    #yomifuda {
+        font-size: 1.8em;
+        font-weight: bold;
+        min-height: 2.5em; /* 読み札が表示される高さを確保 */
+        background-color: #f4f5f6;
+        padding: 20px;
+        border-radius: 5px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
     #point-popup {
-      position: absolute;
-      top: 40%;
-      left: 50%;
+      font-size: 8em; font-weight: bold; color: gold; text-shadow: 2px 2px 5px black;
+      position: fixed; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      font-size: 72px;
-      font-weight: bold;
-      color: gold;
-      background-color: rgba(0,0,0,0.7);
-      padding: 30px 50px;
-      border-radius: 20px;
-      z-index: 1000;
-      animation: popup 1.5s ease-out;
+      z-index: 9999;
+      opacity: 0;
+      transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.8s;
+      pointer-events: none; /* クリックを背面に透過させる */
     }
-
-    #point-popup.hidden {
-      display: none;
+    #point-popup.show {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
     }
-
-    @keyframes popup {
-      0% { transform: scale(0.2) translate(-50%, -50%); opacity: 0; }
-      50% { transform: scale(1.1) translate(-50%, -50%); opacity: 1; }
-      100% { transform: scale(1.0) translate(-50%, -50%); opacity: 0; }
-    }
-
     #current-point {
-      position: absolute;
-      top: 10px;
-      right: 20px;
-      font-size: 24px;
-      color: white;
-      background: rgba(0,0,0,0.5);
-      padding: 10px 20px;
-      border-radius: 10px;
+      position: fixed; top: 10px; right: 10px; font-size: 1.5em;
+      background: rgba(0,0,0,0.6); color: white; padding: 5px 15px; border-radius: 10px;
+    }
+    #countdown-timer {
+      position: fixed; bottom: 10px; right: 10px; font-size: 1.5em;
+      background: rgba(255,255,255,0.8); border: 1px solid #ccc; padding: 5px 15px;
+      border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
   </style>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.css">
-  <!-- Socket.IOとCSV読み込み -->
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
 </head>
 <body>
-  <div id="app-container"></div> <!-- ⬅️ このコンテナを追加 -->
 
-  <!-- スクリプトなどはコンテナの外に置く -->
+  <!-- 全てのUIはこのコンテナの中に描画される -->
+  <div id="app-container">
+    <p>Loading...</p>
+  </div>
+
+  <!-- ゲーム画面中に常に表示されるオーバーレイ要素 -->
+  <div id="game-overlays">
+    <div id="point-popup"></div>
+    <div id="current-point"></div>
+    <div id="countdown-timer"></div>
+  </div>
+
+  <!-- JavaScriptライブラリ（重複を削除し、正しい順序で読み込み） -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
   <script src="client.js"></script>
-</body>
-
-  <!-- クライアントJS読み込み -->
-  <script src="client.js"></script>
+  
 </body>
 </html>
