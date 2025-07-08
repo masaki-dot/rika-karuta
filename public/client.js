@@ -1,148 +1,47 @@
-// public/client.js
+// client.js (修正完了版)
 
+// --- グローバル変数 ---
 let socket = io();
-let isHost = false;
-let countdownIntervalId = null;
 let playerName = "";
 let groupId = "";
-let showSpeed = 2000;
-let numCards = 5;
-let maxQuestions = 10;
-let loadedCards = [];
-let locked = false;
-let alreadyAnswered = false;
-let readInterval = null;
+let isHost = false;
+
+// サーバーから受信した状態を保持
+let lastQuestionText = "";
 let hasAnimated = false;
+let alreadyAnswered = false; // 二重回答防止フラグ
+let readInterval = null; // 読み札アニメーション用のタイマーID
+let countdownIntervalId = null; // 30秒タイマーID
 
+// --- UI描画のヘルパー関数 ---
+const getContainer = () => document.getElementById('app-container');
 
-
+// --- アプリケーションの初期化 ---
 window.onload = () => {
   showCSVUploadUI();
 };
 
+// --- UI描画関数群 (画面遷移) ---
+
 function showCSVUploadUI() {
-  const container = document.getElementById('app-container');
+  const container = getContainer();
   container.innerHTML = `
-    <h2>CSVファイルをアップロード</h2>
+    <h2>1. 設定と問題のアップロード</h2>
+    <p>ゲームで使う問題のCSVファイルをアップロードしてください。</p>
     <input type="file" id="csvFile" accept=".csv" /><br/><br/>
-    <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
-    <label>表示速度(ms/5文字): <input type="number" id="speed" value="2000" min="100" /></label><br/><br/>
+    <fieldset>
+      <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
+      <label>読み上げ速度(ms/5文字): <input type="number" id="speed" value="1000" min="100" /></label><br/>
+    </fieldset>
+    <button id="submit-csv" class="button-primary">決定してグループ選択へ</button>
   `;
-  const input = document.createElement("button");
-  input.textContent = "決定してグループ選択へ";
-  input.onclick = handleCSVUpload;
-  document.body.appendChild(input);
-}
-
-function handleCSVUpload() {
-  const file = document.getElementById("csvFile").files[0];
-  if (!file) return alert("CSVファイルを選んでください");
-
-  Papa.parse(file, {
-    header: false,
-    skipEmptyLines: true,
-    complete: (result) => {
-      const rows = result.data;
-      loadedCards = rows.slice(1).map(r => ({
-        number: String(r[0]).trim(),
-        term: String(r[1]).trim(),
-        text: String(r[2]).trim()
-      })).filter(c => c.term && c.text);
-
-      numCards = parseInt(document.getElementById("numCards").value);
-      showSpeed = parseInt(document.getElementById("speed").value);
-
-      socket.emit("set_cards_and_settings", {
-        cards: loadedCards,
-        settings: { maxQuestions, numCards, showSpeed }
-      });
-    }
-  });
-}
-
-socket.on("start_group_selection", () => {
-  showGroupSelectionUI();  // ← 直接関数を呼び出すだけにする
-});
-
-function showNameInputUI() {
-  document.body.innerHTML = `
-    <h2>プレイヤー名を入力</h2>
-    <input id="nameInput" />
-    <button onclick="fixName()">決定</button><br/><br/>
-    <button onclick="backToGroupSelection()">グループ選択に戻る</button>
-  `;
-}
-
-
-function fixName() {
-  playerName = document.getElementById("nameInput").value.trim();
-  if (!playerName) return alert("名前を入力してください");
-
-  socket.emit("set_name", { groupId, name: playerName });
-
-  // ゲーム開始画面に切り替え
- showStartUI();  // スタート画面を関数で表示（次ステップで作る）
-
-
-}
-
-function showStartUI() {
-  document.body.innerHTML = `
-    <h2>🎮 ゲームのルール</h2>
-    <div style="text-align:left; font-size:1.1em; line-height:1.6;">
-      <p><strong style="color:darkred;">🩸 HPが0になると脱落！</strong><br>
-         回答を間違えると、その問題のポイント分だけHPが減ります。</p>
-
-      <p><strong style="color:green;">✅ 正解すると得点ゲット</strong><br>
-         ・1問正解ごとに <strong style="color:green;">＋10点</strong><br>
-         ・さらに最後の1人なら <strong style="color:gold;">＋200点</strong><br>
-         ・2番目に脱落しなかった人には <strong style="color:orange;">＋100点</strong></p>
-
-      <p><strong style="color:crimson;">⚠ 他のプレイヤーに減点効果</strong><br>
-         自分が正解すると、他の全員のHPがその問題の点数分減ります。</p>
-
-      <p><strong style="color:gray;">📉 不正解は自分だけが減点</strong><br>
-         他の人に影響せず、自分のHPだけが減ります。</p>
-    </div>
-
-    ${isHost
-      ? `<p style="color:gray;">※ホストがゲームを開始します</p>`
-      : `<button onclick="startGameUI()" style="margin-top:20px; font-size:1.2em;">スタート</button>`}
-  `;
-}
-
-
-function startGameUI() {
-  if (isHost) {
-    socket.emit("host_start");
-  } else {
-    alert("ホストがゲームを開始します。");
-    return;
-  }
-
-  document.body.innerHTML = `
-    <div id="point-popup" class="hidden"
-      style="font-size: 10em; font-weight: bold; color: red;
-             position: fixed; top: 50%; left: 50%;
-             transform: translate(-50%, -50%) scale(1);
-             z-index: 9999; transition: none; opacity: 1;">
-    </div>
-    <div id="current-point" style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;"></div>
-    <div id="game"></div>
-  `;
-}
-
-function backToGroupSelection() {
-  if (groupId) {
-    socket.emit("leave_group", { groupId });  // ← グループから離脱をサーバーに通知
-    groupId = "";
-  }
-  showGroupSelectionUI();
+  document.getElementById('submit-csv').onclick = handleCSVUpload;
 }
 
 function showGroupSelectionUI() {
-  const container = document.getElementById('app-container');
-  container.innerHTML = `<h2>グループを選択してください</h2>`;
+  const container = getContainer();
+  container.innerHTML = '<h2>2. グループを選択</h2>';
+  
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
     btn.textContent = `グループ ${i}`;
@@ -152,40 +51,72 @@ function showGroupSelectionUI() {
       socket.emit("join", groupId);
       showNameInputUI();
     };
-    document.body.appendChild(btn);
+    container.appendChild(btn);
   }
 
-  // ✅ ホストボタンを追加
+  container.appendChild(document.createElement("hr"));
+
   const hostBtn = document.createElement("button");
   hostBtn.textContent = "👑 ホストとして参加";
-  hostBtn.style.marginTop = "20px";
+  hostBtn.className = "button-outline";
   hostBtn.onclick = () => {
     isHost = true;
-    socket.emit("host_join");  // サーバーにホストとして通知
+    socket.emit("host_join");
     showHostUI();
   };
-  document.body.appendChild(document.createElement("br"));
-  document.body.appendChild(hostBtn);
+  container.appendChild(hostBtn);
+}
+
+function showNameInputUI() {
+  const container = getContainer();
+  container.innerHTML = `
+    <h2>3. プレイヤー名を入力</h2>
+    <input type="text" id="nameInput" placeholder="名前を入力..." />
+    <button id="fix-name-btn" class="button-primary">決定</button>
+    <button id="back-to-group-btn">グループ選択に戻る</button>
+  `;
+  document.getElementById('fix-name-btn').onclick = fixName;
+  document.getElementById('back-to-group-btn').onclick = backToGroupSelection;
+}
+
+function showStartUI() {
+  const container = getContainer();
+  container.innerHTML = `
+    <h2>${playerName}さん、ようこそ！</h2>
+    <p>ホストがゲームを開始するまで、ルールを確認してお待ちください。</p>
+    <div style="text-align:left; line-height:1.6; background: #f4f5f6; padding: 15px; border-radius: 4px;">
+      <h4>🎮 ゲームのルール</h4>
+      <p><strong>🩸 HPが0になると脱落！</strong> 回答を間違えると自分のHPが減ります。</p>
+      <p><strong>✅ 正解すると得点ゲット！</strong> 他の全員のHPが減ります。</p>
+      <p><strong>🏆 ボーナススコア！</strong> 1位通過で+200点、2位通過で+100点。</p>
+    </div>
+    ${isHost ? `<button id="host-start-btn" class="button-primary" style="margin-top: 20px;">このグループでゲーム開始</button>` : ''}
+  `;
+  if (isHost) {
+    document.getElementById('host-start-btn').onclick = () => socket.emit('host_start');
+  }
 }
 
 function showHostUI() {
-  document.body.innerHTML = `
+  const container = getContainer();
+  container.innerHTML = `
     <h2>👑 ホスト画面</h2>
-    <div style="display:flex;">
-      <div id="hostStatus" style="flex:1;"></div>
-      <div id="globalRanking" style="flex:1; padding-left:20px;"></div>
+    <div style="display:flex; flex-wrap: wrap; gap: 20px;">
+      <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
-
-    <h3>🔀 グループ割り振り設定</h3>
-    <label>グループ数：<input id="groupCount" type="number" value="5" min="2" max="10"></label><br/>
-    <label>各グループの人数：<input id="playersPerGroup" type="number" value="3" min="1"></label><br/>
-    <label>上位何グループにスコア上位を集中させるか：<input id="topGroupCount" type="number" value="1" min="1" max="2"></label><br/>
-    <button onclick="submitGrouping()" style="margin-top:10px;">グループ割り振りを実行</button>
-
     <hr/>
-
-    <button onclick="hostStartAllGroups()" style="margin-top:20px;font-size:1.2em;">全グループでゲーム開始</button>
+    <h3>🔀 グループ割り振り設定</h3>
+    <label>グループ数：<input id="groupCount" type="number" value="5" min="2" max="10"></label>
+    <label>各グループの人数：<input id="playersPerGroup" type="number" value="3" min="1"></label>
+    <label>上位何グループにスコア上位を集中：<input id="topGroupCount" type="number" value="1" min="1"></label>
+    <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
+    <hr/>
+    <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
   `;
+  
+  document.getElementById('submit-grouping-btn').onclick = submitGrouping;
+  document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
 
   socket.emit("host_request_state");
   socket.emit("request_global_ranking");
@@ -195,401 +126,274 @@ function showHostUI() {
   }, 2000);
 }
 
-
-
-function hostStartAllGroups() {
-  socket.emit("host_start");
-}
-
-function showPointPopup(point) {
-  const popup = document.getElementById("point-popup");
-  popup.textContent = `${point}点！`;
-
-  // 初期表示：拡大状態
-  popup.style.transition = "none";
-  popup.style.transform = "translate(-50%, -50%) scale(3)";
-  popup.style.opacity = "1";
-  popup.classList.remove("hidden");
-
-  // 1秒後に縮小・フェードアウト
-  setTimeout(() => {
-    popup.style.transition = "transform 1s ease, opacity 1s ease";
-    popup.style.transform = "translate(-50%, -50%) scale(0)";
-    popup.style.opacity = "0";
-  }, 1000);
-
-  // 非表示に戻す
-  setTimeout(() => {
-    popup.classList.add("hidden");
-    popup.style.transition = "";
-    popup.style.transform = "translate(-50%, -50%) scale(1)";
-    popup.style.opacity = "1";
-  }, 2000);
-}
-
-
-
-function startGame() {
-  console.log("startGame called");
-  socket.emit("start", { groupId }); // ← 不要な numCards などを送らない
-}
-
-
-let lastQuestionText = "";
-
-socket.on("state", (state) => {
-  console.log("📦 state 受信", state); 
-
-  showSpeed = state.showSpeed;
-
-  if (!state.current) return;
-
-  // 💡 必ずゲーム画面が表示されるようにここで描画（条件を外す）
-  if (!document.getElementById("game")) {
-  document.body.innerHTML = `
-    <div id="point-popup" class="hidden"
-      style="font-size: 10em; font-weight: bold; color: red;
-             position: fixed; top: 50%; left: 50%;
-             transform: translate(-50%, -50%) scale(1);
-             z-index: 9999; transition: none; opacity: 1;">
-    </div>
-
-    <div id="current-point"
-      style="position: fixed; top: 10px; right: 10px; font-size: 1.5em;">
-    </div>
-
-    <div id="game"></div>
-  `;
-}
-
-  // 得点ポップアップと右上表示
-if (state.current.pointValue != null) {
-  const popup = document.getElementById("point-popup");
-  popup.textContent = `${state.current.pointValue}点`;
-  popup.classList.remove("hidden");
-
-  // 拡大表示 → 縮小フェード → 非表示
-  popup.style.transition = "none";
-  popup.style.transform = "translate(-50%, -50%) scale(3)";
-  popup.style.opacity = "1";
-
-  setTimeout(() => {
-    popup.style.transition = "transform 1s ease, opacity 1s ease";
-    popup.style.transform = "translate(-50%, -50%) scale(0)";
-    popup.style.opacity = "0";
-  }, 1000);
-
-  setTimeout(() => {
-    popup.classList.add("hidden");
-    popup.style.transition = "";
-    popup.style.transform = "translate(-50%, -50%) scale(1)";
-    popup.style.opacity = "1";
-  }, 2000);
-
-  // 右上の得点表示
-  const currentPointDiv = document.getElementById("current-point");
-  if (currentPointDiv) {
-    currentPointDiv.textContent = `この問題：${state.current.pointValue}点`;
-  }
-}
-
-  
-  // ✅ 問題が新しくなった時のみフラグを更新
-  if (state.current.text !== lastQuestionText) {
-    hasAnimated = false;
-    locked = false;
-    alreadyAnswered = false;
-    lastQuestionText = state.current.text;
-  }
-
-  // ✅ 必ずUI更新（上の if 文の外にする）
-  updateUI(state);
-});
-
-socket.on("global_ranking", (ranking) => {
-  const div = document.getElementById("globalRanking");
-  if (!div) return;
-
-  div.innerHTML = `<h3>🌏 全体ランキング</h3><ol style="font-size:1.1em;">${
-    ranking.map(p =>
-      `<li>${p.name}（累計: ${p.totalScore}点）</li>`
-    ).join("")
-  }</ol>`;
-});
-
-
-socket.on("host_state", (allGroups) => {
-  const div = document.getElementById("hostStatus");
-  if (!div) return;
-
-  div.innerHTML = Object.entries(allGroups).map(([group, data]) => {
-    const isLocked = data.locked;  // ← ここで取得
-    const groupColor = isLocked ? "red" : "black";  // ← 色分け
-
-    const members = data.players.map(p => {
-      const extra = p.hp != null ? `｜HP: ${p.hp}｜正解数: ${p.correctCount ?? 0}` : "";
-      return `<li>${p.name}${extra}</li>`;
-    }).join("");
-
-    return `
-      <div style="margin-bottom:20px;">
-        <strong style="color:${groupColor};">${group}（${data.players.length}人）</strong>
-        <ul>${members}</ul>
-      </div>
-    `;
-  }).join("");
-});
-
-socket.on("assigned_group", (newGroupId) => {
-  groupId = newGroupId;
-
-  // 再びjoinイベントを送って、サーバー側でグループ再参加させる（←これが重要）
-  socket.emit("join", groupId);
-
-  document.body.innerHTML = `
-    <h2>あなたは <strong>${groupId}</strong> に割り振られました</h2>
-    <p>ホストが開始するまでお待ちください。</p>
-  `;
-});
-
-
-
-socket.on("lock", () => {
-  locked = true;
-});
-
-socket.on("end", (ranking) => {
-  const game = document.getElementById("game");
-
-  game.innerHTML = `
-    <div style="display:flex;">
-      <div style="flex:1;">
-        <h2>🎉 ゲーム終了！</h2>
-        <ol style="font-size: 1.5em;">
-          ${ranking.map(p =>
-            `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}｜正解数: ${p.correctCount ?? 0}）</li>`
-          ).join("")}
-        </ol>
-        ${
-          isHost
-            ? `<button id="nextGameBtn" style="margin-top:20px;font-size:1.2em;padding:10px 20px;">次のゲームへ</button>`
-            : `<p style="color:gray;">※ホストが次のゲームを開始します</p>`
-        }
-      </div>
-      <div id="globalRanking" style="flex:1; padding-left:20px;"></div>
-    </div>
-  `;
-
-  if (isHost) {
-    document.getElementById("nextGameBtn").onclick = () => {
-      socket.emit("host_start");
-    };
-  }
-
-  // 全体ランキングのリクエスト
-  socket.emit("request_global_ranking");
-});
-
-
-
-socket.on("timer_start", ({ seconds }) => {
-  if (countdownIntervalId) {
-    clearInterval(countdownIntervalId);
-    countdownIntervalId = null;
-  }
-
-  let countdown = seconds;
-  const timer = document.getElementById("countdown-timer");
-  if (!timer) return;
-
-  timer.textContent = `⏳ ${countdown}s`;
-
-  countdownIntervalId = setInterval(() => {
-    countdown--;
-    if (countdown >= 0) {
-      timer.textContent = `⏳ ${countdown}s`;
-    }
-    if (countdown <= 0) {
-      clearInterval(countdownIntervalId);
-      countdownIntervalId = null;
-      timer.textContent = "";
-    }
-  }, 1000);
-});
-
-
-
-
-function updateUI(state) {
-  console.log("🎯 updateUI called", state); // ← 追加
-  const game = document.getElementById("game");
-  game.innerHTML = `
-  <div id="yomifuda"></div>
-  <div id="cards" style="display: flex; flex-wrap: wrap;"></div>
-`;
-
-   const myHP = getMyHP(state);
-const myHPPercent = Math.max(0, myHP / 20 * 100);
-let myHPColor = "green";
-if (myHP <= 5) myHPColor = "red";
-else if (myHP <= 10) myHPColor = "yellow";
-
-game.innerHTML += `
-  <div style="margin-top:10px;">
-    <h4>自分</h4>
-<div style="font-size: 1.5em;">HP: ${myHP}｜正解数: ${getMyCorrectCount(state)}</div>
-    <div style="background: #ccc; width: 200px; height: 20px;">
-      <div style="background: ${myHPColor}; width: ${myHPPercent}%; height: 100%;"></div>
-    </div>
-  </div>
-  <div id="others"></div>
-`;
-
-
-if (!hasAnimated && state.current && state.current.text) {
-  animateText("yomifuda", state.current.text, showSpeed);
-  hasAnimated = true;
-} else if (hasAnimated && state.current && state.current.text) {
-  const yomifuda = document.getElementById("yomifuda");
-  if (yomifuda && yomifuda.textContent !== state.current.text) {
-    yomifuda.textContent = state.current.text;
-  }
-}
-
-
-  const cardsDiv = document.getElementById("cards");
-cardsDiv.style.display = "grid";
-cardsDiv.style.gridTemplateColumns = `repeat(auto-fit, minmax(120px, 1fr))`;
-cardsDiv.style.gap = "10px";
-
-state.current.cards.forEach(c => {
-  const div = document.createElement("div");
-  div.className = "card";
-  div.style.border = "1px solid #ccc";
-  div.style.padding = "10px";
-  div.style.textAlign = "center";
-  div.style.borderRadius = "8px";
-  div.style.boxShadow = "2px 2px 5px rgba(0,0,0,0.1)";
-  div.style.cursor = "pointer";
-  div.style.background = "#fff";
-
-  // 色付けと名前表示
-  if (c.correct) {
-    div.style.background = "yellow";
-    div.innerHTML += `<div style="margin-top:5px;font-size:0.8em;">${c.chosenBy}</div>`;
-  } else if (c.incorrect) {
-    div.style.background = "red";
-    div.innerHTML += `<div style="margin-top:5px;font-size:0.8em;">${c.chosenBy}</div>`;
-  }
-    else if (c.correctAnswer) {
-    div.style.background = "lightgreen"; // 正解札の色
-    div.style.border = "2px solid green"; // 強調
-  }
-
-
-  // 内容（上に書くことで常時表示）
-  div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${c.term}</div><div style="color:#666;">${c.number}</div>` + div.innerHTML;
-
-  div.onclick = () => {
-    if (!locked && !alreadyAnswered) submitAnswer(c.number);
-  };
-
-  cardsDiv.appendChild(div);
-});
-
-
-
-  const otherDiv = document.getElementById("others");
-  otherDiv.innerHTML = `<h4>他プレイヤー</h4>`;
-state.players.forEach(p => {
-  if (p.name !== playerName) {
-    const hpPercent = Math.max(0, p.hp / 20 * 100);
-    let hpColor = "green";
-    if (p.hp <= 5) hpColor = "red";
-    else if (p.hp <= 10) hpColor = "yellow";
-
-    otherDiv.innerHTML += `
-      <div style="margin-top:10px;">
-        <strong>${p.name}</strong>
-        <div style="font-size: 1.5em;">HP: ${p.hp}｜正解数: ${p.correctCount ?? 0}</div>
-        <div style="background: #ccc; width: 200px; height: 20px;">
-          <div style="background: ${hpColor}; width: ${hpPercent}%; height: 100%;"></div>
+function showGameScreen(state) {
+  const container = getContainer();
+  // ゲーム画面の骨格がまだなければ生成する
+  if (!document.getElementById('game-area')) {
+    container.innerHTML = `
+      <div id="game-area">
+        <div id="yomifuda"></div>
+        <div id="cards-grid"></div>
+        <hr>
+        <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+          <div id="my-info"></div>
+          <div id="others-info"></div>
         </div>
       </div>
     `;
   }
-});
-// updateUI(state) の中のどこか（たとえば最下部）に追加
-const existingTimer = document.getElementById("countdown-timer");
-if (!existingTimer) {
-  const timerDiv = document.createElement("div");
-  timerDiv.id = "countdown-timer";
-  timerDiv.style.position = "fixed";
-  timerDiv.style.bottom = "10px";
-  timerDiv.style.right = "10px";
-  timerDiv.style.fontSize = "1.5em";
-  timerDiv.style.background = "white";
-  timerDiv.style.border = "1px solid #ccc";
-  timerDiv.style.padding = "5px 10px";
-  timerDiv.style.borderRadius = "10px";
-  timerDiv.style.boxShadow = "2px 2px 5px rgba(0,0,0,0.2)";
-  document.body.appendChild(timerDiv);
+  updateGameUI(state);
 }
 
+function showEndScreen(ranking) {
+  const container = getContainer();
+  container.innerHTML = `
+    <h2>🎉 ゲーム終了！</h2>
+    <div style="display:flex; flex-wrap: wrap; gap: 20px;">
+      <div style="flex:2; min-width: 300px;">
+        <h3>今回の順位</h3>
+        <ol style="font-size: 1.2em;">
+          ${ranking.map(p =>
+            `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`
+          ).join("")}
+        </ol>
+        ${isHost ? `<button id="next-game-btn" class="button-primary">次のゲームへ</button>` : `<p>ホストが次のゲームを開始します。</p>`}
+      </div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
+    </div>
+  `;
 
-}
-
-function getMyHP(state) {
-  return state.players.find(p => p.name === playerName)?.hp ?? 20;
-}
-
-function getMyCorrectCount(state) {
-  return state.players.find(p => p.name === playerName)?.correctCount ?? 0;
-}
-
-function submitAnswer(number) {
-  if (locked || alreadyAnswered) {
-    console.log("回答ブロック中");
-    return;
+  if (isHost) {
+    document.getElementById('next-game-btn').onclick = () => socket.emit("host_start");
   }
-  console.log("✅ 回答送信", number);
-  socket.emit("answer", { groupId, name: playerName, number });
-  alreadyAnswered = true;
+  socket.emit("request_global_ranking");
 }
 
-function submitGrouping() {
-  const groupCount = parseInt(document.getElementById("groupCount").value);
-  const playersPerGroup = parseInt(document.getElementById("playersPerGroup").value);
-  const topGroupCount = parseInt(document.getElementById("topGroupCount").value);
 
-  socket.emit("host_assign_groups", {
-    groupCount,
-    playersPerGroup,
-    topGroupCount
+// --- イベントハンドラとロジック ---
+
+function handleCSVUpload() {
+  const fileInput = document.getElementById("csvFile");
+  if (!fileInput.files[0]) return alert("CSVファイルを選んでください");
+
+  Papa.parse(fileInput.files[0], {
+    header: false,
+    skipEmptyLines: true,
+    complete: (result) => {
+      const cards = result.data.slice(1).map(r => ({
+        number: String(r[0]).trim(),
+        term: String(r[1]).trim(),
+        text: String(r[2]).trim()
+      })).filter(c => c.term && c.text);
+
+      const settings = {
+        numCards: parseInt(document.getElementById("numCards").value),
+        showSpeed: parseInt(document.getElementById("speed").value)
+      };
+
+      socket.emit("set_cards_and_settings", { cards, settings });
+    }
   });
 }
 
+function fixName() {
+  const nameInput = document.getElementById("nameInput");
+  playerName = nameInput.value.trim();
+  if (!playerName) return alert("名前を入力してください");
+  socket.emit("set_name", { groupId, name: playerName });
+  showStartUI();
+}
+
+function backToGroupSelection() {
+  if (groupId) {
+    socket.emit("leave_group", { groupId });
+    groupId = "";
+  }
+  showGroupSelectionUI();
+}
+
+function submitAnswer(number) {
+  if (alreadyAnswered) return;
+  alreadyAnswered = true; // 即座にロック
+  socket.emit("answer", { groupId, name: playerName, number });
+}
+
+function submitGrouping() {
+  socket.emit("host_assign_groups", {
+    groupCount: parseInt(document.getElementById("groupCount").value),
+    playersPerGroup: parseInt(document.getElementById("playersPerGroup").value),
+    topGroupCount: parseInt(document.getElementById("topGroupCount").value)
+  });
+}
+
+// --- UI更新関数 ---
+
+function updateGameUI(state) {
+  // 問題が新しくなったかチェック
+  if (state.current?.text !== lastQuestionText) {
+    hasAnimated = false;
+    alreadyAnswered = false; // 回答権を復活
+    lastQuestionText = state.current.text;
+  }
+  
+  // 読み札のアニメーション
+  const yomifudaDiv = document.getElementById('yomifuda');
+  if (yomifudaDiv && !hasAnimated && state.current?.text) {
+    animateText('yomifuda', state.current.text, state.showSpeed);
+    hasAnimated = true;
+  }
+
+  // 取り札の描画
+  const cardsGrid = document.getElementById('cards-grid');
+  cardsGrid.innerHTML = ''; // 一旦クリア
+  state.current?.cards.forEach(card => {
+    const div = document.createElement("div");
+    div.className = "card";
+    
+    let chosenByHtml = '';
+    if (card.correct) {
+      div.style.background = "gold";
+      chosenByHtml = `<div style="font-size:0.8em; color: black;">${card.chosenBy}</div>`;
+    } else if (card.incorrect) {
+      div.style.background = "crimson";
+      div.style.color = "white";
+      chosenByHtml = `<div style="font-size:0.8em;">${card.chosenBy}</div>`;
+    } else if (card.correctAnswer) {
+      div.style.background = "lightgreen";
+      div.style.border = "2px solid green";
+    }
+
+    div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>
+                     <div style="color:#666;">${card.number}</div>
+                     ${chosenByHtml}`;
+    
+    div.onclick = () => {
+        // サーバーからのlocked状態と、クライアントの二重回答防止をチェック
+        if (!state.locked && !alreadyAnswered) {
+            submitAnswer(card.number);
+        }
+    };
+    cardsGrid.appendChild(div);
+  });
+  
+  // プレイヤー情報の描画
+  const myPlayer = state.players.find(p => p.name === playerName);
+  const otherPlayers = state.players.filter(p => p.name !== playerName);
+
+  const myInfoDiv = document.getElementById('my-info');
+  if(myPlayer) {
+    myInfoDiv.innerHTML = `<h4>自分: ${myPlayer.name} (正解: ${myPlayer.correctCount ?? 0})</h4>${renderHpBar(myPlayer.hp)}`;
+  }
+
+  const othersInfoDiv = document.getElementById('others-info');
+  othersInfoDiv.innerHTML = '<h4>他のプレイヤー</h4>';
+  otherPlayers.forEach(p => {
+    othersInfoDiv.innerHTML += `<div><strong>${p.name} (正解: ${p.correctCount ?? 0})</strong>${renderHpBar(p.hp)}</div>`;
+  });
+}
+
+function renderHpBar(hp) {
+    const hpPercent = Math.max(0, hp / 20 * 100);
+    let hpColor = "mediumseagreen";
+    if (hp <= 5) hpColor = "crimson";
+    else if (hp <= 10) hpColor = "orange";
+    return `
+      <div style="font-size: 0.9em;">HP: ${hp} / 20</div>
+      <div style="background: #ccc; width: 100%; height: 20px; border-radius: 10px; overflow: hidden;">
+        <div style="background: ${hpColor}; width: ${hpPercent}%; height: 100%;"></div>
+      </div>
+    `;
+}
 
 function animateText(elementId, text, speed) {
   const element = document.getElementById(elementId);
-  let i = 0;
+  if (!element) return;
   element.textContent = "";
+  let i = 0;
 
   if (readInterval) clearInterval(readInterval);
-
   readInterval = setInterval(() => {
-    element.textContent = text.slice(0, i);
     i += 5;
     if (i >= text.length) {
       element.textContent = text;
       clearInterval(readInterval);
       readInterval = null;
-
-      socket.emit("read_done", groupId); // ✅ ここでemitされてるか
-      hasAnimated = true;  // ✅←ここで設定
+      socket.emit("read_done", groupId);
+    } else {
+      element.textContent = text.slice(0, i);
     }
   }, speed);
-
-
-
 }
+
+function showPointPopup(point) {
+  const popup = document.getElementById('point-popup');
+  if (!popup) return;
+  popup.textContent = `${point}点!`;
+  popup.classList.add('show');
+  setTimeout(() => popup.classList.remove('show'), 1500);
+}
+
+
+// --- Socket.IO イベントリスナー ---
+
+socket.on("start_group_selection", showGroupSelectionUI);
+
+socket.on("assigned_group", (newGroupId) => {
+  groupId = newGroupId;
+  socket.emit("join", groupId); // サーバーに再参加を通知
+  getContainer().innerHTML = `<h2>あなたは <strong>${groupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
+});
+
+socket.on("state", (state) => {
+  if (!state || !state.players) return; // 不正なstateは無視
+  showGameScreen(state);
+
+  // 得点ポップアップ (current.pointValueが新しいときだけ表示)
+  if (state.current?.pointValue) {
+    document.getElementById('current-point').textContent = `この問題: ${state.current.pointValue}点`;
+    // state.answeredは正解者がでたフラグ。これを見てポップアップを出す
+    if(state.answered) {
+        showPointPopup(state.current.pointValue);
+    }
+  }
+});
+
+socket.on("end", (ranking) => {
+  showEndScreen(ranking);
+});
+
+socket.on("host_state", (allGroups) => {
+  const div = document.getElementById("hostStatus");
+  if (!div) return;
+  div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
+    if (data.players.length === 0) return '';
+    const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
+    return `<div style="margin-bottom:15px;"><strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong><ul>${members}</ul></div>`;
+  }).join("");
+});
+
+socket.on("global_ranking", (ranking) => {
+  const div = document.getElementById("globalRanking");
+  if (!div) return;
+  div.innerHTML = `<h3>🌏 全体ランキング</h3><ol>${ranking.map(p => `<li>${p.name} (累計: ${p.totalScore}点)</li>`).join("")}</ol>`;
+});
+
+socket.on("timer_start", ({ seconds }) => {
+  const timerDiv = document.getElementById('countdown-timer');
+  if (!timerDiv) return;
+  
+  if (countdownIntervalId) clearInterval(countdownIntervalId);
+  
+  let countdown = seconds;
+  timerDiv.textContent = `⏳ ${countdown}s`;
+  
+  countdownIntervalId = setInterval(() => {
+    countdown--;
+    if (countdown >= 0) {
+      timerDiv.textContent = `⏳ ${countdown}s`;
+    } else {
+      clearInterval(countdownIntervalId);
+      timerDiv.textContent = "";
+    }
+  }, 1000);
+});
