@@ -98,6 +98,64 @@ socket.on("leave_group", ({ groupId }) => {
   console.log(`🚪 ${socket.id} が ${groupId} を離脱`);
 });
 
+  socket.on("disconnect", () => {
+    console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
+    
+    // このソケットIDがどのグループにいたかを探す
+    for (const groupId in groups) {
+      const playerIndex = groups[groupId].players.findIndex(p => p.id === socket.id);
+      
+      if (playerIndex > -1) {
+        const playerName = groups[groupId].players[playerIndex].name;
+        console.log(`👻 ${groupId} から ${playerName} を削除します`);
+
+        // groups と states の両方からプレイヤーを削除
+        groups[groupId].players.splice(playerIndex, 1);
+        if (states[groupId] && states[groupId].players) {
+          const statePlayerIndex = states[groupId].players.findIndex(p => p.id === socket.id);
+          if (statePlayerIndex > -1) {
+            states[groupId].players.splice(statePlayerIndex, 1);
+          }
+        }
+        
+        // 脱落者として扱う（ゲーム中の場合）
+        const state = states[groupId];
+        if (state && !state.locked && !state.eliminatedOrder.includes(playerName)) {
+           state.eliminatedOrder.push(playerName);
+           checkGameEnd(groupId); // ← ゲーム終了判定を呼び出す
+        }
+
+        // 状況をグループの他のプレイヤーに通知
+        io.to(groupId).emit("state", sanitizeState(states[groupId]));
+        
+        // ホストにも最新情報を通知
+        if(hostSocketId) {
+            io.to(hostSocketId).emit("host_state", getHostState());
+        }
+
+        break; // 見つかったらループを抜ける
+      }
+    }
+  });
+  // ... 他の on イベントの終わり
+});
+
+// どこかアクセスしやすい場所に関数として定義しておくと便利
+function getHostState() {
+  const result = {};
+  for (const [groupId, group] of Object.entries(groups)) {
+    result[groupId] = {
+      locked: states[groupId]?.locked ?? false,
+      players: group.players.map(p => ({
+        name: p.name,
+        hp: states[groupId]?.players.find(sp => sp.id === p.id)?.hp,
+        correctCount: states[groupId]?.players.find(sp => sp.id === p.id)?.correctCount,
+        totalScore: p.totalScore
+      }))
+    };
+  }
+  return result;
+}
   
   socket.on("set_name", ({ groupId, name }) => {
   const state = states[groupId];
