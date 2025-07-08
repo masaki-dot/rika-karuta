@@ -132,6 +132,8 @@ function checkGameEnd(groupId) {
   }
 }
 
+// server.js の修正箇所
+
 function nextQuestion(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -142,15 +144,53 @@ function nextQuestion(groupId) {
     }
 
     const remaining = globalCards.filter(q => !state.usedQuestions.includes(q.text.trim() + q.number));
-    if (remaining.length === 0 || state.questionCount >= state.maxQuestions) {
-        checkGameEnd(groupId); // 問題が尽きたらゲーム終了
-        if (!state.locked) { // checkGameEndでロックされなかった場合（全員生存など）
-            io.to(groupId).emit("end", []); // 空のランキングで終了を通知
-            state.locked = true;
-        }
-        return;
-    }
 
+    // ▼▼▼ ここからが重要な修正 ▼▼▼
+    // 問題が尽きた、または規定問題数に達した場合の終了処理
+    if (remaining.length === 0 || state.questionCount >= state.maxQuestions) {
+        state.locked = true; // まずゲームをロック
+        
+        // 現在のプレイヤーをHPと正解数でソートして、その時点でのランキングを作成
+        const finalRanking = [...state.players].sort((a, b) => {
+            if (b.hp !== a.hp) {
+                return b.hp - a.hp; // 1. HPが高いプレイヤーが上位
+            }
+            // HPが同じ場合は、正解数が多いプレイヤーが上位
+            return (b.correctCount || 0) - (a.correctCount || 0);
+        });
+        
+        // 最終スコアを計算
+        const alreadyUpdated = new Set();
+        finalRanking.forEach((p, i) => {
+            const correctCount = p.correctCount || 0;
+            let bonus = 0;
+            // HP順でボーナスを付与する
+            if (i === 0) bonus = 200; // 1位
+            else if (i === 1) bonus = 100; // 2位
+            
+            p.finalScore = (correctCount * 10) + bonus;
+
+            // 累計スコアも更新
+            const gPlayer = groups[groupId]?.players.find(gp => gp.id === p.id);
+            if (gPlayer && !alreadyUpdated.has(gPlayer.id)) {
+                gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
+                p.totalScore = gPlayer.totalScore;
+                alreadyUpdated.add(gPlayer.id);
+            } else {
+                p.totalScore = gPlayer?.totalScore ?? p.finalScore;
+            }
+        });
+
+        // 最終スコアで再度ソートして、正しい順位に並べ替える
+        finalRanking.sort((a, b) => b.finalScore - a.finalScore);
+
+        console.log(`ゲーム終了: 問題数上限または問題切れのため。 Group: ${groupId}`);
+        io.to(groupId).emit("end", finalRanking); // 計算した正しいランキングを送信
+        return; // これ以上、問題は出さないので処理を終了
+    }
+    // ▲▲▲ ここまでが修正箇所 ▲▲▲
+
+    // 問題がまだある場合は、通常通り次の問題を出題する
     const question = remaining[Math.floor(Math.random() * remaining.length)];
     const key = question.text.trim() + question.number;
     state.usedQuestions.push(key);
