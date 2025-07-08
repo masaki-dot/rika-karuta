@@ -344,14 +344,28 @@ socket.on("assigned_group", (newGroupId) => {
   getContainer().innerHTML = `<h2>あなたは <strong>${groupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
 });
 
+// client.js の修正箇所
+
 socket.on("state", (state) => {
   if (!state || !state.players) return; // 不正なstateは無視
-  showGameScreen(state);
 
-  // 得点ポップアップ (current.pointValueが新しいときだけ表示)
+  // 【ここからが重要な修正】
+  // state.current（現在の問題）が存在し、かつゲーム画面がまだ表示されていない場合、
+  // それは「ゲームがまさに始まった」ことを意味するので、ゲーム画面を初めて表示する。
+  if (state.current && !document.getElementById('game-area')) {
+    showGameScreen(state);
+  }
+  // すでにゲーム画面が表示されている場合は、UIのデータだけを更新する。
+  else if (document.getElementById('game-area')) {
+    updateGameUI(state);
+  }
+  // それ以外の場合（名前入力画面など）、何もしない。これにより画面が上書きされるのを防ぐ。
+  // 【ここまでが重要な修正】
+
+
+  // 得点ポップアップ表示のロジックは変更なし
   if (state.current?.pointValue) {
     document.getElementById('current-point').textContent = `この問題: ${state.current.pointValue}点`;
-    // state.answeredは正解者がでたフラグ。これを見てポップアップを出す
     if(state.answered) {
         showPointPopup(state.current.pointValue);
     }
