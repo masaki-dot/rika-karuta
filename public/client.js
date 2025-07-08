@@ -21,7 +21,8 @@ window.onload = () => {
 };
 
 function showCSVUploadUI() {
-  document.body.innerHTML = `
+  const container = document.getElementById('app-container');
+  container.innerHTML = `
     <h2>CSVファイルをアップロード</h2>
     <input type="file" id="csvFile" accept=".csv" /><br/><br/>
     <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
@@ -140,7 +141,8 @@ function backToGroupSelection() {
 }
 
 function showGroupSelectionUI() {
-  document.body.innerHTML = `<h2>グループを選択してください</h2>`;
+  const container = document.getElementById('app-container');
+  container.innerHTML = `<h2>グループを選択してください</h2>`;
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
     btn.textContent = `グループ ${i}`;
