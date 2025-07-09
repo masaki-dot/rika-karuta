@@ -523,7 +523,7 @@ io.on("connection", (socket) => {
 
 
 // サーバーを起動
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80; // ← ポートを3000から80に変更
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
