@@ -263,8 +263,7 @@ function updateGameUI(state) {
       div.style.border = "2px solid green";
     }
 
-    div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>
-                     <div style="color:#666;">${card.number}</div>
+        div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>
                      ${chosenByHtml}`;
     
     div.onclick = () => {
