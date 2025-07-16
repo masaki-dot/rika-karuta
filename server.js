@@ -19,6 +19,7 @@ let globalSettings = {
   numCards: 5,
   showSpeed: 2000
 };
+let gamePhase = 'INITIAL';
 
 // ゲーム状態とプレイヤー情報を管理
 const states = {}; // ゲームごとの一時的な状態 (HP, 現在の問題など)
@@ -226,6 +227,11 @@ function nextQuestion(groupId) {
 io.on("connection", (socket) => {
   console.log(`✅ プレイヤーが接続しました: ${socket.id}`);
 
+// クライアントから現在のゲームフェーズを尋ねられたときの応答
+  socket.on('request_game_phase', () => {
+    socket.emit('game_phase_response', { phase: gamePhase });
+  });
+  
   // --- イベントリスナーの登録 (ここから下はすべて並列) ---
 
   socket.on("set_cards_and_settings", ({ cards, settings }) => {
@@ -235,6 +241,7 @@ io.on("connection", (socket) => {
     // 全てのゲーム状態をリセット
     Object.keys(states).forEach(key => delete states[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
+    gamePhase = 'GROUP_SELECTION';
     
     io.emit("start_group_selection");
   });
@@ -274,8 +281,16 @@ io.on("connection", (socket) => {
     }
     const gplayer = groups[groupId]?.players.find(p => p.id === socket.id);
     if (gplayer) gplayer.name = name;
+    // 名前が設定されたら、グループの最新状態をグループ全員に送信する。
+  // これにより、途中参加者が他のプレイヤーに認識され、
+  // 本人もゲームが始まっていれば即座にゲーム画面に遷移できる。
+  if (state) {
+    io.to(groupId).emit("state", sanitizeState(state));
+  }
   });
 
+
+  
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
     if (!state || !state.current || state.answered) return;
