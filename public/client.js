@@ -17,24 +17,9 @@ let countdownIntervalId = null; // 30秒タイマーID
 const getContainer = () => document.getElementById('app-container');
 
 // --- アプリケーションの初期化 ---
-// サーバーとの接続が確立したときに自動的に呼び出される処理
-socket.on('connect', () => {
-  console.log('サーバーとの接続が確立しました。');
-  // ゲームの現在の進行状況をサーバーに問い合わせる
-  socket.emit('request_game_phase');
-});
-
-// サーバーからゲームの進行状況が返ってきたときの処理
-socket.on('game_phase_response', ({ phase }) => {
-  console.log('サーバーからゲームの進行状況を受信:', phase);
-  if (phase === 'INITIAL') {
-    // ゲームがまだ始まっていなければ、CSVアップロード画面を表示
-    showCSVUploadUI();
-  } else {
-    // ゲームが既に始まっていれば（CSVアップロード済みなら）、グループ選択画面を表示
-    showGroupSelectionUI();
-  }
-});
+window.onload = () => {
+  showCSVUploadUI();
+};
 
 // --- UI描画関数群 (画面遷移) ---
 
@@ -349,15 +334,7 @@ function showPointPopup(point) {
 
 
 // --- Socket.IO イベントリスナー ---
-socket.on('game_phase_response', ({ phase }) => {
-  if (phase === 'INITIAL') {
-    // まだゲームが始まっていなければ、CSVアップロード画面を表示
-    showCSVUploadUI();
-  } else {
-    // 既に設定が終わっていれば、グループ選択画面を直接表示
-    showGroupSelectionUI();
-  }
-});
+
 socket.on("start_group_selection", showGroupSelectionUI);
 
 socket.on("assigned_group", (newGroupId) => {
@@ -371,19 +348,18 @@ socket.on("assigned_group", (newGroupId) => {
 socket.on("state", (state) => {
   if (!state || !state.players) return; // 不正なstateは無視
 
- const amIReady = playerName !== ""; // 自分のプレイヤー名が設定されているか？
-
   // 【ここからが重要な修正】
-  // ゲームが始まっていて(state.currentが存在)、
-  // ゲーム画面がまだ表示されておらず、
-  // かつ、自分の名前が設定済みの場合にのみ、ゲーム画面を初めて表示する。
-  if (state.current && !document.getElementById('game-area') && amIReady) {
+  // state.current（現在の問題）が存在し、かつゲーム画面がまだ表示されていない場合、
+  // それは「ゲームがまさに始まった」ことを意味するので、ゲーム画面を初めて表示する。
+  if (state.current && !document.getElementById('game-area')) {
     showGameScreen(state);
   }
   // すでにゲーム画面が表示されている場合は、UIのデータだけを更新する。
   else if (document.getElementById('game-area')) {
     updateGameUI(state);
   }
+  // それ以外の場合（名前入力画面など）、何もしない。これにより画面が上書きされるのを防ぐ。
+  // 【ここまでが重要な修正】
 
 
   // 得点ポップアップ表示のロジックは変更なし
