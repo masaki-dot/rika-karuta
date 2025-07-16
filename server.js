@@ -377,80 +377,97 @@ socket.on("read_done", (groupId) => {
 
  // server.js の修正箇所
 
-  socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
+  // server.js の修正箇所
+
+socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
     if (socket.id !== hostSocketId) return;
 
-    // 1. 参加中の全プレイヤーを収集し、累計スコア順に並べる
-    const allPlayers = Object.values(groups)
+    // 1. 参加中の全プレイヤーを収集し、累計スコア順にソートする
+    const allPlayersSorted = Object.values(groups)
         .flatMap(g => g.players)
-        .filter(p => p.name !== "未設定");
-    allPlayers.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+        .filter(p => p.name !== "未設定")
+        .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
 
-    // 2. 新しいグループの枠を用意する
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    // ★ ここからが新しい割り振りロジックです ★
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+    // 2. 上位プレイヤーと、それ以外のプレイヤーに分割する
+    const topPlayerCount = topGroupCount * playersPerGroup;
+    const topPlayers = allPlayersSorted.slice(0, topPlayerCount);
+    const otherPlayers = allPlayersSorted.slice(topPlayerCount);
+
+    // 3. 上位以外のプレイヤーだけをランダムにシャッフルする
+    const shuffledOtherPlayers = shuffle(otherPlayers); // shuffle関数は既に定義済み
+
+    // 4. 上位プレイヤーとシャッフルされたその他プレイヤーを結合して、最終的な割り振りリストを作成
+    const finalPlayerList = [...topPlayers, ...shuffledOtherPlayers];
+
+
+    // 5. 新しいグループの枠を用意する
     const newGroupsConfig = {};
     for (let i = 1; i <= groupCount; i++) {
-      newGroupsConfig[`group${i}`] = [];
+        newGroupsConfig[i] = []; // キーを数値にしておく方がループさせやすい
     }
 
-    // 3. 【重要】スコア上位者とそれ以外に分ける
-    const topPlayerCount = topGroupCount * playersPerGroup;
-    const topPlayers = allPlayers.slice(0, topPlayerCount);
-    const otherPlayers = allPlayers.slice(topPlayerCount);
-
-    // 4. 【重要】上位者を優先的に割り振る
-    topPlayers.forEach((player, index) => {
-      // グループ1, グループ2, ... グループtopGroupCount へ順番に割り振る
-      const targetGroupId = `group${(index % topGroupCount) + 1}`;
-      newGroupsConfig[targetGroupId].push(player);
-    });
-
-    // 5. 【重要】残りのプレイヤーをランダムに割り振る
-    shuffle(otherPlayers).forEach((player, index) => {
-        // 上位グループ以外のグループに順番に割り振る
-        const targetGroupIndex = topGroupCount + (index % (groupCount - topGroupCount));
-        const targetGroupId = `group${targetGroupIndex + 1}`;
-        // もしグループが存在しない場合は、最後のグループに入れる（安全対策）
-        if (newGroupsConfig[targetGroupId]) {
-            newGroupsConfig[targetGroupId].push(player);
-        } else {
-            newGroupsConfig[`group${groupCount}`].push(player);
+    // 6. 最終リストのプレイヤーを、グループ1から順番に詰めていく
+    let playerIndex = 0;
+    for (let i = 1; i <= groupCount; i++) {
+        const group = newGroupsConfig[i];
+        while (group.length < playersPerGroup && playerIndex < finalPlayerList.length) {
+            group.push(finalPlayerList[playerIndex]);
+            playerIndex++;
         }
-    });
+    }
+    
+    // 7. 定員からあぶれたプレイヤーを、最後のグループから順番に詰めていく（念のための処理）
+    while (playerIndex < finalPlayerList.length) {
+        for (let i = groupCount; i >= 1; i--) {
+            if (playerIndex >= finalPlayerList.length) break;
+            newGroupsConfig[i].push(finalPlayerList[playerIndex]);
+            playerIndex++;
+        }
+    }
 
-    // 6. 古いグループとStateを完全にリセット
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    // ★ ここまでが新しい割り振りロジックです ★
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+    // 8. 古いグループとStateを完全にリセット
     Object.keys(groups).forEach(key => delete groups[key]);
     Object.keys(states).forEach(key => delete states[key]);
 
-    // 7. 新しい設定でグループとStateを再構築
-    for (const [groupId, players] of Object.entries(newGroupsConfig)) {
+    // 9. 新しい設定でグループとStateを再構築
+    for (let i = 1; i <= groupCount; i++) {
+        const players = newGroupsConfig[i];
+        if (players.length === 0) continue;
+
+        const groupId = `group${i}`;
         groups[groupId] = { players };
         states[groupId] = initState(groupId);
         states[groupId].players = players.map(p => ({ id: p.id, name: p.name, hp: 20, score: 0, correctCount: 0 }));
     }
 
-    // 8. 各プレイヤーに新しいグループを通知し、Socket.IOのルームを再参加させる
+    // 10. 各プレイヤーに新しいグループを通知し、Socket.IOのルームを再参加させる
     for (const [groupId, group] of Object.entries(groups)) {
         for (const p of group.players) {
+            // ... (この部分は変更なし)
             const socketInstance = io.sockets.sockets.get(p.id);
             if (socketInstance) {
-                // 一旦すべてのルームから退出させる（古いグループから抜けるため）
                 for (const room of socketInstance.rooms) {
                     if (room !== p.id) socketInstance.leave(room);
                 }
-                // 新しいグループのルームに参加させる
                 socketInstance.join(groupId);
-                // 新しいグループを本人に通知
                 socketInstance.emit("assigned_group", groupId);
             }
         }
     }
-    console.log("✅ グループ割り振り完了");
-    
-    // ホストに最新の状態を即時送信
+    console.log("✅ 上位固定＆その他ランダムのロジックでグループ割り振り完了");
+
     if (hostSocketId) {
         io.to(hostSocketId).emit("host_state", getHostState());
     }
-  });
+});
 
   socket.on("answer", ({ groupId, name, number }) => {
     const state = states[groupId];
