@@ -283,6 +283,13 @@ io.on("connection", (socket) => {
     if (gplayer) gplayer.name = name;
   });
 
+// 名前が設定されたら、グループの最新状態をグループ全員に送信する。
+  // これにより、途中参加者が他のプレイヤーに認識され、
+  // 本人もゲームが始まっていれば即座にゲーム画面に遷移できる。
+  if (state) {
+    io.to(groupId).emit("state", sanitizeState(state));
+  }
+  
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
     if (!state || !state.current || state.answered) return;
