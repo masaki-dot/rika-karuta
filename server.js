@@ -291,33 +291,48 @@ io.on("connection", (socket) => {
 
 
   
-  socket.on("read_done", (groupId) => {
-    const state = states[groupId];
-    if (!state || !state.current || state.answered) return;
-  
-    if (!state.readDone) state.readDone = new Set();
-    state.readDone.add(socket.id);
-  
-    const livingPlayers = state.players.filter(p => p.hp > 0);
-    const allLivingPlayersRead = livingPlayers.every(p => state.readDone.has(p.id));
-  
-    const latestText = state.current.text;
-  
-    // 全員が読み終わったら即タイマー開始
-    if (allLivingPlayersRead && !state.readTimer) {
-      if (state.readTimer) clearTimeout(state.readTimer); // 念のためクリア
-      
-      io.to(groupId).emit("timer_start", { seconds: 30 });
-      state.readTimer = setTimeout(() => {
-        if (!state.answered && !state.waitingNext && state.current?.text === latestText) {
-          state.waitingNext = true;
-          io.to(groupId).emit("state", sanitizeState(state));
-          setTimeout(() => nextQuestion(groupId), 3000);
-        }
-      }, 30000);
-    }
-  });
+  // server.js の修正箇所
 
+// 以前の socket.on("read_done", ...) は削除して、↓に置き換える
+
+socket.on("read_done", (groupId) => {
+    const state = states[groupId];
+    // stateがない、または既にタイマーが開始/回答済み/次の問題待機中なら何もしない
+    if (!state || !state.current || state.readTimer || state.answered || state.waitingNext) {
+        return;
+    }
+
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    // ★ ここが重要な変更点 ★
+    // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+    // 誰か一人でも読み込みが終わったら、即座に30秒タイマーを開始する。
+    // これにより、誰かが切断していてもゲームが止まることがなくなる。
+    
+    const latestText = state.current.text; // タイマーが古い問題で発火しないように、現在の問題テキストを記憶
+
+    console.log(`[${groupId}] 最初の読み込み完了。タイマーを開始します。`);
+    
+    // 全員にタイマー開始を通知
+    io.to(groupId).emit("timer_start", { seconds: 30 });
+    
+    // 30秒後に誰も回答しなかった場合の処理を予約する
+    state.readTimer = setTimeout(() => {
+        // タイムアウトした時に、まだ状況が変わっていなければ（誰も回答していない、など）
+        if (state && !state.answered && !state.waitingNext && state.current?.text === latestText) {
+            console.log(`[${groupId}] 30秒タイムアウト。次の問題へ。`);
+            state.waitingNext = true;
+            // 正解の札をクライアントに表示させる
+            const correctCard = state.current.cards.find(c => c.number === state.current.answer);
+            if (correctCard) {
+                correctCard.correctAnswer = true;
+            }
+            io.to(groupId).emit("state", sanitizeState(state));
+            
+            // 3秒後に次の問題へ
+            setTimeout(() => nextQuestion(groupId), 3000);
+        }
+    }, 30000); // 30秒
+});
   socket.on("host_join", () => {
     hostSocketId = socket.id;
     console.log("👑 ホストが接続しました:", socket.id);
