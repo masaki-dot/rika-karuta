@@ -19,6 +19,7 @@ let globalSettings = {
   numCards: 5,
   showSpeed: 2000
 };
+let gamePhase = 'INITIAL';
 
 // ゲーム状態とプレイヤー情報を管理
 const states = {}; // ゲームごとの一時的な状態 (HP, 現在の問題など)
