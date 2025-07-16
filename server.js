@@ -236,6 +236,7 @@ io.on("connection", (socket) => {
     // 全てのゲーム状態をリセット
     Object.keys(states).forEach(key => delete states[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
+    gamePhase = 'GROUP_SELECTION';
     
     io.emit("start_group_selection");
   });
