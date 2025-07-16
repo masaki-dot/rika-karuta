@@ -5,6 +5,7 @@ let socket = io();
 let playerName = "";
 let groupId = "";
 let isHost = false;
+let rankingIntervalId = null; 
 
 // サーバーから受信した状態を保持
 let lastQuestionText = "";
@@ -94,22 +95,87 @@ function showNameInputUI() {
   document.getElementById('back-to-group-btn').onclick = backToGroupSelection;
 }
 
-function showStartUI() {
+function showHostUI() {
   const container = getContainer();
   container.innerHTML = `
-    <h2>${playerName}さん、ようこそ！</h2>
-    <p>ホストがゲームを開始するまで、ルールを確認してお待ちください。</p>
-    <div style="text-align:left; line-height:1.6; background: #f4f5f6; padding: 15px; border-radius: 4px;">
-      <h4>🎮 ゲームのルール</h4>
-      <p><strong>🩸 HPが0になると脱落！</strong> 回答を間違えると自分のHPが減ります。</p>
-      <p><strong>✅ 正解すると得点ゲット！</strong> 他の全員のHPが減ります。</p>
-      <p><strong>🏆 ボーナススコア！</strong> 1位通過で+200点、2位通過で+100点。</p>
+    <h2>👑 ホスト画面</h2>
+    <div style="display:flex; flex-wrap: wrap; gap: 20px;">
+      <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
-    ${isHost ? `<button id="host-start-btn" class="button-primary" style="margin-top: 20px;">このグループでゲーム開始</button>` : ''}
+    <hr/>
+    <h3>🔀 グループ割り振り設定</h3>
+    <label>グループ数：<input id="groupCount" type="number" value="5" min="2" max="10"></label>
+    <label>各グループの人数：<input id="playersPerGroup" type="number" value="3" min="1"></label>
+    <label>上位何グループにスコア上位を集中：<input id="topGroupCount" type="number" value="1" min="1"></label>
+    <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
+    <hr/>
+    <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
   `;
+  
+  document.getElementById('submit-grouping-btn').onclick = submitGrouping;
+  document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
+
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+  // ★ ここからが修正箇所 ★
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+  // 古いタイマーが残っている可能性があればクリア
+  if (rankingIntervalId) clearInterval(rankingIntervalId);
+
+  // ホスト画面でもランキングを定期更新
+  rankingIntervalId = setInterval(() => {
+    socket.emit("host_request_state");
+    socket.emit("request_global_ranking");
+  }, 2000);
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+  // ★ ここまでが修正箇所 ★
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+}
+
+
+function showEndScreen(ranking) {
+  const container = getContainer();
+  container.innerHTML = `
+    <h2>🎉 ゲーム終了！</h2>
+    <p>他のグループのゲームが終了するまで、ランキングは変動します。</p> <!-- ← 補足メッセージを追加 -->
+    <div style="display:flex; flex-wrap: wrap; gap: 20px;">
+      <div style="flex:2; min-width: 300px;">
+        <h3>今回の順位</h3>
+        <ol id="end-screen-ranking" style="font-size: 1.2em;">
+          ${ranking.map(p =>
+            `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`
+          ).join("")}
+        </ol>
+        ${isHost ? `<button id="next-game-btn" class="button-primary">次のゲームへ</button>` : `<p>ホストが次のゲームを開始します。</p>`}
+      </div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
+    </div>
+  `;
+
   if (isHost) {
-    document.getElementById('host-start-btn').onclick = () => socket.emit('host_start');
+    document.getElementById('next-game-btn').onclick = () => {
+        // ★追加: 次のゲームへ進む際にタイマーを停止する
+        if (rankingIntervalId) clearInterval(rankingIntervalId);
+        socket.emit("host_start");
+    };
   }
+
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+  // ★ ここからが修正箇所 ★
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+  // 古いタイマーが残っている可能性があればクリア
+  if (rankingIntervalId) clearInterval(rankingIntervalId);
+
+  // ゲーム終了画面で、2秒ごとに全体ランキングを更新し続ける
+  rankingIntervalId = setInterval(() => {
+    socket.emit("request_global_ranking");
+  }, 2000);
+  
+  // 最初に一度、即時実行して表示を速める
+  socket.emit("request_global_ranking");
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+  // ★ ここまでが修正箇所 ★
+  // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 }
 
 function showHostUI() {
@@ -412,7 +478,16 @@ socket.on("host_state", (allGroups) => {
 socket.on("global_ranking", (ranking) => {
   const div = document.getElementById("globalRanking");
   if (!div) return;
-  div.innerHTML = `<h3>🌏 全体ランキング</h3><ol>${ranking.map(p => `<li>${p.name} (累計: ${p.totalScore}点)</li>`).join("")}</ol>`;
+  
+  // ★追加: ランキング表示を少しリッチにする
+  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング</h3>
+                   <ol style="padding-left: 20px;">
+                     ${ranking.map((p, i) => `
+                       <li style="padding: 4px 0; border-bottom: 1px solid #eee;">
+                         <strong style="display: inline-block; width: 2em;">${i + 1}.</strong>
+                         ${p.name} <span style="float: right; font-weight: bold;">${p.totalScore}点</span>
+                       </li>`).join("")}
+                   </ol>`;
 });
 
 socket.on("timer_start", ({ seconds }) => {
