@@ -227,6 +227,11 @@ function nextQuestion(groupId) {
 io.on("connection", (socket) => {
   console.log(`✅ プレイヤーが接続しました: ${socket.id}`);
 
+// クライアントから現在のゲームフェーズを尋ねられたときの応答
+  socket.on('request_game_phase', () => {
+    socket.emit('game_phase_response', { phase: gamePhase });
+  });
+  
   // --- イベントリスナーの登録 (ここから下はすべて並列) ---
 
   socket.on("set_cards_and_settings", ({ cards, settings }) => {
