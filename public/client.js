@@ -371,18 +371,19 @@ socket.on("assigned_group", (newGroupId) => {
 socket.on("state", (state) => {
   if (!state || !state.players) return; // 不正なstateは無視
 
+ const amIReady = playerName !== ""; // 自分のプレイヤー名が設定されているか？
+
   // 【ここからが重要な修正】
-  // state.current（現在の問題）が存在し、かつゲーム画面がまだ表示されていない場合、
-  // それは「ゲームがまさに始まった」ことを意味するので、ゲーム画面を初めて表示する。
-  if (state.current && !document.getElementById('game-area')) {
+  // ゲームが始まっていて(state.currentが存在)、
+  // ゲーム画面がまだ表示されておらず、
+  // かつ、自分の名前が設定済みの場合にのみ、ゲーム画面を初めて表示する。
+  if (state.current && !document.getElementById('game-area') && amIReady) {
     showGameScreen(state);
   }
   // すでにゲーム画面が表示されている場合は、UIのデータだけを更新する。
   else if (document.getElementById('game-area')) {
     updateGameUI(state);
   }
-  // それ以外の場合（名前入力画面など）、何もしない。これにより画面が上書きされるのを防ぐ。
-  // 【ここまでが重要な修正】
 
 
   // 得点ポップアップ表示のロジックは変更なし
