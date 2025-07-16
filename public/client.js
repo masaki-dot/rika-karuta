@@ -18,7 +18,7 @@ const getContainer = () => document.getElementById('app-container');
 
 // --- アプリケーションの初期化 ---
 window.onload = () => {
-  showCSVUploadUI();
+  socket.emit('request_game_phase');
 };
 
 // --- UI描画関数群 (画面遷移) ---
@@ -334,7 +334,15 @@ function showPointPopup(point) {
 
 
 // --- Socket.IO イベントリスナー ---
-
+socket.on('game_phase_response', ({ phase }) => {
+  if (phase === 'INITIAL') {
+    // まだゲームが始まっていなければ、CSVアップロード画面を表示
+    showCSVUploadUI();
+  } else {
+    // 既に設定が終わっていれば、グループ選択画面を直接表示
+    showGroupSelectionUI();
+  }
+});
 socket.on("start_group_selection", showGroupSelectionUI);
 
 socket.on("assigned_group", (newGroupId) => {
