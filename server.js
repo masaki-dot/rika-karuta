@@ -1,4 +1,4 @@
-// server.js (機能拡張・修正完了版)
+// server.js (機能拡張・安定化・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -21,17 +21,13 @@ let gamePhase = 'INITIAL';
 let questionPresets = {};
 
 // --- データ管理 ---
-const players = {}; // { playerId: { socketId, name, playerId } }
-const groups = {};  // { groupId: { players: [{playerId, name, totalScore}] } }
-const states = {};  // { groupId: { ...game state } }
+const players = {};
+const groups = {};
+const states = {};
+const singlePlayStates = {};
+const singlePlayRankings = {};
 
-// --- シングルプレイ用 ---
-const singlePlayStates = {}; // { socketId: { ...game state } }
-const singlePlayRankings = {}; // { presetId: [ {name, score, difficulty} ] }
-
-// -------------------------------------------------------------------
-// ▼▼▼ サーバー初期化処理 ▼▼▼
-// -------------------------------------------------------------------
+// --- サーバー初期化処理 ---
 function loadPresets() {
   try {
     const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
@@ -39,16 +35,12 @@ function loadPresets() {
     console.log('✅ 問題プリセットを読み込みました。');
   } catch (err) {
     console.error('⚠️ 問題プリセットの読み込みに失敗しました:', err);
-    questionPresets = {};
   }
 }
 loadPresets();
 
-// -------------------------------------------------------------------
-// ▼▼▼ ヘルパー関数群 ▼▼▼
-// -------------------------------------------------------------------
+// --- ヘルパー関数群 ---
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
-
 function getPlayerBySocketId(socketId) {
     return Object.values(players).find(p => p.socketId === socketId);
 }
@@ -107,6 +99,9 @@ function finalizeGame(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
 
+    if (state.readTimer) clearTimeout(state.readTimer);
+    state.readTimer = null;
+
     state.locked = true;
     console.log(`[${groupId}] ゲーム終了処理を開始します。`);
 
@@ -152,7 +147,8 @@ function nextQuestion(groupId) {
     if (!state || state.locked) return;
 
     if (state.readTimer) clearTimeout(state.readTimer);
-
+    state.readTimer = null;
+    
     const remaining = globalCards.filter(q => !state.usedQuestions.includes(q.text.trim() + q.number));
     if (remaining.length === 0 || state.questionCount >= state.maxQuestions) {
         return finalizeGame(groupId);
@@ -259,8 +255,6 @@ function simulateCPUAnswer(socketId) {
         if (cpuCorrect) {
             card.correctAnswer = true;
             card.isCPU = true;
-        } else {
-             // CPU不正解の処理
         }
 
         io.to(socketId).emit('single_game_state', currentState);
@@ -268,9 +262,7 @@ function simulateCPUAnswer(socketId) {
     }, answerTime);
 }
 
-// -------------------------------------------------------------------
-// ▼▼▼ メインの接続処理 ▼▼▼
-// -------------------------------------------------------------------
+// --- メインの接続処理 ---
 io.on("connection", (socket) => {
   console.log(`✅ プレイヤーが接続しました: ${socket.id}`);
 
@@ -331,7 +323,7 @@ io.on("connection", (socket) => {
     if (!states[groupId]) states[groupId] = initState(groupId);
     const state = states[groupId];
     if (!state.players.find(p => p.playerId === playerId)) {
-      state.players.push({ playerId, name: player.name, hp: 20 });
+      state.players.push({ playerId, name: player.name, hp: 20, correctCount: 0 });
     }
     
     io.to(groupId).emit("state", sanitizeState(state));
@@ -405,26 +397,70 @@ io.on("connection", (socket) => {
 
     for (const groupId of Object.keys(groups)) {
         if (groups[groupId].players.length === 0) continue;
+        
+        if (states[groupId] && states[groupId].readTimer) {
+            clearTimeout(states[groupId].readTimer);
+        }
 
         states[groupId] = initState(groupId);
         const state = states[groupId];
         const group = groups[groupId];
 
         state.players = group.players.map(p => ({ 
-            playerId: p.playerId,
-            name: p.name, 
-            hp: 20, 
-            score: 0, 
-            correctCount: 0 
+            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 
         }));
         
         nextQuestion(groupId);
     }
   });
-  
+
   socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
-      // (この関数は playerId に直接依存しないため、修正はほぼ不要)
-      // ... 以前のコードとほぼ同じ ...
+    if (socket.id !== hostSocketId) return;
+    const allPlayersSorted = Object.values(groups)
+        .flatMap(g => g.players)
+        .filter(p => p.name !== "未設定")
+        .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+    const topPlayerCount = topGroupCount * playersPerGroup;
+    const topPlayers = allPlayersSorted.slice(0, topPlayerCount);
+    const otherPlayers = allPlayersSorted.slice(topPlayerCount);
+    const finalPlayerList = [...topPlayers, ...shuffle(otherPlayers)];
+    const newGroupsConfig = {};
+    for (let i = 1; i <= groupCount; i++) newGroupsConfig[i] = [];
+    let playerIndex = 0;
+    for (let i = 1; i <= groupCount; i++) {
+        while (newGroupsConfig[i].length < playersPerGroup && playerIndex < finalPlayerList.length) {
+            newGroupsConfig[i].push(finalPlayerList[playerIndex++]);
+        }
+    }
+    while (playerIndex < finalPlayerList.length) {
+        for (let i = groupCount; i >= 1; i--) {
+            if (playerIndex >= finalPlayerList.length) break;
+            newGroupsConfig[i].push(finalPlayerList[playerIndex++]);
+        }
+    }
+    Object.keys(groups).forEach(key => delete groups[key]);
+    Object.keys(states).forEach(key => delete states[key]);
+    for (let i = 1; i <= groupCount; i++) {
+        const playersInGroup = newGroupsConfig[i];
+        if (playersInGroup.length === 0) continue;
+        const groupId = `group${i}`;
+        groups[groupId] = { players: playersInGroup };
+        states[groupId] = initState(groupId);
+        states[groupId].players = playersInGroup.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 }));
+    }
+    for (const [groupId, group] of Object.entries(groups)) {
+        for (const p of group.players) {
+            const playerSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
+            if (playerSocket) {
+                for (const room of playerSocket.rooms) {
+                    if (room !== playerSocket.id) playerSocket.leave(room);
+                }
+                playerSocket.join(groupId);
+                playerSocket.emit("assigned_group", groupId);
+            }
+        }
+    }
+    if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
 
   socket.on("answer", ({ groupId, playerId, name, number }) => {
@@ -473,6 +509,19 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on('host_full_reset', () => {
+    if (socket.id !== hostSocketId) return;
+    console.log('🚨 ホストによってゲームが完全にリセットされました。');
+    hostSocketId = null;
+    globalCards = [];
+    globalSettings = {};
+    gamePhase = 'INITIAL';
+    Object.keys(players).forEach(key => delete players[key]);
+    Object.keys(groups).forEach(key => delete groups[key]);
+    Object.keys(states).forEach(key => delete states[key]);
+    io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
+  });
+
   // --- シングルプレイ用イベント ---
   socket.on('request_presets', () => {
     const presetsForClient = {};
@@ -519,19 +568,17 @@ io.on("connection", (socket) => {
     setTimeout(() => nextSingleQuestion(socket.id), 3000);
   });
 
-  // --- 接続切れ処理 ---
   socket.on("disconnect", () => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
     const player = getPlayerBySocketId(socket.id);
     if (player) {
       console.log(`👻 ${player.name} がオフラインになりました。復帰を待ちます。`);
     }
-    // シングルプレイは即終了
     delete singlePlayStates[socket.id];
   });
 });
 
-// サーバーを起動
+// サーバー起動
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
