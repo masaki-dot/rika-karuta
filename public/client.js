@@ -56,10 +56,14 @@ function showModeSelectionUI() {
   clearAllTimers();
   const container = getContainer();
   container.innerHTML = `
-    <h1>理科カルタ</h1>
-    <h2>モードを選択してください</h2>
-    <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; padding: 10px 30px;">みんなでプレイ</button>
-    <button id="single-play-btn" style="font-size: 1.5em; padding: 10px 30px;">ひとりでプレイ</button>
+    <div style="text-align: center;">
+      <h1>理科カルタ</h1>
+      <h2>モードを選択してください</h2>
+      <div style="margin-top: 20px; margin-bottom: 30px;">
+        <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; padding: 10px 30px; margin: 10px;">みんなでプレイ</button>
+        <button id="single-play-btn" style="font-size: 1.5em; padding: 10px 30px; margin: 10px;">ひとりでプレイ</button>
+      </div>
+    </div>
   `;
   document.getElementById('multi-play-btn').onclick = () => {
     gameMode = 'multi';
@@ -96,11 +100,12 @@ function showCSVUploadUI(presets = {}) {
     </fieldset>
     <hr/>
     <fieldset>
-      <legend>ゲームモード</legend>
+      <legend>デフォルトのゲームモード</legend>
       <input type="radio" id="mode-mask" name="game-mode" value="mask" checked>
-      <label for="mode-mask">問題を隠す</label>
+      <label class="label-inline" for="mode-mask">応用モード（問題文が隠される）</label>
+      <br>
       <input type="radio" id="mode-normal" name="game-mode" value="normal">
-      <label for="mode-normal">通常（5文字ずつ表示）</label>
+      <label class="label-inline" for="mode-normal">通常モード（最初から全文表示）</label>
     </fieldset>
     <br/>
     <button id="submit-settings" class="button-primary">決定してグループ選択へ</button>
@@ -414,7 +419,7 @@ function updateGameUI(state) {
     pointDiv.textContent = `この問題: ${state.current.point}点`;
   }
   
-  const correctCard = state.current.cards.find(c => c.correct);
+  const correctCard = state.current?.cards.find(c => c.correct);
   if (state.answered && correctCard && correctCard.chosenBy === playerName) {
     const alreadyPopped = document.querySelector('#point-popup.show');
     if (!alreadyPopped) {
@@ -612,11 +617,32 @@ socket.on("end", (ranking) => showEndScreen(ranking));
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
+
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
     const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
-    return `<div style="margin-bottom:15px;"><strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong><ul>${members}</ul></div>`;
+    const modeSelector = `
+      <label>モード: 
+        <select class="group-mode-selector" data-groupid="${gId}">
+          <option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option>
+          <option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option>
+        </select>
+      </label>
+    `;
+    return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">
+              <strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong>
+              ${modeSelector}
+              <ul>${members}</ul>
+            </div>`;
   }).join("");
+
+  document.querySelectorAll('.group-mode-selector').forEach(selector => {
+    selector.onchange = (e) => {
+      const groupId = e.target.dataset.groupid;
+      const gameMode = e.target.value;
+      socket.emit('host_set_group_mode', { groupId, gameMode });
+    };
+  });
 });
 
 socket.on("global_ranking", (ranking) => {
