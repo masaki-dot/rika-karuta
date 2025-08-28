@@ -1,23 +1,36 @@
-// client.js (機能拡張版)
+// client.js (機能拡張・安定化・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
-let playerId = localStorage.getItem('playerId'); // 永続ID
-let playerName = "";
+let playerId = localStorage.getItem('playerId');
+let playerName = localStorage.getItem('playerName') || "";
 let groupId = "";
 let isHost = false;
-let gameMode = 'multi'; // 'multi' or 'single'
+let gameMode = 'multi';
 
-let rankingIntervalId = null; 
+let rankingIntervalId = null;
+let readInterval = null;
+let unmaskIntervalId = null;
+let countdownIntervalId = null;
+
 let lastQuestionText = "";
 let hasAnimated = false;
 let alreadyAnswered = false;
-let readInterval = null; 
-let unmaskIntervalId = null; // マスク解除アニメーション用
-let countdownIntervalId = null;
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
+
+function clearAllTimers() {
+    if (rankingIntervalId) clearInterval(rankingIntervalId);
+    if (readInterval) clearInterval(readInterval);
+    if (unmaskIntervalId) clearInterval(unmaskIntervalId);
+    if (countdownIntervalId) clearInterval(countdownIntervalId);
+    rankingIntervalId = null;
+    readInterval = null;
+    unmaskIntervalId = null;
+    countdownIntervalId = null;
+    console.log('All client timers cleared.');
+}
 
 // --- アプリケーションの初期化 ---
 socket.on('connect', () => {
@@ -25,8 +38,8 @@ socket.on('connect', () => {
   if (!playerId) {
     socket.emit('request_new_player_id');
   } else {
-    socket.emit('reconnect_player', { playerId, name: localStorage.getItem('playerName') });
-    showModeSelectionUI(); // 既存プレイヤーはモード選択へ
+    socket.emit('reconnect_player', { playerId, name: playerName });
+    showModeSelectionUI();
   }
 });
 
@@ -40,6 +53,7 @@ socket.on('new_player_id_assigned', (newPlayerId) => {
 // --- UI描画関数群 ---
 
 function showModeSelectionUI() {
+  clearAllTimers();
   const container = getContainer();
   container.innerHTML = `
     <h1>理科カルタ</h1>
@@ -49,12 +63,13 @@ function showModeSelectionUI() {
   `;
   document.getElementById('multi-play-btn').onclick = () => {
     gameMode = 'multi';
-    socket.emit('request_game_phase'); // マルチプレイの進行状況を問い合わせ
+    socket.emit('request_game_phase');
   };
   document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
 }
 
 function showCSVUploadUI(presets = {}) {
+  clearAllTimers();
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -90,7 +105,6 @@ function showCSVUploadUI(presets = {}) {
     <br/>
     <button id="submit-settings" class="button-primary">決定してグループ選択へ</button>
   `;
-  // ラジオボタンの選択でUIを切り替え
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
       document.getElementById('preset-select').style.display = e.target.value === 'preset' ? 'inline-block' : 'none';
@@ -101,6 +115,7 @@ function showCSVUploadUI(presets = {}) {
 }
 
 function showGroupSelectionUI() {
+  clearAllTimers();
   const container = getContainer();
   container.innerHTML = '<h2>2. グループを選択</h2>';
   
@@ -130,11 +145,11 @@ function showGroupSelectionUI() {
 }
 
 function showNameInputUI() {
+  clearAllTimers();
   const container = getContainer();
-  const currentName = localStorage.getItem('playerName') || '';
   container.innerHTML = `
     <h2>3. プレイヤー名を入力</h2>
-    <input type="text" id="nameInput" placeholder="名前を入力..." value="${currentName}" />
+    <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
     <button id="fix-name-btn" class="button-primary">決定</button>
     <button id="back-to-group-btn">グループ選択に戻る</button>
   `;
@@ -143,7 +158,7 @@ function showNameInputUI() {
 }
 
 function showHostUI() {
-  // (中身は以前のコードとほぼ同じなので省略)
+  clearAllTimers();
   const container = getContainer();
   container.innerHTML = `
     <h2>👑 ホスト画面</h2>
@@ -159,24 +174,31 @@ function showHostUI() {
     <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
     <hr/>
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
+    <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
+    <h3 style="color: red;">危険な操作</h3>
+    <p>全てのプレイヤーデータ（累計スコア含む）を削除し、アプリを初期状態に戻します。</p>
+    <button id="host-reset-all-btn" style="background-color: crimson; color: white;">ゲームを完全リセット</button>
   `;
   
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
+  document.getElementById('host-reset-all-btn').onclick = () => {
+    if (confirm('本当に全てのゲームデータをリセットしますか？この操作は元に戻せません。')) {
+      socket.emit('host_full_reset');
+    }
+  };
 
-  if (rankingIntervalId) clearInterval(rankingIntervalId);
   rankingIntervalId = setInterval(() => {
     socket.emit("host_request_state");
     socket.emit("request_global_ranking");
   }, 2000);
-
   socket.emit("host_request_state");
   socket.emit("request_global_ranking");
 }
 
 function showGameScreen(state) {
-  // (中身は以前のコードとほぼ同じなので省略)
-    const container = getContainer();
+  clearAllTimers();
+  const container = getContainer();
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
       <div id="game-area">
@@ -194,8 +216,8 @@ function showGameScreen(state) {
 }
 
 function showEndScreen(ranking) {
-  // (中身は以前のコードとほぼ同じなので省略)
-    const container = getContainer();
+  clearAllTimers();
+  const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <p>他のグループのゲームが終了するまで、ランキングは変動する可能性があります。</p>
@@ -214,29 +236,23 @@ function showEndScreen(ranking) {
   `;
 
   if (isHost) {
-    document.getElementById('next-game-btn').onclick = () => {
-        if (rankingIntervalId) clearInterval(rankingIntervalId);
-        socket.emit("host_start");
-    };
+    document.getElementById('next-game-btn').onclick = () => socket.emit("host_start");
   }
 
-  if (rankingIntervalId) clearInterval(rankingIntervalId);
   rankingIntervalId = setInterval(() => {
     socket.emit("request_global_ranking");
   }, 2000);
-  
   socket.emit("request_global_ranking");
 }
 
-
-// --- シングルプレイ用UI ---
 function showSinglePlaySetupUI() {
+  clearAllTimers();
   gameMode = 'single';
   const container = getContainer();
   container.innerHTML = `
     <h2>ひとりでプレイ</h2>
     <p>名前を入力して、難易度と問題を選んでください。</p>
-    <input type="text" id="nameInput" placeholder="名前を入力..." value="${localStorage.getItem('playerName') || ''}" />
+    <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
     <hr/>
     <h3>難易度</h3>
     <select id="difficulty-select">
@@ -252,10 +268,11 @@ function showSinglePlaySetupUI() {
   `;
   document.getElementById('back-to-mode-btn').onclick = showModeSelectionUI;
   document.getElementById('single-start-btn').onclick = startSinglePlay;
-  socket.emit('request_presets'); // サーバーに問題リストを要求
+  socket.emit('request_presets');
 }
 
 function showSinglePlayGameUI(state) {
+  clearAllTimers();
   const container = getContainer();
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
@@ -271,6 +288,7 @@ function showSinglePlayGameUI(state) {
 }
 
 function showSinglePlayEndUI({ score, ranking }) {
+  clearAllTimers();
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
@@ -288,7 +306,6 @@ function showSinglePlayEndUI({ score, ranking }) {
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
   document.getElementById('back-to-mode-btn').onclick = showModeSelectionUI;
 }
-
 
 // --- イベントハンドラとロジック ---
 
@@ -326,7 +343,7 @@ function fixName() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
   if (!playerName) return alert("名前を入力してください");
-  localStorage.setItem('playerName', playerName); // 名前も保存
+  localStorage.setItem('playerName', playerName);
   socket.emit("set_name", { groupId, playerId, name: playerName });
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
@@ -376,7 +393,6 @@ function startSinglePlay() {
 // --- UI更新関数 ---
 
 function updateGameUI(state) {
-  // (中身は以前のコードとほぼ同じなので省略)
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
     alreadyAnswered = false;
@@ -488,10 +504,10 @@ function renderHpBar(hp) {
 function animateNormalText(elementId, text, speed) {
   const element = document.getElementById(elementId);
   if (!element) return;
+  if (readInterval) clearInterval(readInterval);
   element.textContent = "";
   let i = 0;
 
-  if (readInterval) clearInterval(readInterval);
   readInterval = setInterval(() => {
     i += 5;
     if (i >= text.length) {
@@ -508,7 +524,6 @@ function animateNormalText(elementId, text, speed) {
 function animateMaskedText(elementId, text, maskedIndices) {
   const element = document.getElementById(elementId);
   if (!element) return;
-
   if (unmaskIntervalId) clearInterval(unmaskIntervalId);
 
   let textChars = text.split('');
@@ -574,7 +589,6 @@ socket.on("state", (state) => {
 socket.on("end", (ranking) => showEndScreen(ranking));
 
 socket.on("host_state", (allGroups) => {
-  // (中身は以前のコードとほぼ同じなので省略)
   const div = document.getElementById("hostStatus");
   if (!div) return;
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
@@ -585,10 +599,8 @@ socket.on("host_state", (allGroups) => {
 });
 
 socket.on("global_ranking", (ranking) => {
-  // (中身は以前のコードとほぼ同じなので省略)
     const div = document.getElementById("globalRanking");
   if (!div) return;
-  
   div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング</h3>
                    <ol style="padding-left: 20px;">
                      ${ranking.map((p, i) => `
@@ -600,7 +612,6 @@ socket.on("global_ranking", (ranking) => {
 });
 
 socket.on("timer_start", ({ seconds }) => {
-  // (中身は以前のコードとほぼ同じなので省略)
     const timerDiv = document.getElementById('countdown-timer');
   if (!timerDiv) return;
   
@@ -615,9 +626,15 @@ socket.on("timer_start", ({ seconds }) => {
       timerDiv.textContent = `⏳ ${countdown}s`;
     } else {
       clearInterval(countdownIntervalId);
+      countdownIntervalId = null;
       timerDiv.textContent = "";
     }
   }, 1000);
+});
+
+socket.on('force_reload', (message) => {
+    alert(message);
+    window.location.reload();
 });
 
 // --- シングルプレイ用リスナー ---
