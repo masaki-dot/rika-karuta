@@ -5,68 +5,209 @@
   <title>理科カルタ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <!-- CSSライブラリ -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.css">
+  <!-- Milligramは初期画面用に残しつつ、影響を最小限に -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css">
   
-  <!-- アプリケーションのスタイル -->
+  <!-- Google Fontsの読み込み -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+
+  <!-- ★★★ ゲーム用の新しいスタイル ★★★ -->
   <style>
-    body {
-      padding: 20px;
+    /* --- 全体のテーマと基本設定 --- */
+    :root {
+      --bg-dark: #1a202c;
+      --bg-medium: #2d3748;
+      --bg-light: #4a5568;
+      --text-main: #e2e8f0;
+      --text-muted: #a0aec0;
+      --border-color: #718096;
+      --primary-color: #4299e1;
+      --primary-hover: #63b3ed;
+      --correct-glow: #f6e05e;
+      --incorrect-color: #e53e3e;
     }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Noto Sans JP', sans-serif;
+      transition: background-color 0.3s;
+    }
+
+    /* Milligramのスタイルを上書き */
+    h1, h2, h3, h4 {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--text-main);
+    }
+    hr {
+      border-color: var(--bg-light);
+    }
+    button, .button {
+        font-family: 'Noto Sans JP', sans-serif;
+        font-weight: bold;
+        border-radius: 8px;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        transition: all 0.2s ease-in-out;
+    }
+    button:hover, .button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 10px rgba(0,0,0,0.4);
+    }
+    .button-primary {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    .button-primary:hover {
+        background-color: var(--primary-hover);
+    }
+    fieldset {
+        border-color: var(--border-color);
+        background-color: var(--bg-medium);
+        border-radius: 8px;
+    }
+    input[type='text'], input[type='number'], select {
+        background-color: var(--bg-light);
+        border-color: var(--border-color);
+        color: var(--text-main);
+        border-radius: 4px;
+    }
+
     #app-container {
       max-width: 900px;
-      margin: 0 auto;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: var(--bg-medium);
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
-    .card {
-      border: 1px solid #ccc;
-      padding: 10px;
-      text-align: center;
-      border-radius: 8px;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
-      cursor: pointer;
-      background: #fff;
-      transition: transform 0.1s ease-in-out;
-    }
-    .card:hover {
-      transform: scale(1.05);
-    }
-    #cards-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 15px;
-        margin-top: 20px;
-    }
+
+    /* --- 読み札エリア --- */
     #yomifuda {
         font-size: 1.8em;
         font-weight: bold;
-        min-height: 2.5em; /* 読み札が表示される高さを確保 */
-        background-color: #f4f5f6;
-        padding: 20px;
-        border-radius: 5px;
+        min-height: 3em;
+        background: linear-gradient(145deg, #4a5568, #2d3748);
+        padding: 25px;
+        border-radius: 10px;
         text-align: center;
-        margin-bottom: 20px;
+        margin-bottom: 25px;
+        border: 2px solid var(--border-color);
+        box-shadow: inset 0 0 15px rgba(0,0,0,0.6);
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+        letter-spacing: 1.5px;
     }
+
+    /* --- カードエリア --- */
+    #cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+    }
+
+    .card {
+      border: 2px solid var(--border-color);
+      padding: 15px;
+      text-align: center;
+      border-radius: 12px;
+      box-shadow: 0 5px 10px rgba(0,0,0,0.4);
+      cursor: pointer;
+      background: linear-gradient(to bottom, #4a5568, #2d3748);
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, border-color 0.2s;
+      font-weight: bold;
+      font-size: 1.2em;
+    }
+    .card:hover {
+      transform: translateY(-5px) scale(1.03);
+      border-color: var(--primary-hover);
+      box-shadow: 0 8px 20px rgba(99, 179, 237, 0.4);
+    }
+
+    /* カードの状態変化 */
+    .card[style*="background: gold;"] {
+      background: var(--correct-glow);
+      color: var(--bg-dark);
+      border-color: white;
+      animation: glow 1.5s infinite alternate;
+    }
+    .card[style*="background: crimson;"] {
+      background: var(--incorrect-color);
+      color: white;
+      border-color: #fed7d7;
+      animation: shake 0.5s;
+    }
+    .card[style*="background: lightgreen;"] {
+        background: #38a169;
+        border-color: #9ae6b4;
+    }
+
+    /* --- プレイヤー情報エリア --- */
+    #my-info, #others-info {
+        background-color: rgba(0,0,0,0.2);
+        padding: 15px;
+        border-radius: 8px;
+    }
+    
+    /* HPバー */
+    .hp-bar-container {
+      background: #1a202c;
+      width: 100%;
+      height: 24px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #000;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+    }
+    .hp-bar-inner {
+      height: 100%;
+      border-radius: 12px;
+      transition: width 0.5s ease-in-out, background-color 0.5s ease-in-out;
+      background: linear-gradient(to right, #48bb78, #38a169);
+    }
+
+    /* --- オーバーレイ要素 --- */
     #point-popup {
-      font-size: 8em; font-weight: bold; color: gold; text-shadow: 2px 2px 5px black;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 8em; font-weight: bold; color: var(--correct-glow); text-shadow: 3px 3px 8px black;
       position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%) scale(0.5);
       z-index: 9999;
       opacity: 0;
-      transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.8s;
-      pointer-events: none; /* クリックを背面に透過させる */
+      transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.6s;
+      pointer-events: none;
     }
     #point-popup.show {
       transform: translate(-50%, -50%) scale(1);
       opacity: 1;
     }
-    #current-point {
-      position: fixed; top: 10px; right: 10px; font-size: 1.5em;
-      background: rgba(0,0,0,0.6); color: white; padding: 5px 15px; border-radius: 10px;
+
+    #current-point, #countdown-timer {
+      position: fixed;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.5em;
+      background: rgba(45, 55, 72, 0.9);
+      color: white;
+      padding: 8px 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      border: 1px solid var(--border-color);
     }
-    #countdown-timer {
-      position: fixed; bottom: 10px; right: 10px; font-size: 1.5em;
-      background: rgba(255,255,255,0.8); border: 1px solid #ccc; padding: 5px 15px;
-      border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    #current-point { top: 15px; right: 15px; }
+    #countdown-timer { bottom: 15px; right: 15px; }
+
+    /* --- アニメーション --- */
+    @keyframes glow {
+      from { box-shadow: 0 0 5px #f6e05e, 0 0 10px #f6e05e; }
+      to { box-shadow: 0 0 20px #f6e05e, 0 0 30px #f6e05e; }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+      20%, 40%, 60%, 80% { transform: translateX(5px); }
     }
   </style>
 </head>
@@ -84,10 +225,30 @@
     <div id="countdown-timer"></div>
   </div>
 
-  <!-- JavaScriptライブラリ（重複を削除し、正しい順序で読み込み） -->
+  <!-- JavaScriptライブラリ -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
   <script src="client.js"></script>
+  
+  <!-- ★★★ HPバーのロジックをJSに移動 ★★★ -->
+  <script>
+    // 古いrenderHpBarを上書きして、新しいHTML構造を使うように変更
+    function renderHpBar(hp) {
+        const hpPercent = Math.max(0, hp / 20 * 100);
+        let hpColor = "mediumseagreen";
+        // HPに応じて色を滑らかに変える
+        if (hp <= 5) hpColor = "linear-gradient(to right, #e53e3e, #c53030)";
+        else if (hp <= 10) hpColor = "linear-gradient(to right, #dd6b20, #c05621)";
+        else hpColor = "linear-gradient(to right, #48bb78, #38a169)";
+
+        return `
+          <div style="font-size: 0.9em; margin-bottom: 4px;">HP: ${hp} / 20</div>
+          <div class="hp-bar-container">
+            <div class="hp-bar-inner" style="width: ${hpPercent}%; background: ${hpColor};"></div>
+          </div>
+        `;
+    }
+  </script>
   
 </body>
 </html>
