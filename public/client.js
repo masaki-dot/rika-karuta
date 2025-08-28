@@ -1,4 +1,4 @@
-// client.js (機能拡張・安定化・完全版)
+// client.js (改善・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -409,6 +409,19 @@ function updateGameUI(state) {
     hasAnimated = true;
   }
 
+  const pointDiv = document.getElementById('current-point');
+  if (pointDiv && state.current?.point) {
+    pointDiv.textContent = `この問題: ${state.current.point}点`;
+  }
+  
+  const correctCard = state.current.cards.find(c => c.correct);
+  if (state.answered && correctCard && correctCard.chosenBy === playerName) {
+    const alreadyPopped = document.querySelector('#point-popup.show');
+    if (!alreadyPopped) {
+      showPointPopup(state.current.point);
+    }
+  }
+
   const cardsGrid = document.getElementById('cards-grid');
   cardsGrid.innerHTML = '';
   state.current?.cards.forEach(card => {
@@ -530,11 +543,11 @@ function animateMaskedText(elementId, text, maskedIndices) {
   let remainingIndices = [...maskedIndices];
   
   for (const index of remainingIndices) {
-    if (textChars[index] !== ' ') textChars[index] = '？';
+    if (textChars[index] !== ' ' && textChars[index] !== '　') textChars[index] = '？';
   }
   element.textContent = textChars.join('');
 
-  const revealSpeed = Math.max(200, 20000 / text.length);
+  const revealSpeed = remainingIndices.length > 0 ? 20000 / remainingIndices.length : 200;
 
   unmaskIntervalId = setInterval(() => {
     if (remainingIndices.length === 0) {
@@ -551,6 +564,14 @@ function animateMaskedText(elementId, text, maskedIndices) {
     textChars[indexToReveal] = text[indexToReveal];
     element.textContent = textChars.join('');
   }, revealSpeed);
+}
+
+function showPointPopup(point) {
+  const popup = document.getElementById('point-popup');
+  if (!popup) return;
+  popup.textContent = `+${point}点!`;
+  popup.className = 'show';
+  setTimeout(() => popup.classList.remove('show'), 1500);
 }
 
 
@@ -573,7 +594,7 @@ socket.on("assigned_group", (newGroupId) => {
 });
 
 socket.on("state", (state) => {
-  if (!state || !state.players) return;
+  if (!state) return;
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
 
@@ -641,9 +662,9 @@ socket.on('force_reload', (message) => {
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
-  const radioButtons = Object.entries(presets).map(([id, data]) => `
+  const radioButtons = Object.entries(presets).map(([id, data], index) => `
     <div>
-      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}">
+      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
       <label for="preset-${id}">${data.category} - ${data.name}</label>
     </div>
   `).join('');
