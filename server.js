@@ -1,4 +1,4 @@
-// server.js (機能拡張・安定化・完全版)
+// server.js (改善・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -63,6 +63,8 @@ function initState(groupId) {
 
 function sanitizeState(state) {
   if (!state) return null;
+  // currentにpointを追加してクライアントに送る
+  const currentWithPoint = state.current ? { ...state.current, point: state.current.point } : null;
   return {
     groupId: state.groupId,
     players: state.players,
@@ -70,8 +72,9 @@ function sanitizeState(state) {
     maxQuestions: state.maxQuestions,
     gameMode: state.gameMode,
     showSpeed: state.showSpeed,
-    current: state.current,
+    current: currentWithPoint,
     locked: state.locked,
+    answered: state.answered,
   };
 }
 
@@ -162,14 +165,21 @@ function nextQuestion(groupId) {
 
     let point = 1;
     const rand = Math.random();
-    if (rand < 0.05) point = 5; else if (rand < 0.2) point = 3; else if (rand < 0.6) point = 2;
+    if (rand < 0.05) { // 5%
+        point = 5;
+    } else if (rand < 0.20) { // 15%
+        point = 3;
+    } else if (rand < 0.60) { // 40%
+        point = 2;
+    } // 40% for 1 point
 
     const originalText = question.text;
     let maskedIndices = [];
     if (state.gameMode === 'mask') {
         let indices = Array.from({length: originalText.length}, (_, i) => i);
+        indices = indices.filter(i => originalText[i] !== ' ' && originalText[i] !== '　');
         shuffle(indices);
-        maskedIndices = indices.slice(0, Math.floor(originalText.length / 2));
+        maskedIndices = indices.slice(0, Math.floor(indices.length / 2));
     }
     
     state.current = {
