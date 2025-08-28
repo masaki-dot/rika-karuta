@@ -40,7 +40,13 @@ function loadPresets() {
 loadPresets();
 
 // --- ヘルパー関数群 ---
-function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
 function getPlayerBySocketId(socketId) {
     return Object.values(players).find(p => p.socketId === socketId);
 }
@@ -63,7 +69,6 @@ function initState(groupId) {
 
 function sanitizeState(state) {
   if (!state) return null;
-  // currentにpointを追加してクライアントに送る
   const currentWithPoint = state.current ? { ...state.current, point: state.current.point } : null;
   return {
     groupId: state.groupId,
@@ -84,6 +89,7 @@ function getHostState() {
     const state = states[groupId];
     result[groupId] = {
       locked: state?.locked ?? false,
+      gameMode: state?.gameMode ?? globalSettings.gameMode ?? 'normal',
       players: group.players.map(p => {
         const statePlayer = state?.players.find(sp => sp.playerId === p.playerId);
         return {
@@ -171,7 +177,7 @@ function nextQuestion(groupId) {
         point = 3;
     } else if (rand < 0.60) { // 40%
         point = 2;
-    } // 40% for 1 point
+    }
 
     const originalText = question.text;
     let maskedIndices = [];
@@ -224,8 +230,9 @@ function nextSingleQuestion(socketId) {
 
     const originalText = question.text;
     let indices = Array.from({length: originalText.length}, (_, i) => i);
+    indices = indices.filter(i => originalText[i] !== ' ' && originalText[i] !== '　');
     shuffle(indices);
-    const maskedIndices = indices.slice(0, Math.floor(originalText.length / 2));
+    const maskedIndices = indices.slice(0, Math.floor(indices.length / 2));
 
     state.current = {
         text: originalText,
@@ -302,7 +309,7 @@ io.on("connection", (socket) => {
 
   socket.on("set_preset_and_settings", ({ presetId, settings }) => {
     if (questionPresets[presetId]) {
-        globalCards = shuffle([...questionPresets[presetId].cards]);
+        globalCards = [...questionPresets[presetId].cards]; // シャッフルしない
         globalSettings = { ...settings, maxQuestions: globalCards.length };
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
@@ -412,7 +419,11 @@ io.on("connection", (socket) => {
             clearTimeout(states[groupId].readTimer);
         }
 
+        // グループごとのモードを維持しつつstateを再初期化
+        const currentGroupMode = states[groupId]?.gameMode || globalSettings.gameMode;
         states[groupId] = initState(groupId);
+        states[groupId].gameMode = currentGroupMode;
+
         const state = states[groupId];
         const group = groups[groupId];
 
@@ -530,6 +541,15 @@ io.on("connection", (socket) => {
     Object.keys(groups).forEach(key => delete groups[key]);
     Object.keys(states).forEach(key => delete states[key]);
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
+  });
+
+  socket.on('host_set_group_mode', ({ groupId, gameMode }) => {
+    if (socket.id !== hostSocketId) return;
+    if (states[groupId] && (gameMode === 'normal' || gameMode === 'mask')) {
+      states[groupId].gameMode = gameMode;
+      console.log(`👑 Host set ${groupId} to ${gameMode} mode.`);
+      socket.emit("host_state", getHostState());
+    }
   });
 
   // --- シングルプレイ用イベント ---
