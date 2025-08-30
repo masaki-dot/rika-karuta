@@ -1,4 +1,4 @@
-// client.js (改善・完全版)
+// client.js (一人でプレイ改修・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -12,6 +12,7 @@ let rankingIntervalId = null;
 let readInterval = null;
 let unmaskIntervalId = null;
 let countdownIntervalId = null;
+let singleGameTimerId = null; // 一人用ゲームのメインタイマー
 
 let lastQuestionText = "";
 let hasAnimated = false;
@@ -25,10 +26,12 @@ function clearAllTimers() {
     if (readInterval) clearInterval(readInterval);
     if (unmaskIntervalId) clearInterval(unmaskIntervalId);
     if (countdownIntervalId) clearInterval(countdownIntervalId);
+    if (singleGameTimerId) clearInterval(singleGameTimerId);
     rankingIntervalId = null;
     readInterval = null;
     unmaskIntervalId = null;
     countdownIntervalId = null;
+    singleGameTimerId = null;
     console.log('All client timers cleared.');
 }
 
@@ -119,7 +122,6 @@ function showCSVUploadUI(presets = {}) {
     <br/>
     <button id="submit-settings" class="button-primary">決定してグループ選択へ</button>
   `;
-  // UIの表示切り替えロジック
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
       document.getElementById('preset-select').style.display = e.target.value === 'preset' ? 'inline-block' : 'none';
@@ -268,15 +270,14 @@ function showSinglePlaySetupUI() {
   gameMode = 'single';
   const container = getContainer();
   container.innerHTML = `
-    <h2>ひとりでプレイ</h2>
+    <h2>ひとりでプレイ（2分間タイムアタック）</h2>
     <p>名前を入力して、難易度と問題を選んでください。</p>
     <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
     <hr/>
     <h3>難易度</h3>
     <select id="difficulty-select">
-      <option value="easy">かんたん</option>
-      <option value="normal" selected>ふつう</option>
-      <option value="hard">むずかしい</option>
+      <option value="easy">かんたん（問題文が全文表示）</option>
+      <option value="hard">むずかしい（問題文が隠される）</option>
     </select>
     <h3>問題リスト</h3>
     <div id="preset-list-container">読み込み中...</div>
@@ -302,20 +303,39 @@ function showSinglePlayGameUI(state) {
       </div>
     `;
   }
+  // 2分タイマーを開始
+  const timerDiv = document.getElementById('countdown-timer');
+  let timeLeft = 120;
+  timerDiv.textContent = `残り時間: 2:00`;
+  singleGameTimerId = setInterval(() => {
+    timeLeft--;
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    timerDiv.textContent = `残り時間: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    if (timeLeft <= 0) {
+      clearInterval(singleGameTimerId);
+      socket.emit('single_game_timeup');
+    }
+  }, 1000);
+
   updateSinglePlayGameUI(state);
 }
 
-function showSinglePlayEndUI({ score, ranking }) {
+function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) {
   clearAllTimers();
   const container = getContainer();
   container.innerHTML = `
-    <h2>🎉 ゲーム終了！</h2>
-    <h3>今回のスコア: <span style="font-size: 1.5em; color: gold;">${score}</span>点</h3>
-    <div id="single-ranking">
-      <h3>ハイスコアランキング</h3>
-      <ol>
-        ${ranking.map((r, i) => `<li>${i + 1}. ${r.name} - ${r.score}点 (${r.difficulty})</li>`).join('')}
-      </ol>
+    <h2>タイムアップ！</h2>
+    <h4>問題セット: ${presetName}</h4>
+    <h3>今回のスコア: <span style="font-size: 1.5em; color: var(--primary-color);">${score}</span>点</h3>
+    <p>自己ベスト: ${personalBest}点 ${score >= personalBest ? '🎉記録更新！' : ''}</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px;">
+      <div id="single-ranking" style="flex: 1; min-width: 300px;">
+        <h3>全体ランキング トップ10</h3>
+        <ol>
+          ${globalRanking.map((r, i) => `<li style="${r.isMe ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${r.name} - ${r.score}点</li>`).join('')}
+        </ol>
+      </div>
     </div>
     <hr/>
     <button id="retry-btn" class="button-primary">もう一度挑戦</button>
@@ -505,7 +525,11 @@ function updateSinglePlayGameUI(state) {
 
   const yomifudaDiv = document.getElementById('yomifuda');
   if (yomifudaDiv && !hasAnimated && state.current?.text) {
-    animateMaskedText('yomifuda', state.current.text, state.current.maskedIndices);
+    if (state.difficulty === 'hard') {
+      animateMaskedText('yomifuda', state.current.text, state.current.maskedIndices);
+    } else {
+      yomifudaDiv.textContent = state.current.text;
+    }
     hasAnimated = true;
   }
 
@@ -516,21 +540,15 @@ function updateSinglePlayGameUI(state) {
     div.className = "card";
     
     if (card.correct) div.style.background = "gold";
-    else if (card.incorrect) div.style.background = "crimson";
-    else if (card.correctAnswer) div.style.background = "lightgreen";
+    if (card.incorrect) div.style.background = "crimson";
 
-    if (card.isCPU) {
-       div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">CPUが選択</div>`;
-    } else {
-       div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
-    }
-    
+    div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
     div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.number); };
     cardsGrid.appendChild(div);
   });
 
   document.getElementById('single-player-info').innerHTML = `
-    <h4>スコア: ${state.score} | 問題: ${state.questionCount} / ${state.maxQuestions}</h4>
+    <h4>スコア: ${state.score}</h4>
   `;
 }
 
@@ -540,9 +558,9 @@ function renderHpBar(hp) {
     if (hp <= 5) hpColor = "crimson";
     else if (hp <= 10) hpColor = "orange";
     return `
-      <div style="font-size: 0.9em;">HP: ${hp} / 20</div>
-      <div style="background: #ccc; width: 100%; height: 20px; border-radius: 10px; overflow: hidden;">
-        <div style="background: ${hpColor}; width: ${hpPercent}%; height: 100%;"></div>
+      <div style="font-size: 0.9em; margin-bottom: 4px;">HP: ${hp} / 20</div>
+      <div class="hp-bar-container">
+        <div class="hp-bar-inner" style="width: ${hpPercent}%; background-color: ${hpColor};"></div>
       </div>
     `;
 }
@@ -725,5 +743,6 @@ socket.on('presets_list', (presets) => {
   container.innerHTML = radioButtons;
 });
 
-socket.on('single_game_state', (state) => showSinglePlayGameUI(state));
+socket.on('single_game_start', (state) => showSinglePlayGameUI(state));
+socket.on('single_game_state', (state) => updateSinglePlayGameUI(state));
 socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
