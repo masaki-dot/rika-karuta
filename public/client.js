@@ -342,16 +342,31 @@ function handleSettingsSubmit() {
   } else {
     const fileInput = document.getElementById("csvFile");
     if (!fileInput.files[0]) return alert("CSVファイルを選んでください");
+
+    const saveToServer = document.getElementById('save-csv-checkbox').checked;
+    let presetInfo = null;
+    if (saveToServer) {
+        const category = document.getElementById('csv-category-name').value.trim();
+        const name = document.getElementById('csv-list-name').value.trim();
+        if (!category || !name) {
+            return alert('保存する場合は、カテゴリ名とリスト名を入力してください。');
+        }
+        presetInfo = { category, name };
+    }
+
     Papa.parse(fileInput.files[0], {
       header: false,
       skipEmptyLines: true,
       complete: (result) => {
         const cards = result.data.slice(1).map(r => ({
-          number: String(r[0]).trim(),
-          term: String(r[1]).trim(),
-          text: String(r[2]).trim()
+          number: String(r[0] || '').trim(),
+          term: String(r[1] || '').trim(),
+          text: String(r[2] || '').trim()
         })).filter(c => c.term && c.text);
-        socket.emit("set_cards_and_settings", { cards, settings });
+        
+        if (cards.length === 0) return alert('CSVファイルから有効な問題を読み込めませんでした。');
+
+        socket.emit("set_cards_and_settings", { cards, settings, presetInfo });
       }
     });
   }
