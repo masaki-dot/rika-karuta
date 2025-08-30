@@ -348,16 +348,38 @@ io.on("connection", (socket) => {
   socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
 });
 
-  socket.on("set_preset_and_settings", ({ presetId, settings }) => {
-    if (questionPresets[presetId]) {
-        globalCards = [...questionPresets[presetId].cards]; // シャッフルしない
-        globalSettings = { ...settings, maxQuestions: globalCards.length };
-        Object.keys(states).forEach(key => delete states[key]);
-        Object.keys(groups).forEach(key => delete groups[key]);
-        gamePhase = 'GROUP_SELECTION';
-        io.emit("start_group_selection");
+  // 引数に presetInfo を追加
+socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
+  // ▼▼▼ ここからが追加部分 ▼▼▼
+  // CSV保存ロジック
+  if (presetInfo && presetInfo.category && presetInfo.name) {
+    try {
+      // ファイル名にタイムスタンプを加えて重複を防ぐ
+      const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
+      const dataToSave = {
+        category: presetInfo.category,
+        name: presetInfo.name,
+        cards: cards
+      };
+      // JSON形式でファイルに書き込み
+      fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+      console.log(`💾 新しいプリセットを保存しました: ${filePath}`);
+      // 現在のセッションでも使えるようにメモリにも追加
+      questionPresets[`user_${presetId}`] = dataToSave;
+    } catch (err) {
+      console.error('プリセットの保存に失敗しました:', err);
     }
-  });
+  }
+  // ▲▲▲ ここまでが追加部分 ▲▲▲
+
+  globalCards = [...cards];
+  globalSettings = { ...settings, maxQuestions: cards.length };
+  Object.keys(states).forEach(key => delete states[key]);
+  Object.keys(groups).forEach(key => delete groups[key]);
+  gamePhase = 'GROUP_SELECTION';
+  io.emit("start_group_selection");
+});
 
   socket.on("set_cards_and_settings", ({ cards, settings }) => {
     globalCards = [...cards];
