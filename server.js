@@ -13,8 +13,9 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const USER_PRESETS_DIR = path.join(__dirname, 'data', 'user_presets');
-const RANKINGS_DIR = path.join(__dirname, 'data', 'rankings');
+const DATA_DIR = path.join(__dirname, 'data');
+const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
+const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
@@ -31,6 +32,8 @@ const singlePlayStates = {};
 
 // --- サーバー初期化処理 ---
 function loadPresets() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+  
   try {
     const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
@@ -219,6 +222,7 @@ function nextQuestion(groupId) {
 
 // --- シングルプレイ用ヘルパー ---
 function readRankingFile(filePath) {
+    if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
     if (fs.existsSync(filePath)) {
         try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
         catch (e) { return {}; }
@@ -303,6 +307,7 @@ io.on("connection", (socket) => {
   socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
     if (presetInfo && presetInfo.category && presetInfo.name) {
       try {
+        if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
         const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
         const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
         const dataToSave = {
@@ -536,6 +541,11 @@ io.on("connection", (socket) => {
     Object.keys(players).forEach(key => delete players[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
     Object.keys(states).forEach(key => delete states[key]);
+
+    // Delete saved data
+    if (fs.existsSync(USER_PRESETS_DIR)) fs.rmSync(USER_PRESETS_DIR, { recursive: true, force: true });
+    if (fs.existsSync(RANKINGS_DIR)) fs.rmSync(RANKINGS_DIR, { recursive: true, force: true });
+
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
   });
 
@@ -547,6 +557,48 @@ io.on("connection", (socket) => {
       socket.emit("host_state", getHostState());
     }
   });
+  
+  socket.on('host_export_data', () => {
+    if (socket.id !== hostSocketId) return;
+    const backupData = {
+        userPresets: {},
+        rankings: {}
+    };
+    if (fs.existsSync(USER_PRESETS_DIR)) {
+        const files = fs.readdirSync(USER_PRESETS_DIR);
+        files.forEach(file => {
+            backupData.userPresets[file] = fs.readFileSync(path.join(USER_PRESETS_DIR, file), 'utf8');
+        });
+    }
+    if (fs.existsSync(RANKINGS_DIR)) {
+        const files = fs.readdirSync(RANKINGS_DIR);
+        files.forEach(file => {
+            backupData.rankings[file] = fs.readFileSync(path.join(RANKINGS_DIR, file), 'utf8');
+        });
+    }
+    socket.emit('export_data_response', backupData);
+  });
+
+  socket.on('host_import_data', (data) => {
+    if (socket.id !== hostSocketId) return;
+    try {
+        if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
+        if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
+
+        for (const [fileName, content] of Object.entries(data.userPresets || {})) {
+            fs.writeFileSync(path.join(USER_PRESETS_DIR, fileName), content);
+        }
+        for (const [fileName, content] of Object.entries(data.rankings || {})) {
+            fs.writeFileSync(path.join(RANKINGS_DIR, fileName), content);
+        }
+        loadPresets(); // メモリに再読み込み
+        socket.emit('import_data_response', { success: true, message: 'データの読み込みが完了しました。ページをリロードします。' });
+    } catch (error) {
+        console.error('データインポートエラー:', error);
+        socket.emit('import_data_response', { success: false, message: 'データの読み込みに失敗しました。' });
+    }
+  });
+
 
   // --- シングルプレイ用イベント ---
   socket.on('request_presets', () => {
@@ -583,8 +635,8 @@ io.on("connection", (socket) => {
     if (correct) {
         card.correct = true;
         const elapsedTime = Date.now() - state.startTime;
-        const timeBonus = Math.max(0, 10000 - elapsedTime);
-        state.score += (100 + Math.floor(timeBonus / 100));
+        const timeBonus = Math.max(0, 10000 - elapsedTime); // 10秒以内ならボーナス
+        state.score += (100 + Math.floor(timeBonus / 100)); // 基本点100 + タイムボーナス(最大100)
     } else {
         card.incorrect = true;
     }
@@ -600,7 +652,7 @@ io.on("connection", (socket) => {
     const { score, playerId, name, presetId, presetName, difficulty } = state;
     
     const globalRankingFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_global.json`);
-    const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_personal.json`);
+    const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_personal.json`);
 
     let globalRanking = readRankingFile(globalRankingFile).ranking || [];
     let personalBests = readRankingFile(personalBestFile);
