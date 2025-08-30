@@ -1,4 +1,4 @@
-// server.js (改善・完全版)
+// server.js (クリーンアップ・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -10,18 +10,10 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const path = require("path");
-const fs = require('fs'); // ← ファイルシステムモジュールを追加
-const { v4: uuidv4 } = require('uuid');
-
-// (app, server, io の設定...)
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const USER_PRESETS_DIR = path.join(__dirname, 'data', 'user_presets'); // ← ユーザーが保存した問題を置くフォルダのパスを定義
+const USER_PRESETS_DIR = path.join(__dirname, 'data', 'user_presets');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
@@ -39,7 +31,6 @@ const singlePlayRankings = {};
 
 // --- サーバー初期化処理 ---
 function loadPresets() {
-  // デフォルトプリセットの読み込み (これは同じ)
   try {
     const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
@@ -49,22 +40,15 @@ function loadPresets() {
     questionPresets = {};
   }
   
-  // ▼▼▼ ここからが追加部分 ▼▼▼
-  // ユーザー作成プリセットの読み込み
   if (!fs.existsSync(USER_PRESETS_DIR)) {
-    // user_presets フォルダがなければ作成する
     fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
   }
   try {
-    // フォルダ内の .json ファイルを全てリストアップ
     const userFiles = fs.readdirSync(USER_PRESETS_DIR).filter(file => file.endsWith('.json'));
-    // 各ファイルをループして読み込む
     userFiles.forEach(file => {
         const filePath = path.join(USER_PRESETS_DIR, file);
         const data = fs.readFileSync(filePath, 'utf8');
-        // ファイル名を元にユニークなIDを作成
         const presetId = `user_${path.basename(file, '.json')}`;
-        // questionPresets オブジェクトに追加
         questionPresets[presetId] = JSON.parse(data);
     });
     if (userFiles.length > 0) {
@@ -73,8 +57,8 @@ function loadPresets() {
   } catch(err) {
       console.error('⚠️ ユーザー作成プリセットの読み込みに失敗しました:', err);
   }
-  // ▲▲▲ ここまでが追加部分 ▲▲▲
 }
+loadPresets();
 
 // --- ヘルパー関数群 ---
 function shuffle(array) {
@@ -337,52 +321,43 @@ io.on("connection", (socket) => {
   });
 
   socket.on('request_game_phase', () => {
-  // ▼▼▼ 追加 ▼▼▼
-  // ユーザープリセットを再読み込みして最新の状態を反映
-  loadPresets(); 
-  // ▲▲▲ 追加 ▲▲▲
-  
-  const presetsForClient = {};
-  for(const [id, data] of Object.entries(questionPresets)) {
-      presetsForClient[id] = { category: data.category, name: data.name };
-  }
-  socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
-});
-
-  // 引数に presetInfo を追加
-socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
-  // ▼▼▼ ここからが追加部分 ▼▼▼
-  // CSV保存ロジック
-  if (presetInfo && presetInfo.category && presetInfo.name) {
-    try {
-      // ファイル名にタイムスタンプを加えて重複を防ぐ
-      const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
-      const dataToSave = {
-        category: presetInfo.category,
-        name: presetInfo.name,
-        cards: cards
-      };
-      // JSON形式でファイルに書き込み
-      fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
-      console.log(`💾 新しいプリセットを保存しました: ${filePath}`);
-      // 現在のセッションでも使えるようにメモリにも追加
-      questionPresets[`user_${presetId}`] = dataToSave;
-    } catch (err) {
-      console.error('プリセットの保存に失敗しました:', err);
+    loadPresets(); 
+    const presetsForClient = {};
+    for(const [id, data] of Object.entries(questionPresets)) {
+        presetsForClient[id] = { category: data.category, name: data.name };
     }
-  }
-  // ▲▲▲ ここまでが追加部分 ▲▲▲
+    socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
+  });
 
-  globalCards = [...cards];
-  globalSettings = { ...settings, maxQuestions: cards.length };
-  Object.keys(states).forEach(key => delete states[key]);
-  Object.keys(groups).forEach(key => delete groups[key]);
-  gamePhase = 'GROUP_SELECTION';
-  io.emit("start_group_selection");
-});
+  socket.on("set_preset_and_settings", ({ presetId, settings }) => {
+    if (questionPresets[presetId]) {
+        globalCards = [...questionPresets[presetId].cards];
+        globalSettings = { ...settings, maxQuestions: globalCards.length };
+        Object.keys(states).forEach(key => delete states[key]);
+        Object.keys(groups).forEach(key => delete groups[key]);
+        gamePhase = 'GROUP_SELECTION';
+        io.emit("start_group_selection");
+    }
+  });
 
-  socket.on("set_cards_and_settings", ({ cards, settings }) => {
+  socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
+    if (presetInfo && presetInfo.category && presetInfo.name) {
+      try {
+        const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
+        const dataToSave = {
+          category: presetInfo.category,
+          name: presetInfo.name,
+          cards: cards
+        };
+        fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+        console.log(`💾 新しいプリセットを保存しました: ${filePath}`);
+        questionPresets[`user_${presetId}`] = dataToSave;
+      } catch (err) {
+        console.error('プリセットの保存に失敗しました:', err);
+      }
+    }
+
     globalCards = [...cards];
     globalSettings = { ...settings, maxQuestions: cards.length };
     Object.keys(states).forEach(key => delete states[key]);
@@ -483,7 +458,6 @@ socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
             clearTimeout(states[groupId].readTimer);
         }
 
-        // グループごとのモードを維持しつつstateを再初期化
         const currentGroupMode = states[groupId]?.gameMode || globalSettings.gameMode;
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
