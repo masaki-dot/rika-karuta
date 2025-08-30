@@ -90,7 +90,16 @@ function showCSVUploadUI(presets = {}) {
       <br>
       <input type="radio" id="source-csv" name="source-type" value="csv">
       <label for="source-csv">新しいCSVファイルをアップロード</label>
-      <input type="file" id="csvFile" accept=".csv" style="display: none;" />
+      <div id="csv-upload-area" style="display: none; margin-top: 10px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px;">
+        <input type="file" id="csvFile" accept=".csv" />
+        <br><br>
+        <input type="checkbox" id="save-csv-checkbox">
+        <label for="save-csv-checkbox" class="label-inline">この問題をサーバーに保存する</label>
+        <div id="save-csv-details" style="display: none; margin-top: 10px;">
+          <input type="text" id="csv-category-name" placeholder="カテゴリ名 (例: 日本史)">
+          <input type="text" id="csv-list-name" placeholder="リスト名 (例: 鎌倉時代)">
+        </div>
+      </div>
     </fieldset>
     <hr/>
     <fieldset>
@@ -110,12 +119,16 @@ function showCSVUploadUI(presets = {}) {
     <br/>
     <button id="submit-settings" class="button-primary">決定してグループ選択へ</button>
   `;
+  // UIの表示切り替えロジック
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
       document.getElementById('preset-select').style.display = e.target.value === 'preset' ? 'inline-block' : 'none';
-      document.getElementById('csvFile').style.display = e.target.value === 'csv' ? 'inline-block' : 'none';
+      document.getElementById('csv-upload-area').style.display = e.target.value === 'csv' ? 'block' : 'none';
     };
   });
+  document.getElementById('save-csv-checkbox').onchange = (e) => {
+      document.getElementById('save-csv-details').style.display = e.target.checked ? 'block' : 'none';
+  };
   document.getElementById('submit-settings').onclick = handleSettingsSubmit;
 }
 
