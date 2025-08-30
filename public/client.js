@@ -1,4 +1,4 @@
-// client.js (ホスト機能修正・完全版)
+// client.js (データ管理画面修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -169,6 +169,12 @@ function showCSVUploadUI(presets = {}) {
     </fieldset>
     <br/>
     <button id="submit-settings" class="button-primary">決定してホスト画面へ</button>
+    <hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
+    <h3 style="color: #c05621;">データ管理</h3>
+    <p>アプリ更新前に「データを取り出し」、更新後に「データを読み込み」で問題やランキングを引き継げます。</p>
+    <button id="export-data-btn" class="button-outline">データを取り出し</button>
+    <label for="import-file-input" class="button button-outline" style="display: inline-block;">データを読み込み</label>
+    <input type="file" id="import-file-input" accept=".json" style="display: none;" />
   `;
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
@@ -180,11 +186,13 @@ function showCSVUploadUI(presets = {}) {
       document.getElementById('save-csv-details').style.display = e.target.checked ? 'block' : 'none';
   };
   document.getElementById('submit-settings').onclick = handleSettingsSubmit;
+  document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
+  document.getElementById('import-file-input').onchange = handleDataImport;
 }
 
 function showGroupSelectionUI() {
   clearAllTimers();
-  updateNavBar(showPlayerMenuUI);
+  updateNavBar(() => showPlayerMenuUI('GROUP_SELECTION'));
   const container = getContainer();
   container.innerHTML = '<h2>2. グループを選択</h2>';
   
@@ -215,10 +223,10 @@ function showNameInputUI() {
 
 function showHostUI() {
   clearAllTimers();
-  updateNavBar(showCSVUploadUI); // 戻るボタンで問題設定画面に戻る
+  updateNavBar(() => socket.emit('request_game_phase'));
   const container = getContainer();
   container.innerHTML = `
-    <h2>👑 ホスト画面</h2>
+    <h2>👑 ホスト管理画面</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
@@ -231,14 +239,6 @@ function showHostUI() {
     <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
     <hr/>
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
-    
-    <hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
-    <h3 style="color: #c05621;">データ管理</h3>
-    <p>アプリ更新前に「データを取り出し」、更新後に「データを読み込み」で問題やランキングを引き継げます。</p>
-    <button id="export-data-btn" class="button-outline">データを取り出し</button>
-    <label for="import-file-input" class="button button-outline" style="display: inline-block;">データを読み込み</label>
-    <input type="file" id="import-file-input" accept=".json" style="display: none;" />
-
     <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: red;">危険な操作</h3>
     <p>全てのプレイヤーデータ（累計スコア含む）を削除し、アプリを初期状態に戻します。</p>
@@ -247,8 +247,6 @@ function showHostUI() {
   
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
-  document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
-  document.getElementById('import-file-input').onchange = handleDataImport;
   document.getElementById('host-reset-all-btn').onclick = () => {
     if (confirm('本当に全てのゲームデータをリセットしますか？この操作は元に戻せません。')) {
       socket.emit('host_full_reset');
