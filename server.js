@@ -1,4 +1,4 @@
-// server.js (一人でプレイ改修・完全版)
+// server.js (役割分担・ナビゲーション機能対応)
 
 const express = require("express");
 const http = require("http");
@@ -300,7 +300,7 @@ io.on("connection", (socket) => {
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
-        io.emit("start_group_selection");
+        io.emit("multiplayer_status_changed", gamePhase);
     }
   });
 
@@ -328,7 +328,7 @@ io.on("connection", (socket) => {
     Object.keys(states).forEach(key => delete states[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
     gamePhase = 'GROUP_SELECTION';
-    io.emit("start_group_selection");
+    io.emit("multiplayer_status_changed", gamePhase);
   });
 
   socket.on("join", ({ groupId, playerId }) => {
@@ -542,10 +542,10 @@ io.on("connection", (socket) => {
     Object.keys(groups).forEach(key => delete groups[key]);
     Object.keys(states).forEach(key => delete states[key]);
 
-    // Delete saved data
     if (fs.existsSync(USER_PRESETS_DIR)) fs.rmSync(USER_PRESETS_DIR, { recursive: true, force: true });
     if (fs.existsSync(RANKINGS_DIR)) fs.rmSync(RANKINGS_DIR, { recursive: true, force: true });
 
+    io.emit('multiplayer_status_changed', gamePhase);
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
   });
 
@@ -560,10 +560,7 @@ io.on("connection", (socket) => {
   
   socket.on('host_export_data', () => {
     if (socket.id !== hostSocketId) return;
-    const backupData = {
-        userPresets: {},
-        rankings: {}
-    };
+    const backupData = { userPresets: {}, rankings: {} };
     if (fs.existsSync(USER_PRESETS_DIR)) {
         const files = fs.readdirSync(USER_PRESETS_DIR);
         files.forEach(file => {
@@ -591,7 +588,7 @@ io.on("connection", (socket) => {
         for (const [fileName, content] of Object.entries(data.rankings || {})) {
             fs.writeFileSync(path.join(RANKINGS_DIR, fileName), content);
         }
-        loadPresets(); // メモリに再読み込み
+        loadPresets();
         socket.emit('import_data_response', { success: true, message: 'データの読み込みが完了しました。ページをリロードします。' });
     } catch (error) {
         console.error('データインポートエラー:', error);
@@ -635,8 +632,8 @@ io.on("connection", (socket) => {
     if (correct) {
         card.correct = true;
         const elapsedTime = Date.now() - state.startTime;
-        const timeBonus = Math.max(0, 10000 - elapsedTime); // 10秒以内ならボーナス
-        state.score += (100 + Math.floor(timeBonus / 100)); // 基本点100 + タイムボーナス(最大100)
+        const timeBonus = Math.max(0, 10000 - elapsedTime);
+        state.score += (100 + Math.floor(timeBonus / 100));
     } else {
         card.incorrect = true;
     }
