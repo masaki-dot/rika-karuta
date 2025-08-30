@@ -38,15 +38,42 @@ const singlePlayRankings = {};
 
 // --- サーバー初期化処理 ---
 function loadPresets() {
+  // デフォルトプリセットの読み込み (これは同じ)
   try {
     const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
-    console.log('✅ 問題プリセットを読み込みました。');
+    console.log('✅ デフォルト問題プリセットを読み込みました。');
   } catch (err) {
-    console.error('⚠️ 問題プリセットの読み込みに失敗しました:', err);
+    console.error('⚠️ デフォルト問題プリセットの読み込みに失敗しました:', err);
+    questionPresets = {};
   }
+  
+  // ▼▼▼ ここからが追加部分 ▼▼▼
+  // ユーザー作成プリセットの読み込み
+  if (!fs.existsSync(USER_PRESETS_DIR)) {
+    // user_presets フォルダがなければ作成する
+    fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
+  }
+  try {
+    // フォルダ内の .json ファイルを全てリストアップ
+    const userFiles = fs.readdirSync(USER_PRESETS_DIR).filter(file => file.endsWith('.json'));
+    // 各ファイルをループして読み込む
+    userFiles.forEach(file => {
+        const filePath = path.join(USER_PRESETS_DIR, file);
+        const data = fs.readFileSync(filePath, 'utf8');
+        // ファイル名を元にユニークなIDを作成
+        const presetId = `user_${path.basename(file, '.json')}`;
+        // questionPresets オブジェクトに追加
+        questionPresets[presetId] = JSON.parse(data);
+    });
+    if (userFiles.length > 0) {
+        console.log(`✅ ユーザー作成プリセットを ${userFiles.length} 件読み込みました。`);
+    }
+  } catch(err) {
+      console.error('⚠️ ユーザー作成プリセットの読み込みに失敗しました:', err);
+  }
+  // ▲▲▲ ここまでが追加部分 ▲▲▲
 }
-loadPresets();
 
 // --- ヘルパー関数群 ---
 function shuffle(array) {
