@@ -1,4 +1,4 @@
-// server.js (クリーンアップ・完全版)
+// server.js (一人でプレイ改修・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -14,6 +14,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, "public")));
 
 const USER_PRESETS_DIR = path.join(__dirname, 'data', 'user_presets');
+const RANKINGS_DIR = path.join(__dirname, 'data', 'rankings');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
@@ -27,7 +28,6 @@ const players = {};
 const groups = {};
 const states = {};
 const singlePlayStates = {};
-const singlePlayRankings = {};
 
 // --- サーバー初期化処理 ---
 function loadPresets() {
@@ -40,9 +40,7 @@ function loadPresets() {
     questionPresets = {};
   }
   
-  if (!fs.existsSync(USER_PRESETS_DIR)) {
-    fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
-  }
+  if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
   try {
     const userFiles = fs.readdirSync(USER_PRESETS_DIR).filter(file => file.endsWith('.json'));
     userFiles.forEach(file => {
@@ -51,9 +49,7 @@ function loadPresets() {
         const presetId = `user_${path.basename(file, '.json')}`;
         questionPresets[presetId] = JSON.parse(data);
     });
-    if (userFiles.length > 0) {
-        console.log(`✅ ユーザー作成プリセットを ${userFiles.length} 件読み込みました。`);
-    }
+    if (userFiles.length > 0) console.log(`✅ ユーザー作成プリセットを ${userFiles.length} 件読み込みました。`);
   } catch(err) {
       console.error('⚠️ ユーザー作成プリセットの読み込みに失敗しました:', err);
   }
@@ -187,18 +183,14 @@ function nextQuestion(groupId) {
     const question = remaining[Math.floor(Math.random() * remaining.length)];
     state.usedQuestions.push(question.text.trim() + question.number);
 
-    const distractors = shuffle(globalCards.filter(c => c.number !== question.number)).slice(0, state.numCards - 1);
+    const distractors = shuffle([...globalCards.filter(c => c.number !== question.number)]).slice(0, state.numCards - 1);
     const cards = shuffle([...distractors, question]);
 
     let point = 1;
     const rand = Math.random();
-    if (rand < 0.05) { // 5%
-        point = 5;
-    } else if (rand < 0.20) { // 15%
-        point = 3;
-    } else if (rand < 0.60) { // 40%
-        point = 2;
-    }
+    if (rand < 0.05) { point = 5; } 
+    else if (rand < 0.20) { point = 3; }
+    else if (rand < 0.60) { point = 2; }
 
     const originalText = question.text;
     let maskedIndices = [];
@@ -226,34 +218,35 @@ function nextQuestion(groupId) {
 }
 
 // --- シングルプレイ用ヘルパー ---
+function readRankingFile(filePath) {
+    if (fs.existsSync(filePath)) {
+        try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
+        catch (e) { return {}; }
+    }
+    return {};
+}
+
+function writeRankingFile(filePath, data) {
+    if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
 function nextSingleQuestion(socketId) {
     const state = singlePlayStates[socketId];
-    if (!state || state.questionCount >= state.maxQuestions) {
-        const finalScore = state.score;
-        const presetId = state.presetId;
+    if (!state) return;
 
-        if (!singlePlayRankings[presetId]) singlePlayRankings[presetId] = [];
-        singlePlayRankings[presetId].push({ name: state.name, score: finalScore, difficulty: state.difficulty });
-        singlePlayRankings[presetId].sort((a, b) => b.score - a.score);
-        if (singlePlayRankings[presetId].length > 10) singlePlayRankings[presetId].pop();
-        
-        io.to(socketId).emit('single_game_end', {
-            score: finalScore,
-            ranking: singlePlayRankings[presetId]
-        });
-        delete singlePlayStates[socketId];
-        return;
-    }
-
-    const question = state.questions[state.questionCount];
-    const distractors = shuffle(state.allCards.filter(c => c.number !== question.number)).slice(0, 3);
+    const question = state.allCards[Math.floor(Math.random() * state.allCards.length)];
+    const distractors = shuffle([...state.allCards.filter(c => c.number !== question.number)]).slice(0, 3);
     const cards = shuffle([...distractors, question]);
 
     const originalText = question.text;
-    let indices = Array.from({length: originalText.length}, (_, i) => i);
-    indices = indices.filter(i => originalText[i] !== ' ' && originalText[i] !== '　');
-    shuffle(indices);
-    const maskedIndices = indices.slice(0, Math.floor(indices.length / 2));
+    let maskedIndices = [];
+    if (state.difficulty === 'hard') {
+        let indices = Array.from({length: originalText.length}, (_, i) => i);
+        indices = indices.filter(i => originalText[i] !== ' ' && originalText[i] !== '　');
+        shuffle(indices);
+        maskedIndices = indices.slice(0, Math.floor(indices.length / 2));
+    }
 
     state.current = {
         text: originalText,
@@ -261,43 +254,10 @@ function nextSingleQuestion(socketId) {
         answer: question.number,
         cards: cards.map(c => ({ number: c.number, term: c.term }))
     };
-    state.questionCount++;
     state.answered = false;
     state.startTime = Date.now();
 
     io.to(socketId).emit('single_game_state', state);
-    simulateCPUAnswer(socketId);
-}
-
-function simulateCPUAnswer(socketId) {
-    const state = singlePlayStates[socketId];
-    if (!state) return;
-    const { difficulty, current } = state;
-
-    const params = {
-        easy:   { accuracy: 0.7, minSpeed: 3000, maxSpeed: 5000 },
-        normal: { accuracy: 0.85, minSpeed: 2000, maxSpeed: 4000 },
-        hard:   { accuracy: 0.95, minSpeed: 1000, maxSpeed: 3000 }
-    };
-    const cpu = params[difficulty] || params.normal;
-    const answerTime = Math.random() * (cpu.maxSpeed - cpu.minSpeed) + cpu.minSpeed;
-
-    setTimeout(() => {
-        const currentState = singlePlayStates[socketId];
-        if (!currentState || currentState.answered) return;
-        
-        currentState.answered = true;
-        const cpuCorrect = Math.random() < cpu.accuracy;
-        const card = currentState.current.cards.find(c => c.number === current.answer);
-        
-        if (cpuCorrect) {
-            card.correctAnswer = true;
-            card.isCPU = true;
-        }
-
-        io.to(socketId).emit('single_game_state', currentState);
-        setTimeout(() => nextSingleQuestion(socketId), 3000);
-    }, answerTime);
 }
 
 // --- メインの接続処理 ---
@@ -482,40 +442,38 @@ io.on("connection", (socket) => {
     const topPlayerCount = topGroupCount * playersPerGroup;
     const topPlayers = allPlayersSorted.slice(0, topPlayerCount);
     const otherPlayers = allPlayersSorted.slice(topPlayerCount);
-    const finalPlayerList = [...topPlayers, ...shuffle(otherPlayers)];
-    const newGroupsConfig = {};
-    for (let i = 1; i <= groupCount; i++) newGroupsConfig[i] = [];
-    let playerIndex = 0;
+    const finalList = [...topPlayers, ...shuffle(otherPlayers)];
+    const newGroups = {};
+    for (let i = 1; i <= groupCount; i++) newGroups[i] = [];
+    let pIndex = 0;
     for (let i = 1; i <= groupCount; i++) {
-        while (newGroupsConfig[i].length < playersPerGroup && playerIndex < finalPlayerList.length) {
-            newGroupsConfig[i].push(finalPlayerList[playerIndex++]);
+        while (newGroups[i].length < playersPerGroup && pIndex < finalList.length) {
+            newGroups[i].push(finalList[pIndex++]);
         }
     }
-    while (playerIndex < finalPlayerList.length) {
+    while (pIndex < finalList.length) {
         for (let i = groupCount; i >= 1; i--) {
-            if (playerIndex >= finalPlayerList.length) break;
-            newGroupsConfig[i].push(finalPlayerList[playerIndex++]);
+            if (pIndex >= finalList.length) break;
+            newGroups[i].push(finalList[pIndex++]);
         }
     }
-    Object.keys(groups).forEach(key => delete groups[key]);
-    Object.keys(states).forEach(key => delete states[key]);
+    Object.keys(groups).forEach(k => delete groups[k]);
+    Object.keys(states).forEach(k => delete states[k]);
     for (let i = 1; i <= groupCount; i++) {
-        const playersInGroup = newGroupsConfig[i];
-        if (playersInGroup.length === 0) continue;
-        const groupId = `group${i}`;
-        groups[groupId] = { players: playersInGroup };
-        states[groupId] = initState(groupId);
-        states[groupId].players = playersInGroup.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 }));
+        const pInGroup = newGroups[i];
+        if (pInGroup.length === 0) continue;
+        const gId = `group${i}`;
+        groups[gId] = { players: pInGroup };
+        states[gId] = initState(gId);
+        states[gId].players = pInGroup.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 }));
     }
-    for (const [groupId, group] of Object.entries(groups)) {
+    for (const [gId, group] of Object.entries(groups)) {
         for (const p of group.players) {
-            const playerSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
-            if (playerSocket) {
-                for (const room of playerSocket.rooms) {
-                    if (room !== playerSocket.id) playerSocket.leave(room);
-                }
-                playerSocket.join(groupId);
-                playerSocket.emit("assigned_group", groupId);
+            const pSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
+            if (pSocket) {
+                for (const room of pSocket.rooms) if (room !== pSocket.id) pSocket.leave(room);
+                pSocket.join(gId);
+                pSocket.emit("assigned_group", gId);
             }
         }
     }
@@ -604,14 +562,13 @@ io.on("connection", (socket) => {
     const preset = questionPresets[presetId];
     if (!preset) return;
 
-    const questions = shuffle([...preset.cards]);
     singlePlayStates[socket.id] = {
         name, playerId, difficulty, presetId,
-        questions, allCards: preset.cards,
-        maxQuestions: questions.length,
-        questionCount: 0, score: 0,
-        current: null, answered: false, startTime: 0
+        allCards: preset.cards, score: 0, current: null, answered: false, startTime: 0,
+        presetName: `${preset.category} - ${preset.name}`
     };
+    
+    io.to(socket.id).emit('single_game_start');
     nextSingleQuestion(socket.id);
   });
 
@@ -633,7 +590,49 @@ io.on("connection", (socket) => {
     }
 
     io.to(socket.id).emit('single_game_state', state);
-    setTimeout(() => nextSingleQuestion(socket.id), 3000);
+    setTimeout(() => nextSingleQuestion(socket.id), 1500);
+  });
+
+  socket.on('single_game_timeup', () => {
+    const state = singlePlayStates[socket.id];
+    if (!state) return;
+
+    const { score, playerId, name, presetId, presetName, difficulty } = state;
+    
+    const globalRankingFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_global.json`);
+    const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_personal.json`);
+
+    let globalRanking = readRankingFile(globalRankingFile).ranking || [];
+    let personalBests = readRankingFile(personalBestFile);
+
+    const oldBest = personalBests[playerId] || 0;
+    if (score > oldBest) {
+        personalBests[playerId] = score;
+        writeRankingFile(personalBestFile, personalBests);
+    }
+    const personalBest = Math.max(score, oldBest);
+
+    const existingPlayerIndex = globalRanking.findIndex(r => r.playerId === playerId);
+    if (existingPlayerIndex > -1) {
+        if (score > globalRanking[existingPlayerIndex].score) {
+            globalRanking[existingPlayerIndex].score = score;
+        }
+    } else {
+        globalRanking.push({ playerId, name, score });
+    }
+    globalRanking.sort((a, b) => b.score - a.score);
+    globalRanking = globalRanking.slice(0, 10);
+    writeRankingFile(globalRankingFile, { ranking: globalRanking });
+
+    globalRanking.forEach(r => {
+        if (r.playerId === playerId) r.isMe = true;
+    });
+
+    socket.emit('single_game_end', {
+        score, personalBest, globalRanking, presetName
+    });
+
+    delete singlePlayStates[socket.id];
   });
 
   socket.on("disconnect", () => {
