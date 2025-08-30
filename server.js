@@ -336,12 +336,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on('request_game_phase', () => {
-    const presetsForClient = {};
-    for(const [id, data] of Object.entries(questionPresets)) {
-        presetsForClient[id] = { category: data.category, name: data.name };
-    }
-    socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
-  });
+  // ▼▼▼ 追加 ▼▼▼
+  // ユーザープリセットを再読み込みして最新の状態を反映
+  loadPresets(); 
+  // ▲▲▲ 追加 ▲▲▲
+  
+  const presetsForClient = {};
+  for(const [id, data] of Object.entries(questionPresets)) {
+      presetsForClient[id] = { category: data.category, name: data.name };
+  }
+  socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
+});
 
   socket.on("set_preset_and_settings", ({ presetId, settings }) => {
     if (questionPresets[presetId]) {
