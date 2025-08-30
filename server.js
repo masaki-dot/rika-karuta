@@ -1,4 +1,4 @@
-// server.js (ホスト機能修正・完全版)
+// server.js (リスト削除機能・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -235,7 +235,7 @@ function writeRankingFile(filePath, data) {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
-function nextSingleQuestion(socketId) {
+function nextSingleQuestion(socketId, isFirstQuestion = false) {
     const state = singlePlayStates[socketId];
     if (!state) return;
 
@@ -260,8 +260,10 @@ function nextSingleQuestion(socketId) {
     };
     state.answered = false;
     state.startTime = Date.now();
-
-    io.to(socketId).emit('single_game_state', state);
+    
+    if (!isFirstQuestion) {
+        io.to(socketId).emit('single_game_state', state);
+    }
 }
 
 // --- メインの接続処理 ---
@@ -596,6 +598,25 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on('host_delete_preset', ({ presetId }) => {
+    if (socket.id !== hostSocketId) return;
+    if (!presetId || !presetId.startsWith('user_')) {
+        return; // Do not delete default presets
+    }
+    try {
+        const fileName = `${presetId.replace('user_', '')}.json`;
+        const filePath = path.join(USER_PRESETS_DIR, fileName);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ プリセットを削除しました: ${filePath}`);
+            loadPresets(); // メモリを更新
+            socket.emit('request_game_phase'); // UIを更新させる
+        }
+    } catch (error) {
+        console.error('プリセットの削除に失敗しました:', error);
+    }
+  });
+
 
   // --- シングルプレイ用イベント ---
   socket.on('request_presets', () => {
@@ -617,8 +638,8 @@ io.on("connection", (socket) => {
         presetName: `${preset.category} - ${preset.name}`
     };
     
-    io.to(socket.id).emit('single_game_start');
-    nextSingleQuestion(socket.id);
+    nextSingleQuestion(socket.id, true);
+    io.to(socket.id).emit('single_game_start', singlePlayStates[socket.id]);
   });
 
   socket.on('single_answer', ({ number }) => {
