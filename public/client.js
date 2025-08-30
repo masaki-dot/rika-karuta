@@ -740,8 +740,12 @@ socket.on("state", (state) => {
   }
 });
 
-socket.on("end", (ranking) => showEndScreen(ranking));
-
+socket.on("end", (ranking) => {
+  // ▼▼▼ この行を追加 ▼▼▼
+  if (gameMode !== 'multi') return; // マルチプレイモードでなければ何もしない
+  
+  showEndScreen(ranking);
+});
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
