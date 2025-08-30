@@ -1,4 +1,4 @@
-// server.js (役割分担・ナビゲーション機能対応)
+// server.js (ホスト機能修正・完全版)
 
 const express = require("express");
 const http = require("http");
