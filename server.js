@@ -1,4 +1,4 @@
-// server.js (リスト削除機能・完全版)
+// server.js (ランキング分離・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -597,26 +597,24 @@ io.on("connection", (socket) => {
         socket.emit('import_data_response', { success: false, message: 'データの読み込みに失敗しました。' });
     }
   });
-
+  
   socket.on('host_delete_preset', ({ presetId }) => {
     if (socket.id !== hostSocketId) return;
-    if (!presetId || !presetId.startsWith('user_')) {
-        return; // Do not delete default presets
-    }
+    if (!presetId || !presetId.startsWith('user_')) return;
+
     try {
         const fileName = `${presetId.replace('user_', '')}.json`;
         const filePath = path.join(USER_PRESETS_DIR, fileName);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
             console.log(`🗑️ プリセットを削除しました: ${filePath}`);
-            loadPresets(); // メモリを更新
-            socket.emit('request_game_phase'); // UIを更新させる
+            loadPresets();
+            socket.emit('request_game_phase');
         }
     } catch (error) {
         console.error('プリセットの削除に失敗しました:', error);
     }
   });
-
 
   // --- シングルプレイ用イベント ---
   socket.on('request_presets', () => {
@@ -669,8 +667,9 @@ io.on("connection", (socket) => {
 
     const { score, playerId, name, presetId, presetName, difficulty } = state;
     
+    // ▼▼▼ ランキングファイルのパスを問題リストと難易度で分ける ▼▼▼
     const globalRankingFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_global.json`);
-    const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_personal.json`);
+    const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_personal.json`);
 
     let globalRanking = readRankingFile(globalRankingFile).ranking || [];
     let personalBests = readRankingFile(personalBestFile);
