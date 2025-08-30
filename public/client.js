@@ -1,4 +1,4 @@
-// client.js (ローディング問題修正・完全版)
+// client.js (リスト削除機能・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -135,12 +135,16 @@ function showCSVUploadUI(presets = {}) {
     <h2>1. 設定と問題のアップロード</h2>
     <fieldset>
       <legend>問題ソース</legend>
-      <input type="radio" id="source-preset" name="source-type" value="preset" checked>
-      <label for="source-preset">保存済みリストから選ぶ</label>
-      <select id="preset-select">${presetOptions}</select>
-      <br>
-      <input type="radio" id="source-csv" name="source-type" value="csv">
-      <label for="source-csv">新しいCSVファイルをアップロード</label>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <input type="radio" id="source-preset" name="source-type" value="preset" checked>
+        <label for="source-preset" class="label-inline">保存済みリストから選ぶ</label>
+        <select id="preset-select" style="flex-grow: 1;">${presetOptions}</select>
+        <button id="delete-preset-btn" class="button" style="background-color: #e53e3e; color: white;">削除</button>
+      </div>
+      <div style="margin-top: 10px;">
+        <input type="radio" id="source-csv" name="source-type" value="csv">
+        <label for="source-csv" class="label-inline">新しいCSVファイルをアップロード</label>
+      </div>
       <div id="csv-upload-area" style="display: none; margin-top: 10px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px;">
         <input type="file" id="csvFile" accept=".csv" />
         <br><br>
@@ -178,7 +182,6 @@ function showCSVUploadUI(presets = {}) {
   `;
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
-      document.getElementById('preset-select').style.display = e.target.value === 'preset' ? 'inline-block' : 'none';
       document.getElementById('csv-upload-area').style.display = e.target.value === 'csv' ? 'block' : 'none';
     };
   });
@@ -188,6 +191,7 @@ function showCSVUploadUI(presets = {}) {
   document.getElementById('submit-settings').onclick = handleSettingsSubmit;
   document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
   document.getElementById('import-file-input').onchange = handleDataImport;
+  document.getElementById('delete-preset-btn').onclick = handleDeletePreset;
 }
 
 function showGroupSelectionUI() {
@@ -456,6 +460,24 @@ function handleDataImport(event) {
     };
     reader.readAsText(file);
     event.target.value = '';
+}
+
+function handleDeletePreset() {
+    const presetSelect = document.getElementById('preset-select');
+    const presetId = presetSelect.value;
+    if (!presetId) {
+        return alert('削除するリストを選択してください。');
+    }
+    if (!presetId.startsWith('user_')) {
+        return alert('デフォルトの問題リストは削除できません。');
+    }
+
+    const selectedOption = presetSelect.options[presetSelect.selectedIndex];
+    const presetName = selectedOption.text;
+
+    if (confirm(`本当に「${presetName}」を削除しますか？この操作は元に戻せません。`)) {
+        socket.emit('host_delete_preset', { presetId });
+    }
 }
 
 function fixName() {
