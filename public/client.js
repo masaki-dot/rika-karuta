@@ -1,4 +1,4 @@
-// client.js (一人でプレイ改修・完全版)
+// client.js (バックアップ機能・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -12,7 +12,7 @@ let rankingIntervalId = null;
 let readInterval = null;
 let unmaskIntervalId = null;
 let countdownIntervalId = null;
-let singleGameTimerId = null; // 一人用ゲームのメインタイマー
+let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
@@ -194,6 +194,14 @@ function showHostUI() {
     <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
     <hr/>
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
+    
+    <hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
+    <h3 style="color: #c05621;">データ管理</h3>
+    <p>アプリ更新前に「データを取り出し」、更新後に「データを読み込み」で問題やランキングを引き継げます。</p>
+    <button id="export-data-btn" class="button-outline">データを取り出し</button>
+    <label for="import-file-input" class="button button-outline" style="display: inline-block;">データを読み込み</label>
+    <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+
     <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: red;">危険な操作</h3>
     <p>全てのプレイヤーデータ（累計スコア含む）を削除し、アプリを初期状態に戻します。</p>
@@ -202,6 +210,8 @@ function showHostUI() {
   
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
+  document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
+  document.getElementById('import-file-input').onchange = handleDataImport;
   document.getElementById('host-reset-all-btn').onclick = () => {
     if (confirm('本当に全てのゲームデータをリセットしますか？この操作は元に戻せません。')) {
       socket.emit('host_full_reset');
@@ -390,6 +400,25 @@ function handleSettingsSubmit() {
       }
     });
   }
+}
+
+function handleDataImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (confirm('現在のサーバーデータを上書きします。よろしいですか？')) {
+                socket.emit('host_import_data', data);
+            }
+        } catch (error) {
+            alert('ファイルの読み込みに失敗しました。有効なJSONファイルではありません。');
+        }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // 同じファイルを連続で選択できるようにする
 }
 
 function fixName() {
@@ -732,6 +761,26 @@ socket.on('force_reload', (message) => {
     window.location.reload();
 });
 
+socket.on('export_data_response', (data) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rika_karuta_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert('データの取り出しが完了しました。');
+});
+
+socket.on('import_data_response', ({ success, message }) => {
+    alert(message);
+    if (success) {
+        window.location.reload();
+    }
+});
+
 // --- シングルプレイ用リスナー ---
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
@@ -745,6 +794,6 @@ socket.on('presets_list', (presets) => {
   container.innerHTML = radioButtons;
 });
 
-socket.on('single_game_start', (state) => showSinglePlayGameUI(state));
+socket.on('single_game_start', () => showSinglePlayGameUI());
 socket.on('single_game_state', (state) => updateSinglePlayGameUI(state));
 socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
