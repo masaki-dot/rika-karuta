@@ -11,7 +11,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Orbitron:wght@700&display=swap" rel="stylesheet">
 
-  <!-- ★★★ 新しいライトテーマのスタイル ★★★ -->
   <style>
     :root {
       --bg-main: #f4f7f6;
@@ -20,6 +19,7 @@
       --text-muted: #718096;
       --border-color: #e2e8f0;
       --primary-color: #3182ce;
+      --secondary-color: #9f7aea;
       --primary-hover: #4299e1;
       --correct-glow: #f6e05e;
       --incorrect-color: #e53e3e;
@@ -31,6 +31,7 @@
       background-color: var(--bg-main);
       color: var(--text-main);
       font-family: 'M PLUS Rounded 1c', sans-serif;
+      padding-bottom: 80px; /* ナビゲーションバーの高さ分 */
     }
 
     h1, h2, h3, h4 {
@@ -48,10 +49,21 @@
         border: none;
         box-shadow: var(--shadow-soft);
         transition: all 0.2s ease-in-out;
+        /* ★★★ テキストを中央揃えにするための修正 ★★★ */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
     }
     button:hover, .button:hover {
         transform: translateY(-2px);
         box-shadow: var(--shadow-medium);
+    }
+    button:disabled {
+      background-color: #dcdfe6;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
     }
     .button-primary {
         background-color: var(--primary-color);
@@ -59,6 +71,13 @@
     }
     .button-primary:hover {
         background-color: var(--primary-hover);
+    }
+    .button-secondary {
+        background-color: var(--secondary-color);
+        color: white;
+    }
+    .button-secondary:hover {
+        background-color: #b794f4;
     }
     fieldset {
         border: 1px solid var(--border-color);
@@ -187,6 +206,22 @@
     }
     #current-point { top: 15px; right: 15px; }
     #countdown-timer { bottom: 15px; right: 15px; }
+    
+    /* ★★★ ナビゲーションバーのスタイル ★★★ */
+    #nav-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background-color: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(5px);
+      padding: 10px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10000;
+    }
 
     @keyframes glow {
       from { box-shadow: 0 0 5px #f6e05e, 0 0 10px #f6e05e; }
@@ -208,6 +243,12 @@
     <div id="point-popup"></div>
     <div id="current-point"></div>
     <div id="countdown-timer"></div>
+  </div>
+  
+  <!-- ★★★ ナビゲーションバーのHTML ★★★ -->
+  <div id="nav-bar" style="display: none;">
+    <button id="nav-back-btn" class="button-outline">戻る</button>
+    <button id="nav-top-btn">トップに戻る</button>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
