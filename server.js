@@ -294,27 +294,26 @@ io.on("connection", (socket) => {
   });
 
   socket.on("set_preset_and_settings", ({ presetId, settings }) => {
+    if (socket.id !== hostSocketId) return;
     if (questionPresets[presetId]) {
         globalCards = [...questionPresets[presetId].cards];
         globalSettings = { ...settings, maxQuestions: globalCards.length };
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
+        socket.emit('host_setup_done');
         io.emit("multiplayer_status_changed", gamePhase);
     }
   });
 
   socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
+    if (socket.id !== hostSocketId) return;
     if (presetInfo && presetInfo.category && presetInfo.name) {
       try {
         if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
         const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
         const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
-        const dataToSave = {
-          category: presetInfo.category,
-          name: presetInfo.name,
-          cards: cards
-        };
+        const dataToSave = { category: presetInfo.category, name: presetInfo.name, cards: cards };
         fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
         console.log(`💾 新しいプリセットを保存しました: ${filePath}`);
         questionPresets[`user_${presetId}`] = dataToSave;
@@ -328,6 +327,7 @@ io.on("connection", (socket) => {
     Object.keys(states).forEach(key => delete states[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
     gamePhase = 'GROUP_SELECTION';
+    socket.emit('host_setup_done');
     io.emit("multiplayer_status_changed", gamePhase);
   });
 
