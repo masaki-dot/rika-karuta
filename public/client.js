@@ -1,4 +1,4 @@
-// client.js (役割分担・ナビゲーション機能)
+// client.js (ホスト機能修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -95,7 +95,7 @@ function showRoleSelectionUI() {
     document.getElementById('host-btn').onclick = () => {
         isHost = true;
         socket.emit('host_join', { playerId });
-        socket.emit('request_game_phase'); // ホストも初期状態を確認
+        socket.emit('request_game_phase');
     };
     document.getElementById('player-btn').onclick = () => {
         isHost = false;
@@ -215,7 +215,7 @@ function showNameInputUI() {
 
 function showHostUI() {
   clearAllTimers();
-  updateNavBar(showRoleSelectionUI, false);
+  updateNavBar(showCSVUploadUI); // 戻るボタンで問題設定画面に戻る
   const container = getContainer();
   container.innerHTML = `
     <h2>👑 ホスト画面</h2>
@@ -402,23 +402,25 @@ function handleSettingsSubmit() {
     gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
 
+  let payload = { settings };
+
   if (sourceType === 'preset') {
     const presetId = document.getElementById('preset-select').value;
     if (!presetId) return alert('問題リストを選んでください');
-    socket.emit("set_preset_and_settings", { presetId, settings });
+    payload.presetId = presetId;
+    socket.emit("set_preset_and_settings", payload);
   } else {
     const fileInput = document.getElementById("csvFile");
     if (!fileInput.files[0]) return alert("CSVファイルを選んでください");
 
     const saveToServer = document.getElementById('save-csv-checkbox').checked;
-    let presetInfo = null;
     if (saveToServer) {
         const category = document.getElementById('csv-category-name').value.trim();
         const name = document.getElementById('csv-list-name').value.trim();
         if (!category || !name) {
             return alert('保存する場合は、カテゴリ名とリスト名を入力してください。');
         }
-        presetInfo = { category, name };
+        payload.presetInfo = { category, name };
     }
 
     Papa.parse(fileInput.files[0], {
@@ -432,8 +434,8 @@ function handleSettingsSubmit() {
         })).filter(c => c.term && c.text);
         
         if (cards.length === 0) return alert('CSVファイルから有効な問題を読み込めませんでした。');
-
-        socket.emit("set_cards_and_settings", { cards, settings, presetInfo });
+        payload.cards = cards;
+        socket.emit("set_cards_and_settings", payload);
       }
     });
   }
@@ -711,6 +713,10 @@ socket.on('multiplayer_status_changed', (phase) => {
         playerMenuButton.disabled = !multiPlayEnabled;
         document.getElementById('multi-play-status').textContent = !multiPlayEnabled ? '現在、ホストがゲームを準備中です...' : 'ホストの準備が完了しました！';
     }
+});
+
+socket.on('host_setup_done', () => {
+    showHostUI();
 });
 
 socket.on("start_group_selection", showGroupSelectionUI);
