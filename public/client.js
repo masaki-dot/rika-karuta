@@ -726,6 +726,7 @@ socket.on("assigned_group", (newGroupId) => {
 });
 
 socket.on("state", (state) => {
+    if (gameMode !== 'multi') return; // マルチプレイモードでなければ何もしない
   if (!state) return;
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
