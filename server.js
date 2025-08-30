@@ -544,9 +544,6 @@ io.on("connection", (socket) => {
     Object.keys(groups).forEach(key => delete groups[key]);
     Object.keys(states).forEach(key => delete states[key]);
 
-    if (fs.existsSync(USER_PRESETS_DIR)) fs.rmSync(USER_PRESETS_DIR, { recursive: true, force: true });
-    if (fs.existsSync(RANKINGS_DIR)) fs.rmSync(RANKINGS_DIR, { recursive: true, force: true });
-
     io.emit('multiplayer_status_changed', gamePhase);
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
   });
