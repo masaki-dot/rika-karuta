@@ -303,7 +303,7 @@ function showSinglePlayGameUI(state) {
       </div>
     `;
   }
-  // 2分タイマーを開始
+
   const timerDiv = document.getElementById('countdown-timer');
   let timeLeft = 120;
   timerDiv.textContent = `残り時間: 2:00`;
@@ -554,9 +554,11 @@ function updateSinglePlayGameUI(state) {
 
 function renderHpBar(hp) {
     const hpPercent = Math.max(0, hp / 20 * 100);
-    let hpColor = "mediumseagreen";
-    if (hp <= 5) hpColor = "crimson";
-    else if (hp <= 10) hpColor = "orange";
+    let hpColor;
+    if (hp <= 5) hpColor = "#e53e3e";
+    else if (hp <= 10) hpColor = "#dd6b20";
+    else hpColor = "#48bb78";
+
     return `
       <div style="font-size: 0.9em; margin-bottom: 4px;">HP: ${hp} / 20</div>
       <div class="hp-bar-container">
