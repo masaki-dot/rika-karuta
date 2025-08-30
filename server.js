@@ -9,9 +9,18 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server);const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
+const fs = require('fs'); // ← ファイルシステムモジュールを追加
+const { v4: uuidv4 } = require('uuid');
+
+// (app, server, io の設定...)
 
 app.use(express.static(path.join(__dirname, "public")));
+
+const USER_PRESETS_DIR = path.join(__dirname, 'data', 'user_presets'); // ← ユーザーが保存した問題を置くフォルダのパスを定義
 
 // --- グローバル変数 ---
 let hostSocketId = null;
