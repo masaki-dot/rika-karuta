@@ -1,4 +1,4 @@
-// client.js (バックアップ機能・完全版)
+// client.js (役割分担・ナビゲーション機能)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -20,6 +20,9 @@ let alreadyAnswered = false;
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
+const getNavBar = () => document.getElementById('nav-bar');
+const getNavBackBtn = () => document.getElementById('nav-back-btn');
+const getNavTopBtn = () => document.getElementById('nav-top-btn');
 
 function clearAllTimers() {
     if (rankingIntervalId) clearInterval(rankingIntervalId);
@@ -27,12 +30,31 @@ function clearAllTimers() {
     if (unmaskIntervalId) clearInterval(unmaskIntervalId);
     if (countdownIntervalId) clearInterval(countdownIntervalId);
     if (singleGameTimerId) clearInterval(singleGameTimerId);
-    rankingIntervalId = null;
-    readInterval = null;
-    unmaskIntervalId = null;
-    countdownIntervalId = null;
-    singleGameTimerId = null;
+    rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null;
+    document.getElementById('countdown-timer').textContent = '';
     console.log('All client timers cleared.');
+}
+
+function updateNavBar(backAction, showTop = true) {
+    const navBar = getNavBar();
+    const backBtn = getNavBackBtn();
+    const topBtn = getNavTopBtn();
+
+    if (backAction) {
+        backBtn.style.display = 'block';
+        backBtn.onclick = backAction;
+    } else {
+        backBtn.style.display = 'none';
+    }
+
+    if (showTop) {
+        topBtn.style.display = 'block';
+        topBtn.onclick = showRoleSelectionUI;
+    } else {
+        topBtn.style.display = 'none';
+    }
+    
+    navBar.style.display = (backAction || showTop) ? 'flex' : 'none';
 }
 
 // --- アプリケーションの初期化 ---
@@ -42,41 +64,67 @@ socket.on('connect', () => {
     socket.emit('request_new_player_id');
   } else {
     socket.emit('reconnect_player', { playerId, name: playerName });
-    showModeSelectionUI();
+    showRoleSelectionUI();
   }
 });
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
   localStorage.setItem('playerId', playerId);
-  console.log('新しいPlayerIDが割り当てられました:', playerId);
-  showModeSelectionUI();
+  showRoleSelectionUI();
 });
 
 // --- UI描画関数群 ---
 
-function showModeSelectionUI() {
-  clearAllTimers();
-  const container = getContainer();
-  container.innerHTML = `
-    <div style="text-align: center;">
-      <h1>理科カルタ</h1>
-      <h2>モードを選択してください</h2>
-      <div style="margin-top: 20px; margin-bottom: 30px;">
-        <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; padding: 10px 30px; margin: 10px;">みんなでプレイ</button>
-        <button id="single-play-btn" style="font-size: 1.5em; padding: 10px 30px; margin: 10px;">ひとりでプレイ</button>
-      </div>
-    </div>
-  `;
-  document.getElementById('multi-play-btn').onclick = () => {
+function showRoleSelectionUI() {
+    clearAllTimers();
+    updateNavBar(null, false);
+    isHost = false;
     gameMode = 'multi';
-    socket.emit('request_game_phase');
-  };
-  document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
+    const container = getContainer();
+    container.innerHTML = `
+        <div style="text-align: center;">
+            <h1>理科カルタ</h1>
+            <h2>参加方法を選択してください</h2>
+            <div style="margin-top: 20px; margin-bottom: 30px;">
+                <button id="host-btn" class="button-primary" style="font-size: 1.5em; height: 60px; margin: 10px;">ホストで参加</button>
+                <button id="player-btn" class="button-secondary" style="font-size: 1.5em; height: 60px; margin: 10px;">プレイヤーで参加</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('host-btn').onclick = () => {
+        isHost = true;
+        socket.emit('host_join', { playerId });
+        socket.emit('request_game_phase'); // ホストも初期状態を確認
+    };
+    document.getElementById('player-btn').onclick = () => {
+        isHost = false;
+        socket.emit('request_game_phase');
+    };
+}
+
+function showPlayerMenuUI(phase) {
+    clearAllTimers();
+    updateNavBar(showRoleSelectionUI);
+    const container = getContainer();
+    const multiPlayEnabled = phase === 'GROUP_SELECTION';
+    container.innerHTML = `
+        <div style="text-align: center;">
+            <h2>プレイヤーメニュー</h2>
+            <div style="margin-top: 20px; margin-bottom: 30px;">
+                <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; height: 60px; margin: 10px;" ${!multiPlayEnabled ? 'disabled' : ''}>みんなでプレイ</button>
+                <button id="single-play-btn" class="button-secondary" style="font-size: 1.5em; height: 60px; margin: 10px;">ひとりでプレイ</button>
+            </div>
+            <p id="multi-play-status" style="color: var(--text-muted);">${!multiPlayEnabled ? '現在、ホストがゲームを準備中です...' : 'ホストの準備が完了しました！'}</p>
+        </div>
+    `;
+    document.getElementById('multi-play-btn').onclick = showGroupSelectionUI;
+    document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
 }
 
 function showCSVUploadUI(presets = {}) {
   clearAllTimers();
+  updateNavBar(showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -120,7 +168,7 @@ function showCSVUploadUI(presets = {}) {
       <label class="label-inline" for="mode-normal">通常モード（最初から全文表示）</label>
     </fieldset>
     <br/>
-    <button id="submit-settings" class="button-primary">決定してグループ選択へ</button>
+    <button id="submit-settings" class="button-primary">決定してホスト画面へ</button>
   `;
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
@@ -136,6 +184,7 @@ function showCSVUploadUI(presets = {}) {
 
 function showGroupSelectionUI() {
   clearAllTimers();
+  updateNavBar(showPlayerMenuUI);
   const container = getContainer();
   container.innerHTML = '<h2>2. グループを選択</h2>';
   
@@ -150,35 +199,23 @@ function showGroupSelectionUI() {
     };
     container.appendChild(btn);
   }
-
-  container.appendChild(document.createElement("hr"));
-
-  const hostBtn = document.createElement("button");
-  hostBtn.textContent = "👑 ホストとして参加";
-  hostBtn.className = "button-outline";
-  hostBtn.onclick = () => {
-    isHost = true;
-    socket.emit("host_join", { playerId });
-    showHostUI();
-  };
-  container.appendChild(hostBtn);
 }
 
 function showNameInputUI() {
   clearAllTimers();
+  updateNavBar(showGroupSelectionUI);
   const container = getContainer();
   container.innerHTML = `
     <h2>3. プレイヤー名を入力</h2>
     <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
     <button id="fix-name-btn" class="button-primary">決定</button>
-    <button id="back-to-group-btn">グループ選択に戻る</button>
   `;
   document.getElementById('fix-name-btn').onclick = fixName;
-  document.getElementById('back-to-group-btn').onclick = backToGroupSelection;
 }
 
 function showHostUI() {
   clearAllTimers();
+  updateNavBar(showRoleSelectionUI, false);
   const container = getContainer();
   container.innerHTML = `
     <h2>👑 ホスト画面</h2>
@@ -228,6 +265,7 @@ function showHostUI() {
 
 function showGameScreen(state) {
   clearAllTimers();
+  updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
   const container = getContainer();
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
@@ -247,6 +285,7 @@ function showGameScreen(state) {
 
 function showEndScreen(ranking) {
   clearAllTimers();
+  updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
@@ -277,6 +316,7 @@ function showEndScreen(ranking) {
 
 function showSinglePlaySetupUI() {
   clearAllTimers();
+  updateNavBar(showPlayerMenuUI);
   gameMode = 'single';
   const container = getContainer();
   container.innerHTML = `
@@ -293,15 +333,14 @@ function showSinglePlaySetupUI() {
     <div id="preset-list-container">読み込み中...</div>
     <hr/>
     <button id="single-start-btn" class="button-primary">ゲーム開始</button>
-    <button id="back-to-mode-btn">モード選択に戻る</button>
   `;
-  document.getElementById('back-to-mode-btn').onclick = showModeSelectionUI;
   document.getElementById('single-start-btn').onclick = startSinglePlay;
   socket.emit('request_presets');
 }
 
-function showSinglePlayGameUI(state) {
+function showSinglePlayGameUI() {
   clearAllTimers();
+  updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
@@ -319,20 +358,20 @@ function showSinglePlayGameUI(state) {
   timerDiv.textContent = `残り時間: 2:00`;
   singleGameTimerId = setInterval(() => {
     timeLeft--;
+    if (timeLeft < 0) {
+      clearInterval(singleGameTimerId);
+      socket.emit('single_game_timeup');
+      return;
+    }
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
     timerDiv.textContent = `残り時間: ${minutes}:${seconds.toString().padStart(2, '0')}`;
-    if (timeLeft <= 0) {
-      clearInterval(singleGameTimerId);
-      socket.emit('single_game_timeup');
-    }
   }, 1000);
-
-  updateSinglePlayGameUI(state);
 }
 
 function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) {
   clearAllTimers();
+  updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
   container.innerHTML = `
     <h2>タイムアップ！</h2>
@@ -349,10 +388,8 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
     </div>
     <hr/>
     <button id="retry-btn" class="button-primary">もう一度挑戦</button>
-    <button id="back-to-mode-btn">モード選択に戻る</button>
   `;
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
-  document.getElementById('back-to-mode-btn').onclick = showModeSelectionUI;
 }
 
 // --- イベントハンドラとロジック ---
@@ -418,7 +455,7 @@ function handleDataImport(event) {
         }
     };
     reader.readAsText(file);
-    event.target.value = ''; // 同じファイルを連続で選択できるようにする
+    event.target.value = '';
 }
 
 function fixName() {
@@ -660,11 +697,20 @@ function showPointPopup(point) {
 // --- Socket.IO イベントリスナー ---
 
 socket.on('game_phase_response', ({ phase, presets }) => {
-  if (phase === 'INITIAL') {
-    showCSVUploadUI(presets);
+  if (isHost) {
+      showCSVUploadUI(presets);
   } else {
-    showGroupSelectionUI();
+      showPlayerMenuUI(phase);
   }
+});
+
+socket.on('multiplayer_status_changed', (phase) => {
+    const playerMenuButton = document.getElementById('multi-play-btn');
+    if (playerMenuButton) {
+        const multiPlayEnabled = phase === 'GROUP_SELECTION';
+        playerMenuButton.disabled = !multiPlayEnabled;
+        document.getElementById('multi-play-status').textContent = !multiPlayEnabled ? '現在、ホストがゲームを準備中です...' : 'ホストの準備が完了しました！';
+    }
 });
 
 socket.on("start_group_selection", showGroupSelectionUI);
