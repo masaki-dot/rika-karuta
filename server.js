@@ -1,4 +1,4 @@
-// server.js (ランキング分離・完全版)
+// server.js (リセット機能修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -540,6 +540,7 @@ io.on("connection", (socket) => {
     globalCards = [];
     globalSettings = {};
     gamePhase = 'INITIAL';
+    
     Object.keys(players).forEach(key => delete players[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
     Object.keys(states).forEach(key => delete states[key]);
@@ -613,6 +614,7 @@ io.on("connection", (socket) => {
     }
   });
 
+
   // --- シングルプレイ用イベント ---
   socket.on('request_presets', () => {
     const presetsForClient = {};
@@ -664,7 +666,6 @@ io.on("connection", (socket) => {
 
     const { score, playerId, name, presetId, presetName, difficulty } = state;
     
-    // ▼▼▼ ランキングファイルのパスを問題リストと難易度で分ける ▼▼▼
     const globalRankingFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_global.json`);
     const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_personal.json`);
 
