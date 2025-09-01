@@ -1,4 +1,4 @@
-// client.js (リスト削除機能・完全版)
+// client.js (一人プレイ修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -245,14 +245,14 @@ function showHostUI() {
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
     <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: red;">危険な操作</h3>
-    <p>全てのプレイヤーデータ（累計スコア含む）を削除し、アプリを初期状態に戻します。</p>
+    <p>進行中のゲームデータ（プレイヤー情報、累計スコアなど）を削除し、アプリを初期状態に戻します。保存済みの問題やランキングは消えません。</p>
     <button id="host-reset-all-btn" style="background-color: crimson; color: white;">ゲームを完全リセット</button>
   `;
   
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
   document.getElementById('host-reset-all-btn').onclick = () => {
-    if (confirm('本当に全てのゲームデータをリセットしますか？この操作は元に戻せません。')) {
+    if (confirm('本当に進行中のゲームデータをリセットしますか？この操作は元に戻せません。')) {
       socket.emit('host_full_reset');
     }
   };
@@ -322,7 +322,7 @@ function showSinglePlaySetupUI() {
   gameMode = 'single';
   const container = getContainer();
   container.innerHTML = `
-    <h2>ひとりでプレイ（2分間タイムアタック）</h2>
+    <h2>ひとりでプレイ（1分間タイムアタック）</h2>
     <p>名前を入力して、難易度と問題を選んでください。</p>
     <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
     <hr/>
@@ -356,8 +356,8 @@ function showSinglePlayGameUI() {
   }
 
   const timerDiv = document.getElementById('countdown-timer');
-  let timeLeft = 120;
-  timerDiv.textContent = `残り時間: 2:00`;
+  let timeLeft = 60; // ★★★ 1分(60秒)に変更 ★★★
+  timerDiv.textContent = `残り時間: 1:00`;
   singleGameTimerId = setInterval(() => {
     timeLeft--;
     if (timeLeft < 0) {
@@ -605,11 +605,9 @@ function updateGameUI(state) {
 }
 
 function updateSinglePlayGameUI(state) {
-  if (state.current?.text !== lastQuestionText) {
-    hasAnimated = false;
-    alreadyAnswered = false;
-    lastQuestionText = state.current.text;
-  }
+  // ★★★ 問題文チェックを削除し、毎回UIをリセット ★★★
+  hasAnimated = false;
+  alreadyAnswered = false;
 
   const yomifudaDiv = document.getElementById('yomifuda');
   if (yomifudaDiv && !hasAnimated && state.current?.text) {
@@ -874,5 +872,7 @@ socket.on('single_game_start', (initialState) => {
     showSinglePlayGameUI(); 
     updateSinglePlayGameUI(initialState);
 });
-socket.on('single_game_state', (state) => updateSinglePlayGameUI(state));
+socket.on('single_game_state', (state) => {
+    updateSinglePlayGameUI(state)
+});
 socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
