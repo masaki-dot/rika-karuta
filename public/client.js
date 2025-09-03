@@ -1,4 +1,4 @@
-// client.js (問題変更フロー修正・完全版)
+// client.js (復帰バグ修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -107,11 +107,12 @@ function showPlayerMenuUI(phase) {
     clearAllTimers();
     updateNavBar(showRoleSelectionUI);
     const container = getContainer();
-    const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME';
+    const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME' || phase === 'GAME_IN_PROGRESS';
     const statusText = {
         'INITIAL': '現在、ホストがゲームを準備中です...',
         'GROUP_SELECTION': 'ホストの準備が完了しました！',
-        'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...'
+        'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...',
+        'GAME_IN_PROGRESS': 'ゲームが進行中です。クリックして復帰します。'
     }[phase] || '待機中...';
 
     container.innerHTML = `
@@ -127,8 +128,8 @@ function showPlayerMenuUI(phase) {
     
     if (phase === 'GROUP_SELECTION') {
         document.getElementById('multi-play-btn').onclick = showGroupSelectionUI;
-    } else if (phase === 'WAITING_FOR_NEXT_GAME') {
-        document.getElementById('multi-play-btn').onclick = showWaitingScreen;
+    } else if (phase === 'WAITING_FOR_NEXT_GAME' || phase === 'GAME_IN_PROGRESS') {
+        document.getElementById('multi-play-btn').onclick = () => socket.emit("rejoin_game", { playerId });
     }
     
     document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
@@ -330,7 +331,7 @@ function showEndScreen(ranking) {
 
 function showWaitingScreen() {
     clearAllTimers();
-    updateNavBar(showGroupSelectionUI);
+    updateNavBar(showPlayerMenuUI);
     const container = getContainer();
     container.innerHTML = `
         <h2>待機中...</h2>
@@ -748,12 +749,13 @@ socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
 socket.on('multiplayer_status_changed', (phase) => {
     const playerMenuButton = document.getElementById('multi-play-btn');
     if (playerMenuButton) {
-        const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME';
+        const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME' || phase === 'GAME_IN_PROGRESS';
         playerMenuButton.disabled = !multiPlayEnabled;
         const statusText = {
             'INITIAL': '現在、ホストがゲームを準備中です...',
             'GROUP_SELECTION': 'ホストの準備が完了しました！',
-            'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...'
+            'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...',
+            'GAME_IN_PROGRESS': 'ゲームが進行中です。クリックして復帰します。'
         }[phase] || '待機中...';
         document.getElementById('multi-play-status').textContent = statusText;
     }
@@ -786,6 +788,13 @@ socket.on("state", (state) => {
   } else if (!amIReady && groupId) {
     showNameInputUI();
   }
+});
+
+socket.on("rejoin_game", (state) => {
+    if (gameMode !== 'multi') return;
+    if (!state) return;
+    groupId = state.groupId;
+    showGameScreen(state);
 });
 
 socket.on("end", (ranking) => {
