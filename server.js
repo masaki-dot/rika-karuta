@@ -1,4 +1,4 @@
-// server.js (多対一対応・完全版)
+// server.js (問題変更フロー修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -19,8 +19,8 @@ const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
-let globalTorifudas = []; // 取り札のマスターリスト
-let globalYomifudas = []; // 読み札のリスト
+let globalTorifudas = [];
+let globalYomifudas = [];
 let globalSettings = {};
 let gamePhase = 'INITIAL';
 let questionPresets = {};
@@ -80,13 +80,13 @@ function parseAndSetCards(data) {
     const isNewFormat = !!data.rawData;
 
     for (const row of dataToParse) {
-        if (isNewFormat) { // 新しい形式 (col1, col2, col3)
+        if (isNewFormat) {
             if (row.col1.startsWith('def_')) {
                 torifudas.push({ id: row.col1, term: row.col2 });
             } else {
                 yomifudas.push({ answer: row.col1, term: row.col2, text: row.col3 });
             }
-        } else { // 古い形式 (number, term, text) を新形式に変換して解釈
+        } else {
             torifudas.push({ id: `def_${row.number}`, term: row.term });
             yomifudas.push({ answer: row.term, term: row.term, text: row.text });
         }
@@ -95,7 +95,6 @@ function parseAndSetCards(data) {
     globalTorifudas = [...torifudas];
     globalYomifudas = [...yomifudas];
 }
-
 
 // --- マルチプレイ用ヘルパー ---
 function initState(groupId) {
@@ -276,7 +275,7 @@ function nextSingleQuestion(socketId, isFirstQuestion = false) {
     const correctTorifuda = state.allTorifudas.find(t => t.term === question.answer);
     if (!correctTorifuda) {
         console.error(`Single Play Error: Correct torifuda not found for answer "${question.answer}"`);
-        return nextSingleQuestion(socketId); // Retry with another question
+        return nextSingleQuestion(socketId);
     }
     const distractors = shuffle([...state.allTorifudas.filter(t => t.id !== correctTorifuda.id)]).slice(0, 3);
     const cards = shuffle([...distractors, correctTorifuda]);
@@ -324,29 +323,37 @@ io.on("connection", (socket) => {
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
   });
 
-  socket.on('request_game_phase', () => {
+  socket.on('request_game_phase', ({ fromEndScreen = false } = {}) => {
     loadPresets(); 
     const presetsForClient = {};
     for(const [id, data] of Object.entries(questionPresets)) {
         presetsForClient[id] = { category: data.category, name: data.name };
     }
-    socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
+    socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient, fromEndScreen });
   });
 
-  socket.on("set_preset_and_settings", ({ presetId, settings }) => {
+  socket.on("set_preset_and_settings", ({ presetId, settings, isNextGame }) => {
     if (socket.id !== hostSocketId) return;
     if (questionPresets[presetId]) {
         parseAndSetCards(questionPresets[presetId]);
         globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
-        Object.keys(states).forEach(key => delete states[key]);
-        Object.keys(groups).forEach(key => delete groups[key]);
-        gamePhase = 'GROUP_SELECTION';
-        socket.emit('host_setup_done');
-        io.emit("multiplayer_status_changed", gamePhase);
+        
+        if (!isNextGame) {
+            Object.keys(states).forEach(key => delete states[key]);
+            Object.keys(groups).forEach(key => delete groups[key]);
+            gamePhase = 'GROUP_SELECTION';
+            socket.emit('host_setup_done');
+            io.emit("multiplayer_status_changed", gamePhase);
+        } else {
+            gamePhase = 'WAITING_FOR_NEXT_GAME';
+            io.to(hostSocketId).emit('host_setup_done');
+            io.emit("multiplayer_status_changed", gamePhase);
+            socket.broadcast.emit('wait_for_next_game');
+        }
     }
   });
 
-  socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo }) => {
+  socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame }) => {
     if (socket.id !== hostSocketId) return;
     if (presetInfo && presetInfo.category && presetInfo.name) {
       try {
@@ -364,11 +371,19 @@ io.on("connection", (socket) => {
 
     parseAndSetCards({ rawData });
     globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
-    Object.keys(states).forEach(key => delete states[key]);
-    Object.keys(groups).forEach(key => delete groups[key]);
-    gamePhase = 'GROUP_SELECTION';
-    socket.emit('host_setup_done');
-    io.emit("multiplayer_status_changed", gamePhase);
+    
+    if (!isNextGame) {
+        Object.keys(states).forEach(key => delete states[key]);
+        Object.keys(groups).forEach(key => delete groups[key]);
+        gamePhase = 'GROUP_SELECTION';
+        socket.emit('host_setup_done');
+        io.emit("multiplayer_status_changed", gamePhase);
+    } else {
+        gamePhase = 'WAITING_FOR_NEXT_GAME';
+        io.to(hostSocketId).emit('host_setup_done');
+        io.emit("multiplayer_status_changed", gamePhase);
+        socket.broadcast.emit('wait_for_next_game');
+    }
   });
 
   socket.on("join", ({ groupId, playerId }) => {
@@ -456,6 +471,7 @@ io.on("connection", (socket) => {
     if (socket.id !== hostSocketId) return;
     console.log("▶ ホストが全体スタートを実行");
 
+    gamePhase = 'GAME_IN_PROGRESS';
     for (const groupId of Object.keys(groups)) {
         if (groups[groupId].players.length === 0) continue;
         
@@ -649,7 +665,7 @@ io.on("connection", (socket) => {
             fs.unlinkSync(filePath);
             console.log(`🗑️ プリセットを削除しました: ${filePath}`);
             loadPresets();
-            socket.emit('request_game_phase');
+            socket.emit('request_game_phase', { fromEndScreen: true });
         }
     } catch (error) {
         console.error('プリセットの削除に失敗しました:', error);
