@@ -332,23 +332,29 @@ io.on("connection", (socket) => {
     socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient, fromEndScreen });
   });
 
+  function handleNewSettings({ settings, isNextGame }) {
+    globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
+        
+    if (!isNextGame) {
+      // 全く新しいゲームの場合、全てリセット
+      Object.keys(states).forEach(key => delete states[key]);
+      Object.keys(groups).forEach(key => delete groups[key]);
+      gamePhase = 'GROUP_SELECTION';
+      socket.emit('host_setup_done');
+      io.emit("multiplayer_status_changed", gamePhase);
+    } else {
+      // 次のゲームの場合、ゲーム状態(states)のみリセット
+      Object.keys(states).forEach(key => delete states[key]);
+      gamePhase = 'WAITING_FOR_NEXT_GAME';
+      io.to(hostSocketId).emit('host_setup_done');
+    }
+  }
+
   socket.on("set_preset_and_settings", ({ presetId, settings, isNextGame }) => {
     if (socket.id !== hostSocketId) return;
     if (questionPresets[presetId]) {
         parseAndSetCards(questionPresets[presetId]);
-        globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
-        
-        if (!isNextGame) {
-            Object.keys(states).forEach(key => delete states[key]);
-            Object.keys(groups).forEach(key => delete groups[key]);
-            gamePhase = 'GROUP_SELECTION';
-            socket.emit('host_setup_done');
-            io.emit("multiplayer_status_changed", gamePhase);
-        } else {
-            Object.keys(states).forEach(key => delete states[key]);
-            gamePhase = 'WAITING_FOR_NEXT_GAME';
-            io.to(hostSocketId).emit('host_setup_done');
-        }
+        handleNewSettings({ settings, isNextGame });
     }
   });
 
@@ -367,21 +373,8 @@ io.on("connection", (socket) => {
         console.error('プリセットの保存に失敗しました:', err);
       }
     }
-
     parseAndSetCards({ rawData });
-    globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
-    
-    if (!isNextGame) {
-        Object.keys(states).forEach(key => delete states[key]);
-        Object.keys(groups).forEach(key => delete groups[key]);
-        gamePhase = 'GROUP_SELECTION';
-        socket.emit('host_setup_done');
-        io.emit("multiplayer_status_changed", gamePhase);
-    } else {
-        Object.keys(states).forEach(key => delete states[key]);
-        gamePhase = 'WAITING_FOR_NEXT_GAME';
-        io.to(hostSocketId).emit('host_setup_done');
-    }
+    handleNewSettings({ settings, isNextGame });
   });
 
   socket.on("join", ({ groupId, playerId }) => {
@@ -390,13 +383,15 @@ io.on("connection", (socket) => {
     if (!player) return;
     
     if (!groups[groupId]) groups[groupId] = { players: [] };
-    if (!groups[groupId].players.find(p => p.playerId === playerId)) {
+    const existingPlayerInGroup = groups[groupId].players.find(p => p.playerId === playerId);
+    if (!existingPlayerInGroup) {
       groups[groupId].players.push({ playerId, name: player.name, totalScore: 0 });
     }
     
     if (!states[groupId]) states[groupId] = initState(groupId);
     const state = states[groupId];
-    if (!state.players.find(p => p.playerId === playerId)) {
+    const existingPlayerInState = state.players.find(p => p.playerId === playerId);
+    if (!existingPlayerInState) {
       state.players.push({ playerId, name: player.name, hp: 20, correctCount: 0 });
     }
     
@@ -414,7 +409,6 @@ io.on("connection", (socket) => {
             return;
         }
     }
-    // どのグループにも所属していなかった場合（ゲーム終了後など）
     socket.emit('game_phase_response', { phase: gamePhase });
   });
 
@@ -505,6 +499,7 @@ io.on("connection", (socket) => {
         
         nextQuestion(groupId);
     }
+    io.emit("multiplayer_status_changed", gamePhase);
   });
 
   socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
@@ -603,15 +598,20 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ★★★ 変更点 ★★★
+  // ゲーム終了後、ホストからこのイベントが呼ばれます。
   socket.on('host_preparing_next_game', () => {
     if (socket.id !== hostSocketId) return;
     
+    // ゲームの状態(states)のみをリセット。プレイヤー情報(groups)は維持します。
     Object.keys(states).forEach(key => delete states[key]); 
     gamePhase = 'WAITING_FOR_NEXT_GAME';
     
+    // 全プレイヤーに「ホストが準備中」であることを通知します。
     io.emit("multiplayer_status_changed", gamePhase);
     socket.broadcast.emit('wait_for_next_game');
     
+    // ホスト自身には、問題選択画面を表示させます。
     socket.emit('request_game_phase', { fromEndScreen: true });
   });
 
