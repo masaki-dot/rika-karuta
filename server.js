@@ -598,20 +598,15 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ★★★ 変更点 ★★★
-  // ゲーム終了後、ホストからこのイベントが呼ばれます。
   socket.on('host_preparing_next_game', () => {
     if (socket.id !== hostSocketId) return;
     
-    // ゲームの状態(states)のみをリセット。プレイヤー情報(groups)は維持します。
     Object.keys(states).forEach(key => delete states[key]); 
     gamePhase = 'WAITING_FOR_NEXT_GAME';
     
-    // 全プレイヤーに「ホストが準備中」であることを通知します。
     io.emit("multiplayer_status_changed", gamePhase);
     socket.broadcast.emit('wait_for_next_game');
     
-    // ホスト自身には、問題選択画面を表示させます。
     socket.emit('request_game_phase', { fromEndScreen: true });
   });
 
