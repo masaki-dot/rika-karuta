@@ -1,4 +1,4 @@
-// client.js (ホスト画面修正・完全版)
+// client.js (★ホストUIにボタンを追加★)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -137,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(showRoleSelectionUI); // この画面の「戻る」は常にトップへ
+  updateNavBar(showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -238,14 +238,18 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
+// ▼▼▼ ★★★ ここが修正された関数です ★★★ ▼▼▼
 function showHostUI() {
   clearAllTimers();
-  // ★★★ 変更不要 ★★★
-  // 「戻る」ボタンで問題選択画面に戻る機能は、授業の合間に問題を変更したい場合に非常に便利です。
-  updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
+  // ナビゲーションバーの「戻る」ボタンは非表示にして、メイン画面のボタンに統一します。
+  updateNavBar(null);
   const container = getContainer();
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
+    
+    <!-- ★★★ このボタンを追加しました ★★★ -->
+    <button id="change-settings-btn" class="button-secondary" style="margin-bottom: 20px; width: 100%;">問題・設定を変更する</button>
+    
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
@@ -263,6 +267,13 @@ function showHostUI() {
     <p>進行中のゲームデータ（プレイヤー情報、累計スコアなど）を削除し、アプリを初期状態に戻します。保存済みの問題やランキングは消えません。</p>
     <button id="host-reset-all-btn" style="background-color: crimson; color: white;">ゲームを完全リセット</button>
   `;
+  
+  // ★★★ 追加したボタンのクリック処理です ★★★
+  document.getElementById('change-settings-btn').onclick = () => {
+    // サーバーに、問題選択画面への遷移をリクエストします。
+    // fromEndScreen: true を渡すことで、サーバーはプレイヤー情報をリセットしないように判断します。
+    socket.emit('request_game_phase', { fromEndScreen: true });
+  };
   
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
@@ -300,8 +311,10 @@ function showGameScreen(state) {
   updateGameUI(state);
 }
 
+// こちらが「ゲーム終了画面」です。
 function showEndScreen(ranking) {
   clearAllTimers();
+  // ゲーム終了後、ホストはホスト管理画面に戻れます。
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
   const container = getContainer();
@@ -313,17 +326,15 @@ function showEndScreen(ranking) {
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
           ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
         </ol>
-        ${isHost ? `<button id="change-settings-btn" class="button-primary">次の問題・設定に進む</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
+        <!-- ホストには、ここにも次のゲームに進むためのボタンが表示されます -->
+        ${isHost ? `<button id="change-settings-btn-from-end" class="button-primary">次の問題・設定に進む</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
   `;
 
   if (isHost) {
-    // ★★★ 変更点 ★★★
-    // このボタンが、ご要望の機能の起点となります。
-    // クリックするとサーバーに次のゲーム準備を通知し、問題選択画面へ遷移します。
-    document.getElementById('change-settings-btn').onclick = () => {
+    document.getElementById('change-settings-btn-from-end').onclick = () => {
       socket.emit('host_preparing_next_game');
     };
   }
@@ -342,6 +353,7 @@ function showWaitingScreen() {
     `;
 }
 
+// (これ以降の client.js のコードに変更はありません)
 function showSinglePlaySetupUI() {
   clearAllTimers();
   updateNavBar(showPlayerMenuUI);
@@ -420,8 +432,6 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
-// --- イベントハンドラとロジック ---
-
 function handleSettingsSubmit(isNextGame = false) {
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
   const settings = {
@@ -429,8 +439,6 @@ function handleSettingsSubmit(isNextGame = false) {
     showSpeed: parseInt(document.getElementById("speed").value),
     gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
-  // ★★★ 変更不要 ★★★
-  // isNextGameフラグがサーバーに送られることで、サーバーはプレイヤー情報をリセットせずに次のゲームを準備します。
   let payload = { settings, isNextGame };
 
   if (sourceType === 'preset') {
@@ -557,8 +565,6 @@ function startSinglePlay() {
   getContainer().innerHTML = `<p>ゲーム準備中...</p>`;
 }
 
-
-// --- UI更新関数 ---
 
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
@@ -740,8 +746,6 @@ function showPointPopup(point) {
 }
 
 
-// --- Socket.IO イベントリスナー ---
-
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
   if (isHost) {
       showCSVUploadUI(presets, fromEndScreen);
@@ -896,7 +900,6 @@ socket.on('import_data_response', ({ success, message }) => {
     }
 });
 
-// --- シングルプレイ用リスナー ---
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
