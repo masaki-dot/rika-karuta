@@ -1,4 +1,4 @@
-// server.js (問題変更フロー修正・完全版)
+// server.js (復帰バグ修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -345,9 +345,9 @@ io.on("connection", (socket) => {
             socket.emit('host_setup_done');
             io.emit("multiplayer_status_changed", gamePhase);
         } else {
+            Object.keys(states).forEach(key => delete states[key]);
             gamePhase = 'WAITING_FOR_NEXT_GAME';
             io.to(hostSocketId).emit('host_setup_done');
-            io.emit("multiplayer_status_changed", gamePhase);
             socket.broadcast.emit('wait_for_next_game');
         }
     }
@@ -379,9 +379,9 @@ io.on("connection", (socket) => {
         socket.emit('host_setup_done');
         io.emit("multiplayer_status_changed", gamePhase);
     } else {
+        Object.keys(states).forEach(key => delete states[key]);
         gamePhase = 'WAITING_FOR_NEXT_GAME';
         io.to(hostSocketId).emit('host_setup_done');
-        io.emit("multiplayer_status_changed", gamePhase);
         socket.broadcast.emit('wait_for_next_game');
     }
   });
@@ -403,6 +403,19 @@ io.on("connection", (socket) => {
     }
     
     io.to(groupId).emit("state", sanitizeState(state));
+  });
+
+  socket.on("rejoin_game", ({ playerId }) => {
+    for (const [gId, group] of Object.entries(groups)) {
+        if (group.players.find(p => p.playerId === playerId)) {
+            const state = states[gId];
+            if (state && !state.locked) {
+                socket.join(gId);
+                socket.emit('rejoin_game', sanitizeState(state));
+            }
+            return;
+        }
+    }
   });
 
   socket.on("leave_group", ({ groupId, playerId }) => {
@@ -665,7 +678,7 @@ io.on("connection", (socket) => {
             fs.unlinkSync(filePath);
             console.log(`🗑️ プリセットを削除しました: ${filePath}`);
             loadPresets();
-            socket.emit('request_game_phase', { fromEndScreen: true });
+            socket.emit('request_game_phase');
         }
     } catch (error) {
         console.error('プリセットの削除に失敗しました:', error);
