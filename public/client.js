@@ -1,4 +1,4 @@
-// client.js (最終修正・完全版)
+// client.js (showEndScreen 重複定義修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -300,6 +300,7 @@ function showGameScreen(state) {
   updateGameUI(state);
 }
 
+// ▼▼▼ ここが正しい showEndScreen 関数です ▼▼▼
 function showEndScreen(ranking) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
