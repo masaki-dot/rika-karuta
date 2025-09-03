@@ -1,4 +1,4 @@
-// client.js (★「みんなでプレイ」「ひとりでプレイ」両対応 最終版★)
+// client.js (機能1,2追加・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -17,16 +17,6 @@ let singleGameTimerId = null;
 let lastQuestionText = "";
 let hasAnimated = false;
 let alreadyAnswered = false;
-
-// シングルプレイ用のグローバル変数
-let singlePlayData = {
-    allTorifudas: [],
-    allYomifudas: [],
-    presetName: '',
-    difficulty: 'easy',
-    score: 0,
-    currentQuestion: null,
-};
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -49,29 +39,23 @@ function updateNavBar(backAction, showTop = true) {
     const navBar = getNavBar();
     const backBtn = getNavBackBtn();
     const topBtn = getNavTopBtn();
+
     if (backAction) {
         backBtn.style.display = 'block';
         backBtn.onclick = backAction;
     } else {
         backBtn.style.display = 'none';
     }
+
     if (showTop) {
         topBtn.style.display = 'block';
         topBtn.onclick = showRoleSelectionUI;
     } else {
         topBtn.style.display = 'none';
     }
+    
     navBar.style.display = (backAction || showTop) ? 'flex' : 'none';
 }
-
-function shuffle(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
 
 // --- アプリケーションの初期化 ---
 socket.on('connect', () => {
@@ -153,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(showRoleSelectionUI);
+  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -177,9 +161,17 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
       <div id="csv-upload-area" style="display: none; margin-top: 10px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px;">
         <input type="file" id="csvFile" accept=".csv" />
         <br><br>
-        <input type="checkbox" id="save-csv-checkbox">
-        <label for="save-csv-checkbox" class="label-inline">この問題をサーバーに保存する</label>
-        <div id="save-csv-details" style="display: none; margin-top: 10px;">
+        <div id="save-options">
+            <input type="radio" id="save-action-new" name="save-action" value="new" checked>
+            <label for="save-action-new" class="label-inline">新規リストとして保存</label>
+            <br>
+            <input type="radio" id="save-action-append" name="save-action" value="append">
+            <label for="save-action-append" class="label-inline">既存のリストに追加</label>
+            <br>
+            <input type="radio" id="save-action-overwrite" name="save-action" value="overwrite">
+            <label for="save-action-overwrite" class="label-inline">既存のリストを上書き</label>
+        </div>
+        <div id="save-csv-details" style="margin-top: 10px;">
           <input type="text" id="csv-category-name" placeholder="カテゴリ名 (例: 日本史)">
           <input type="text" id="csv-list-name" placeholder="リスト名 (例: 鎌倉時代)">
         </div>
@@ -202,24 +194,30 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
     </fieldset>
     <br/>
     <button id="submit-settings" class="button-primary">${fromEndScreen ? 'この問題で次のゲームを開始' : '決定してホスト画面へ'}</button>
-    <hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
+    ${fromEndScreen ? '' : `<hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: #c05621;">データ管理</h3>
     <p>アプリ更新前に「データを取り出し」、更新後に「データを読み込み」で問題やランキングを引き継げます。</p>
     <button id="export-data-btn" class="button-outline">データを取り出し</button>
     <label for="import-file-input" class="button button-outline" style="display: inline-block;">データを読み込み</label>
-    <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+    <input type="file" id="import-file-input" accept=".json" style="display: none;" />`}
   `;
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
       document.getElementById('csv-upload-area').style.display = e.target.value === 'csv' ? 'block' : 'none';
     };
   });
-  document.getElementById('save-csv-checkbox').onchange = (e) => {
-      document.getElementById('save-csv-details').style.display = e.target.checked ? 'block' : 'none';
-  };
+  document.querySelectorAll('input[name="save-action"]').forEach(radio => {
+    radio.onchange = (e) => {
+        const isNew = e.target.value === 'new';
+        document.getElementById('csv-category-name').style.display = isNew ? 'block' : 'none';
+        document.getElementById('csv-list-name').style.display = isNew ? 'block' : 'none';
+    };
+  });
   document.getElementById('submit-settings').onclick = () => handleSettingsSubmit(fromEndScreen);
-  document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
-  document.getElementById('import-file-input').onchange = handleDataImport;
+  if (!fromEndScreen) {
+      document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
+      document.getElementById('import-file-input').onchange = handleDataImport;
+  }
   document.getElementById('delete-preset-btn').onclick = handleDeletePreset;
 }
 
@@ -227,7 +225,8 @@ function showGroupSelectionUI() {
   clearAllTimers();
   updateNavBar(() => showPlayerMenuUI('GROUP_SELECTION'));
   const container = getContainer();
-  container.innerHTML = '<h2>2. グループを選択</h2><p>（この後ホストがグループを自動で割り振ります）</p>';
+  container.innerHTML = '<h2>2. グループを選択</h2>';
+  
   for (let i = 1; i <= 10; i++) {
     const btn = document.createElement("button");
     btn.textContent = `グループ ${i}`;
@@ -249,21 +248,16 @@ function showNameInputUI() {
     <h2>3. プレイヤー名を入力</h2>
     <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
     <button id="fix-name-btn" class="button-primary">決定</button>
-    <p>決定後、ホストがゲームを開始するまで待機してください。</p>
   `;
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
 function showHostUI() {
   clearAllTimers();
-  updateNavBar(null);
+  updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
-    <button id="change-settings-btn" class="button-secondary" style="margin-bottom: 20px; width: 100%;">問題・設定を変更する</button>
-    <div id="host-summary" style="padding: 10px; background-color: #f7fafc; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-      <p>準備情報の読み込み中...</p>
-    </div>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
@@ -282,10 +276,6 @@ function showHostUI() {
     <button id="host-reset-all-btn" style="background-color: crimson; color: white;">ゲームを完全リセット</button>
   `;
   
-  document.getElementById('change-settings-btn').onclick = () => {
-    socket.emit('host_preparing_next_game');
-    socket.emit('request_game_phase', { fromEndScreen: true });
-  };
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
   document.getElementById('host-reset-all-btn').onclick = () => {
@@ -325,6 +315,7 @@ function showGameScreen(state) {
 function showEndScreen(ranking) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
@@ -334,16 +325,18 @@ function showEndScreen(ranking) {
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
           ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
         </ol>
-        ${isHost ? `<button id="change-settings-btn-from-end" class="button-primary">次の問題・設定に進む</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
+        ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
   `;
+
   if (isHost) {
-    document.getElementById('change-settings-btn-from-end').onclick = () => {
+    document.getElementById('change-settings-btn').onclick = () => {
       socket.emit('host_preparing_next_game');
     };
   }
+
   rankingIntervalId = setInterval(() => socket.emit("request_global_ranking"), 2000);
   socket.emit("request_global_ranking");
 }
@@ -382,47 +375,21 @@ function showSinglePlaySetupUI() {
   socket.emit('request_presets');
 }
 
-function startSinglePlay() {
-  const nameInput = document.getElementById("nameInput");
-  playerName = nameInput.value.trim();
-  if (!playerName) return alert("名前を入力してください");
-  localStorage.setItem('playerName', playerName);
-  const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
-  if (!presetId) return alert('問題を選んでください');
-  singlePlayData.difficulty = document.getElementById('difficulty-select').value;
-  socket.emit('request_single_play_data', { presetId });
-  getContainer().innerHTML = `<h2>問題データを読み込み中...</h2>`;
-}
-
-socket.on('single_play_data_response', (data) => {
-    if (gameMode !== 'single') return;
-    singlePlayData.allTorifudas = data.allTorifudas;
-    singlePlayData.allYomifudas = data.allYomifudas;
-    singlePlayData.presetName = data.presetName;
-    singlePlayData.score = 0;
-    showSinglePlayGameUI();
-});
-
-socket.on('single_play_data_error', (error) => {
-    alert(`エラー: ${error.message}`);
-    showSinglePlaySetupUI();
-});
-
 function showSinglePlayGameUI() {
   clearAllTimers();
   updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
-  container.innerHTML = `
-    <div id="game-area">
-      <div id="yomifuda"></div>
-      <div id="cards-grid"></div>
-      <hr>
-      <div id="single-player-info">
-        <h4>スコア: <span id="single-score">0</span></h4>
+  if (!document.getElementById('game-area')) {
+    container.innerHTML = `
+      <div id="game-area">
+        <div id="yomifuda"></div>
+        <div id="cards-grid"></div>
+        <hr>
+        <div id="single-player-info"></div>
       </div>
-    </div>
-  `;
-  nextSingleQuestionClient();
+    `;
+  }
+
   const timerDiv = document.getElementById('countdown-timer');
   let timeLeft = 60;
   timerDiv.textContent = `残り時間: 1:00`;
@@ -430,8 +397,7 @@ function showSinglePlayGameUI() {
     timeLeft--;
     if (timeLeft < 0) {
       clearInterval(singleGameTimerId);
-      singleGameTimerId = null;
-      finishSinglePlay();
+      socket.emit('single_game_timeup');
       return;
     }
     const minutes = Math.floor(timeLeft / 60);
@@ -439,75 +405,6 @@ function showSinglePlayGameUI() {
     timerDiv.textContent = `残り時間: ${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, 1000);
 }
-
-function nextSingleQuestionClient() {
-    if (singleGameTimerId === null) return;
-    alreadyAnswered = false;
-    const question = singlePlayData.allYomifudas[Math.floor(Math.random() * singlePlayData.allYomifudas.length)];
-    const correctTorifuda = singlePlayData.allTorifudas.find(t => t.term === question.answer);
-    if (!correctTorifuda) {
-        console.error("Correct torifuda not found, getting next question.");
-        return nextSingleQuestionClient();
-    }
-    const distractors = singlePlayData.allTorifudas.filter(t => t.id !== correctTorifuda.id);
-    shuffle(distractors);
-    const cards = [correctTorifuda, ...distractors.slice(0, 4)];
-    shuffle(cards);
-    singlePlayData.currentQuestion = {
-        text: question.text,
-        answer: question.answer,
-        cards: cards.map(c => ({ id: c.id, term: c.term }))
-    };
-    updateSinglePlayGameUIClient();
-}
-
-function updateSinglePlayGameUIClient() {
-    const yomifudaDiv = document.getElementById('yomifuda');
-    if (singlePlayData.difficulty === 'hard') {
-        let text = singlePlayData.currentQuestion.text;
-        let maskedText = text.replace(/[^\s　、。]/g, '？');
-        yomifudaDiv.textContent = maskedText;
-        setTimeout(() => { if(yomifudaDiv) yomifudaDiv.textContent = text; }, 1000);
-    } else {
-        yomifudaDiv.textContent = singlePlayData.currentQuestion.text;
-    }
-    const cardsGrid = document.getElementById('cards-grid');
-    cardsGrid.innerHTML = '';
-    singlePlayData.currentQuestion.cards.forEach(card => {
-        const div = document.createElement("div");
-        div.className = "card";
-        div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
-        div.onclick = () => {
-            if (alreadyAnswered) return;
-            alreadyAnswered = true;
-            const isCorrect = (card.term === singlePlayData.currentQuestion.answer);
-            if (isCorrect) {
-                div.style.background = "gold";
-                singlePlayData.score += 100;
-                document.getElementById('single-score').textContent = singlePlayData.score;
-            } else {
-                div.style.background = "crimson";
-            }
-            setTimeout(nextSingleQuestionClient, 1000);
-        };
-        cardsGrid.appendChild(div);
-    });
-}
-
-function finishSinglePlay() {
-    getContainer().innerHTML = `<h2>タイムアップ！結果をサーバーに送信中...</h2>`;
-    const presetId = document.querySelector('input[name="preset-radio"]:checked').value;
-    socket.emit('submit_single_play_result', {
-        score: singlePlayData.score,
-        playerId: playerId,
-        name: playerName,
-        presetId: presetId,
-        difficulty: singlePlayData.difficulty,
-        presetName: singlePlayData.presetName
-    });
-}
-
-socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
 
 function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) {
   clearAllTimers();
@@ -532,7 +429,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
-// --- イベントハンドラとロジック (マルチプレイ用) ---
+// --- イベントハンドラとロジック ---
 
 function handleSettingsSubmit(isNextGame = false) {
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
@@ -541,7 +438,9 @@ function handleSettingsSubmit(isNextGame = false) {
     showSpeed: parseInt(document.getElementById("speed").value),
     gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
+
   let payload = { settings, isNextGame };
+
   if (sourceType === 'preset') {
     const presetId = document.getElementById('preset-select').value;
     if (!presetId) return alert('問題リストを選んでください');
@@ -550,15 +449,25 @@ function handleSettingsSubmit(isNextGame = false) {
   } else {
     const fileInput = document.getElementById("csvFile");
     if (!fileInput.files[0]) return alert("CSVファイルを選んでください");
-    const saveToServer = document.getElementById('save-csv-checkbox').checked;
-    if (saveToServer) {
+
+    const saveAction = document.querySelector('input[name="save-action"]:checked').value;
+    payload.saveAction = saveAction;
+    
+    if (saveAction === 'new') {
         const category = document.getElementById('csv-category-name').value.trim();
         const name = document.getElementById('csv-list-name').value.trim();
         if (!category || !name) {
-            return alert('保存する場合は、カテゴリ名とリスト名を入力してください。');
+            return alert('新規保存の場合は、カテゴリ名とリスト名を入力してください。');
         }
         payload.presetInfo = { category, name };
+    } else { // append or overwrite
+        const presetId = document.getElementById('preset-select').value;
+        if (!presetId || !presetId.startsWith('user_')) {
+            return alert('追加・上書きするには、保存済みのリスト（デフォルト以外）を選択してください。');
+        }
+        payload.presetId = presetId;
     }
+
     Papa.parse(fileInput.files[0], {
       header: false,
       skipEmptyLines: true,
@@ -568,6 +477,7 @@ function handleSettingsSubmit(isNextGame = false) {
           col2: String(r[1] || '').trim(),
           col3: String(r[2] || '').trim()
         })).filter(c => c.col1 && c.col2);
+        
         if (rawData.length === 0) return alert('CSVファイルから有効な問題を読み込めませんでした。');
         payload.rawData = rawData;
         socket.emit("set_cards_and_settings", payload);
@@ -579,6 +489,7 @@ function handleSettingsSubmit(isNextGame = false) {
 function handleDataImport(event) {
     const file = event.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = (e) => {
         try {
@@ -597,10 +508,16 @@ function handleDataImport(event) {
 function handleDeletePreset() {
     const presetSelect = document.getElementById('preset-select');
     const presetId = presetSelect.value;
-    if (!presetId) return alert('削除するリストを選択してください。');
-    if (!presetId.startsWith('user_')) return alert('デフォルトの問題リストは削除できません。');
+    if (!presetId) {
+        return alert('削除するリストを選択してください。');
+    }
+    if (!presetId.startsWith('user_')) {
+        return alert('デフォルトの問題リストは削除できません。');
+    }
+
     const selectedOption = presetSelect.options[presetSelect.selectedIndex];
     const presetName = selectedOption.text;
+
     if (confirm(`本当に「${presetName}」を削除しますか？この操作は元に戻せません。`)) {
         socket.emit('host_delete_preset', { presetId });
     }
@@ -615,11 +532,21 @@ function fixName() {
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
 
+function backToGroupSelection() {
+  if (groupId) {
+    socket.emit("leave_group", { groupId, playerId });
+    groupId = "";
+  }
+  showGroupSelectionUI();
+}
+
 function submitAnswer(id) {
   if (alreadyAnswered) return;
   alreadyAnswered = true;
   if (gameMode === 'multi') {
     socket.emit("answer", { groupId, playerId, name: playerName, id });
+  } else {
+    socket.emit("single_answer", { id });
   }
 }
 
@@ -631,7 +558,23 @@ function submitGrouping() {
   });
 }
 
-// --- UI更新関数 (マルチプレイ用) ---
+function startSinglePlay() {
+  const nameInput = document.getElementById("nameInput");
+  playerName = nameInput.value.trim();
+  if (!playerName) return alert("名前を入力してください");
+  localStorage.setItem('playerName', playerName);
+
+  const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
+  if (!presetId) return alert('問題を選んでください');
+
+  const difficulty = document.getElementById('difficulty-select').value;
+
+  socket.emit('start_single_play', { name: playerName, playerId, difficulty, presetId });
+  getContainer().innerHTML = `<p>ゲーム準備中...</p>`;
+}
+
+
+// --- UI更新関数 ---
 
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
@@ -639,6 +582,7 @@ function updateGameUI(state) {
     alreadyAnswered = false;
     lastQuestionText = state.current.text;
   }
+  
   const yomifudaDiv = document.getElementById('yomifuda');
   if (yomifudaDiv && !hasAnimated && state.current?.text) {
     if (state.gameMode === 'mask' && state.current.maskedIndices) {
@@ -648,20 +592,26 @@ function updateGameUI(state) {
     }
     hasAnimated = true;
   }
+
   const pointDiv = document.getElementById('current-point');
   if (pointDiv && state.current?.point) {
     pointDiv.textContent = `この問題: ${state.current.point}点`;
   }
+  
   const correctCard = state.current?.cards.find(c => c.correct);
   if (state.answered && correctCard && correctCard.chosenBy === playerName) {
     const alreadyPopped = document.querySelector('#point-popup.show');
-    if (!alreadyPopped) showPointPopup(state.current.point);
+    if (!alreadyPopped) {
+      showPointPopup(state.current.point);
+    }
   }
+
   const cardsGrid = document.getElementById('cards-grid');
   cardsGrid.innerHTML = '';
   state.current?.cards.forEach(card => {
     const div = document.createElement("div");
     div.className = "card";
+    
     let chosenByHtml = '';
     if (card.correct) {
       div.style.background = "gold";
@@ -674,23 +624,60 @@ function updateGameUI(state) {
       div.style.background = "lightgreen";
       div.style.border = "2px solid green";
     }
+
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     div.onclick = () => {
         if (!state.locked && !alreadyAnswered) submitAnswer(card.id);
     };
     cardsGrid.appendChild(div);
   });
+  
   const myPlayer = state.players.find(p => p.playerId === playerId);
   const otherPlayers = state.players.filter(p => p.playerId !== playerId);
+
   const myInfoDiv = document.getElementById('my-info');
   if(myPlayer) {
     myInfoDiv.innerHTML = `<h4>自分: ${myPlayer.name} (正解: ${myPlayer.correctCount ?? 0})</h4>${renderHpBar(myPlayer.hp)}`;
   }
+
   const othersInfoDiv = document.getElementById('others-info');
   othersInfoDiv.innerHTML = '<h4>他のプレイヤー</h4>';
   otherPlayers.forEach(p => {
     othersInfoDiv.innerHTML += `<div><strong>${p.name} (正解: ${p.correctCount ?? 0})</strong>${renderHpBar(p.hp)}</div>`;
   });
+}
+
+function updateSinglePlayGameUI(state) {
+  hasAnimated = false;
+  alreadyAnswered = false;
+
+  const yomifudaDiv = document.getElementById('yomifuda');
+  if (yomifudaDiv && !hasAnimated && state.current?.text) {
+    if (state.difficulty === 'hard') {
+      animateMaskedText('yomifuda', state.current.text, state.current.maskedIndices);
+    } else {
+      yomifudaDiv.textContent = state.current.text;
+    }
+    hasAnimated = true;
+  }
+
+  const cardsGrid = document.getElementById('cards-grid');
+  cardsGrid.innerHTML = '';
+  state.current?.cards.forEach(card => {
+    const div = document.createElement("div");
+    div.className = "card";
+    
+    if (card.correct) div.style.background = "gold";
+    if (card.incorrect) div.style.background = "crimson";
+
+    div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
+    div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); };
+    cardsGrid.appendChild(div);
+  });
+
+  document.getElementById('single-player-info').innerHTML = `
+    <h4>スコア: ${state.score}</h4>
+  `;
 }
 
 function renderHpBar(hp) {
@@ -699,6 +686,7 @@ function renderHpBar(hp) {
     if (hp <= 5) hpColor = "#e53e3e";
     else if (hp <= 10) hpColor = "#dd6b20";
     else hpColor = "#48bb78";
+
     return `
       <div style="font-size: 0.9em; margin-bottom: 4px;">HP: ${hp} / 20</div>
       <div class="hp-bar-container">
@@ -713,6 +701,7 @@ function animateNormalText(elementId, text, speed) {
   if (readInterval) clearInterval(readInterval);
   element.textContent = "";
   let i = 0;
+
   readInterval = setInterval(() => {
     i += 5;
     if (i >= text.length) {
@@ -730,13 +719,17 @@ function animateMaskedText(elementId, text, maskedIndices) {
   const element = document.getElementById(elementId);
   if (!element) return;
   if (unmaskIntervalId) clearInterval(unmaskIntervalId);
+
   let textChars = text.split('');
   let remainingIndices = [...maskedIndices];
+  
   for (const index of remainingIndices) {
     if (textChars[index] !== ' ' && textChars[index] !== '　') textChars[index] = '？';
   }
   element.textContent = textChars.join('');
+
   const revealSpeed = remainingIndices.length > 0 ? 20000 / remainingIndices.length : 200;
+
   unmaskIntervalId = setInterval(() => {
     if (remainingIndices.length === 0) {
       clearInterval(unmaskIntervalId);
@@ -745,8 +738,10 @@ function animateMaskedText(elementId, text, maskedIndices) {
       if (gameMode === 'multi') socket.emit("read_done", groupId);
       return;
     }
+
     const randomIndex = Math.floor(Math.random() * remainingIndices.length);
     const indexToReveal = remainingIndices.splice(randomIndex, 1)[0];
+    
     textChars[indexToReveal] = text[indexToReveal];
     element.textContent = textChars.join('');
   }, revealSpeed);
@@ -759,6 +754,7 @@ function showPointPopup(point) {
   popup.className = 'show';
   setTimeout(() => popup.classList.remove('show'), 1500);
 }
+
 
 // --- Socket.IO イベントリスナー ---
 
@@ -796,7 +792,7 @@ socket.on("start_group_selection", showGroupSelectionUI);
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
   socket.emit("join", { groupId, playerId });
-  getContainer().innerHTML = `<h2>あなたは <strong>${newGroupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
+  getContainer().innerHTML = `<h2>あなたは <strong>${groupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
 });
 
 socket.on("state", (state) => {
@@ -804,6 +800,7 @@ socket.on("state", (state) => {
   if (!state) return;
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
+
   if (state.current && !isGameScreenActive && amIReady) {
     showGameScreen(state);
   } else if (isGameScreenActive) {
@@ -825,39 +822,28 @@ socket.on("end", (ranking) => {
   showEndScreen(ranking);
 });
 
-socket.on("host_state", (data) => {
-  const summaryDiv = document.getElementById("host-summary");
-  if (summaryDiv && data.summary) {
-    const { readyPlayers, totalPlayers } = data.summary;
-    const allReady = (readyPlayers === totalPlayers && totalPlayers > 0);
-    const color = allReady ? '#48bb78' : '#dd6b20';
-    summaryDiv.innerHTML = `
-      <p style="color: ${color}; font-weight: bold; font-size: 1.2em; margin: 0;">
-        準備完了: ${readyPlayers} / ${totalPlayers} 人
-      </p>
-      ${!allReady && totalPlayers > 0 ? '<p style="font-size: 0.9em; margin: 0; color: var(--text-muted);">全員の名前入力が完了すると開始できます</p>' : ''}
-    `;
-  }
+socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
-  const allGroups = Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'summary'));
-  div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, groupData]) => {
-    if (groupData.players.length === 0) return '';
-    const members = groupData.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
+
+  div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
+    if (data.players.length === 0) return '';
+    const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
     const modeSelector = `
       <label>モード: 
         <select class="group-mode-selector" data-groupid="${gId}">
-          <option value="normal" ${groupData.gameMode === 'normal' ? 'selected' : ''}>通常</option>
-          <option value="mask" ${groupData.gameMode === 'mask' ? 'selected' : ''}>応用</option>
+          <option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option>
+          <option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option>
         </select>
       </label>
     `;
     return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">
-              <strong style="color:${groupData.locked ? 'red' : 'green'};">${gId} (${groupData.players.length}人)</strong>
+              <strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong>
               ${modeSelector}
               <ul>${members}</ul>
             </div>`;
   }).join("");
+
   document.querySelectorAll('.group-mode-selector').forEach(selector => {
     selector.onchange = (e) => {
       const groupId = e.target.dataset.groupid;
@@ -883,9 +869,12 @@ socket.on("global_ranking", (ranking) => {
 socket.on("timer_start", ({ seconds }) => {
     const timerDiv = document.getElementById('countdown-timer');
   if (!timerDiv) return;
+  
   if (countdownIntervalId) clearInterval(countdownIntervalId);
+  
   let countdown = seconds;
   timerDiv.textContent = `⏳ ${countdown}s`;
+  
   countdownIntervalId = setInterval(() => {
     countdown--;
     if (countdown >= 0) {
@@ -923,6 +912,7 @@ socket.on('import_data_response', ({ success, message }) => {
     }
 });
 
+// --- シングルプレイ用リスナー ---
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
@@ -934,3 +924,12 @@ socket.on('presets_list', (presets) => {
   `).join('');
   container.innerHTML = radioButtons;
 });
+
+socket.on('single_game_start', (initialState) => {
+    showSinglePlayGameUI(); 
+    updateSinglePlayGameUI(initialState);
+});
+socket.on('single_game_state', (state) => {
+    updateSinglePlayGameUI(state)
+});
+socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
