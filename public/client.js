@@ -238,10 +238,10 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
-// ▼▼▼ ここが正しい showHostUI 関数です ▼▼▼
 function showHostUI() {
   clearAllTimers();
-  // 戻るボタンは問題設定画面に戻る
+  // ★★★ 変更不要 ★★★
+  // 「戻る」ボタンで問題選択画面に戻る機能は、授業の合間に問題を変更したい場合に非常に便利です。
   updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
   container.innerHTML = `
@@ -313,13 +313,16 @@ function showEndScreen(ranking) {
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
           ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
         </ol>
-        ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
+        ${isHost ? `<button id="change-settings-btn" class="button-primary">次の問題・設定に進む</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
   `;
 
   if (isHost) {
+    // ★★★ 変更点 ★★★
+    // このボタンが、ご要望の機能の起点となります。
+    // クリックするとサーバーに次のゲーム準備を通知し、問題選択画面へ遷移します。
     document.getElementById('change-settings-btn').onclick = () => {
       socket.emit('host_preparing_next_game');
     };
@@ -426,7 +429,8 @@ function handleSettingsSubmit(isNextGame = false) {
     showSpeed: parseInt(document.getElementById("speed").value),
     gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
-
+  // ★★★ 変更不要 ★★★
+  // isNextGameフラグがサーバーに送られることで、サーバーはプレイヤー情報をリセットせずに次のゲームを準備します。
   let payload = { settings, isNextGame };
 
   if (sourceType === 'preset') {
