@@ -1,4 +1,4 @@
-// server.js (リセット機能修正・完全版)
+// server.js (多対一対応・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -19,7 +19,8 @@ const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
-let globalCards = [];
+let globalTorifudas = []; // 取り札のマスターリスト
+let globalYomifudas = []; // 読み札のリスト
 let globalSettings = {};
 let gamePhase = 'INITIAL';
 let questionPresets = {};
@@ -70,6 +71,31 @@ function shuffle(array) {
 function getPlayerBySocketId(socketId) {
     return Object.values(players).find(p => p.socketId === socketId);
 }
+
+function parseAndSetCards(data) {
+    const torifudas = [];
+    const yomifudas = [];
+    
+    const dataToParse = data.rawData || data.cards;
+    const isNewFormat = !!data.rawData;
+
+    for (const row of dataToParse) {
+        if (isNewFormat) { // 新しい形式 (col1, col2, col3)
+            if (row.col1.startsWith('def_')) {
+                torifudas.push({ id: row.col1, term: row.col2 });
+            } else {
+                yomifudas.push({ answer: row.col1, term: row.col2, text: row.col3 });
+            }
+        } else { // 古い形式 (number, term, text) を新形式に変換して解釈
+            torifudas.push({ id: `def_${row.number}`, term: row.term });
+            yomifudas.push({ answer: row.term, term: row.term, text: row.text });
+        }
+    }
+    
+    globalTorifudas = [...torifudas];
+    globalYomifudas = [...yomifudas];
+}
+
 
 // --- マルチプレイ用ヘルパー ---
 function initState(groupId) {
@@ -178,16 +204,23 @@ function nextQuestion(groupId) {
     if (state.readTimer) clearTimeout(state.readTimer);
     state.readTimer = null;
     
-    const remaining = globalCards.filter(q => !state.usedQuestions.includes(q.text.trim() + q.number));
-    if (remaining.length === 0 || state.questionCount >= state.maxQuestions) {
+    const usedYomifudaTexts = new Set(state.usedQuestions);
+    const remainingYomifudas = globalYomifudas.filter(y => !usedYomifudaTexts.has(y.text));
+    
+    if (remainingYomifudas.length === 0 || state.questionCount >= state.maxQuestions) {
         return finalizeGame(groupId);
     }
 
-    const question = remaining[Math.floor(Math.random() * remaining.length)];
-    state.usedQuestions.push(question.text.trim() + question.number);
+    const question = remainingYomifudas[Math.floor(Math.random() * remainingYomifudas.length)];
+    state.usedQuestions.push(question.text);
 
-    const distractors = shuffle([...globalCards.filter(c => c.number !== question.number)]).slice(0, state.numCards - 1);
-    const cards = shuffle([...distractors, question]);
+    const correctTorifuda = globalTorifudas.find(t => t.term === question.answer);
+    if (!correctTorifuda) {
+        console.error(`Error: Correct torifuda not found for answer "${question.answer}"`);
+        return nextQuestion(groupId);
+    }
+    const distractors = shuffle([...globalTorifudas.filter(t => t.id !== correctTorifuda.id)]).slice(0, state.numCards - 1);
+    const cards = shuffle([...distractors, correctTorifuda]);
 
     let point = 1;
     const rand = Math.random();
@@ -207,9 +240,9 @@ function nextQuestion(groupId) {
     state.current = {
         text: originalText,
         maskedIndices: maskedIndices,
-        answer: question.number,
+        answer: question.answer,
         point,
-        cards: cards.map(c => ({ number: c.number, term: c.term }))
+        cards: cards.map(c => ({ id: c.id, term: c.term }))
     };
     state.questionCount++;
     state.waitingNext = false;
@@ -239,9 +272,14 @@ function nextSingleQuestion(socketId, isFirstQuestion = false) {
     const state = singlePlayStates[socketId];
     if (!state) return;
 
-    const question = state.allCards[Math.floor(Math.random() * state.allCards.length)];
-    const distractors = shuffle([...state.allCards.filter(c => c.number !== question.number)]).slice(0, 3);
-    const cards = shuffle([...distractors, question]);
+    const question = state.allYomifudas[Math.floor(Math.random() * state.allYomifudas.length)];
+    const correctTorifuda = state.allTorifudas.find(t => t.term === question.answer);
+    if (!correctTorifuda) {
+        console.error(`Single Play Error: Correct torifuda not found for answer "${question.answer}"`);
+        return nextSingleQuestion(socketId); // Retry with another question
+    }
+    const distractors = shuffle([...state.allTorifudas.filter(t => t.id !== correctTorifuda.id)]).slice(0, 3);
+    const cards = shuffle([...distractors, correctTorifuda]);
 
     const originalText = question.text;
     let maskedIndices = [];
@@ -255,8 +293,8 @@ function nextSingleQuestion(socketId, isFirstQuestion = false) {
     state.current = {
         text: originalText,
         maskedIndices: maskedIndices,
-        answer: question.number,
-        cards: cards.map(c => ({ number: c.number, term: c.term }))
+        answer: question.answer,
+        cards: cards.map(c => ({ id: c.id, term: c.term }))
     };
     state.answered = false;
     state.startTime = Date.now();
@@ -298,8 +336,8 @@ io.on("connection", (socket) => {
   socket.on("set_preset_and_settings", ({ presetId, settings }) => {
     if (socket.id !== hostSocketId) return;
     if (questionPresets[presetId]) {
-        globalCards = [...questionPresets[presetId].cards];
-        globalSettings = { ...settings, maxQuestions: globalCards.length };
+        parseAndSetCards(questionPresets[presetId]);
+        globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
@@ -308,14 +346,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("set_cards_and_settings", ({ cards, settings, presetInfo }) => {
+  socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo }) => {
     if (socket.id !== hostSocketId) return;
     if (presetInfo && presetInfo.category && presetInfo.name) {
       try {
         if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
         const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
         const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
-        const dataToSave = { category: presetInfo.category, name: presetInfo.name, cards: cards };
+        const dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData: rawData };
         fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
         console.log(`💾 新しいプリセットを保存しました: ${filePath}`);
         questionPresets[`user_${presetId}`] = dataToSave;
@@ -324,8 +362,8 @@ io.on("connection", (socket) => {
       }
     }
 
-    globalCards = [...cards];
-    globalSettings = { ...settings, maxQuestions: cards.length };
+    parseAndSetCards({ rawData });
+    globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
     Object.keys(states).forEach(key => delete states[key]);
     Object.keys(groups).forEach(key => delete groups[key]);
     gamePhase = 'GROUP_SELECTION';
@@ -388,7 +426,7 @@ io.on("connection", (socket) => {
     state.readTimer = setTimeout(() => {
         if (state && !state.answered && !state.waitingNext && state.current?.text === latestText) {
             state.waitingNext = true;
-            const correctCard = state.current.cards.find(c => c.number === state.current.answer);
+            const correctCard = state.current.cards.find(c => c.term === state.current.answer);
             if (correctCard) correctCard.correctAnswer = true;
             io.to(groupId).emit("state", sanitizeState(state));
             setTimeout(() => nextQuestion(groupId), 3000);
@@ -487,22 +525,25 @@ io.on("connection", (socket) => {
     if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
 
-  socket.on("answer", ({ groupId, playerId, name, number }) => {
+  socket.on("answer", ({ groupId, playerId, name, id }) => {
     const state = states[groupId];
     if (!state || !state.current || state.answered || state.locked) return;
     
     const playerState = state.players.find(p => p.playerId === playerId);
     if (!playerState || playerState.hp <= 0) return;
 
-    const correct = state.current.answer === number;
+    const answeredTorifuda = globalTorifudas.find(t => t.id === id);
+    if (!answeredTorifuda) return;
+
+    const correct = state.current.answer === answeredTorifuda.term;
     const point = state.current.point;
 
     if (correct) {
         state.answered = true;
         playerState.correctCount = (playerState.correctCount || 0) + 1;
         
-        state.current.cards.find(c => c.number === number).correct = true;
-        state.current.cards.find(c => c.number === number).chosenBy = name;
+        state.current.cards.find(c => c.id === id).correct = true;
+        state.current.cards.find(c => c.id === id).chosenBy = name;
         
         state.players.forEach(p => {
             if (p.playerId !== playerId) {
@@ -524,9 +565,9 @@ io.on("connection", (socket) => {
                 state.eliminatedOrder.push(playerState.playerId);
             }
         }
-        state.misClicks.push({ name, number });
-        state.current.cards.find(c => c.number === number).incorrect = true;
-        state.current.cards.find(c => c.number === number).chosenBy = name;
+        state.misClicks.push({ name, id });
+        state.current.cards.find(c => c.id === id).incorrect = true;
+        state.current.cards.find(c => c.id === id).chosenBy = name;
 
         io.to(groupId).emit("state", sanitizeState(state));
         checkGameEnd(groupId);
@@ -537,7 +578,8 @@ io.on("connection", (socket) => {
     if (socket.id !== hostSocketId) return;
     console.log('🚨 ホストによってゲームが完全にリセットされました。');
     hostSocketId = null;
-    globalCards = [];
+    globalTorifudas = [];
+    globalYomifudas = [];
     globalSettings = {};
     gamePhase = 'INITIAL';
     
@@ -626,26 +668,49 @@ io.on("connection", (socket) => {
   
   socket.on('start_single_play', ({ name, playerId, difficulty, presetId }) => {
     if (players[playerId]) players[playerId].name = name;
-    const preset = questionPresets[presetId];
-    if (!preset) return;
+    const presetData = questionPresets[presetId];
+    if (!presetData) return;
+
+    const singleTorifudas = [];
+    const singleYomifudas = [];
+    const data = presetData.rawData || presetData.cards;
+    const isNewFormat = !!presetData.rawData;
+
+    for (const row of data) {
+        if (isNewFormat) {
+            if (row.col1.startsWith('def_')) {
+                singleTorifudas.push({ id: row.col1, term: row.col2 });
+            } else {
+                singleYomifudas.push({ answer: row.col1, text: row.col3 });
+            }
+        } else {
+            singleTorifudas.push({ id: `def_${row.number}`, term: row.term });
+            singleYomifudas.push({ answer: row.term, text: row.text });
+        }
+    }
 
     singlePlayStates[socket.id] = {
         name, playerId, difficulty, presetId,
-        allCards: preset.cards, score: 0, current: null, answered: false, startTime: 0,
-        presetName: `${preset.category} - ${preset.name}`
+        allTorifudas: singleTorifudas,
+        allYomifudas: singleYomifudas,
+        score: 0, current: null, answered: false, startTime: 0,
+        presetName: `${presetData.category} - ${presetData.name}`
     };
     
     nextSingleQuestion(socket.id, true);
     io.to(socket.id).emit('single_game_start', singlePlayStates[socket.id]);
   });
 
-  socket.on('single_answer', ({ number }) => {
+  socket.on('single_answer', ({ id }) => {
     const state = singlePlayStates[socket.id];
     if (!state || state.answered) return;
     
     state.answered = true;
-    const correct = state.current.answer === number;
-    const card = state.current.cards.find(c => c.number === number);
+    const answeredTorifuda = state.allTorifudas.find(t => t.id === id);
+    if (!answeredTorifuda) return;
+    
+    const correct = state.current.answer === answeredTorifuda.term;
+    const card = state.current.cards.find(c => c.id === id);
 
     if (correct) {
         card.correct = true;
