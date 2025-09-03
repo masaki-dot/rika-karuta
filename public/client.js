@@ -1,4 +1,4 @@
-// client.js (多対一対応・完全版)
+// client.js (ゲーム終了後フロー修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -287,7 +287,7 @@ function showGameScreen(state) {
 
 function showEndScreen(ranking) {
   clearAllTimers();
-  updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
+  updateNavBar(isHost ? () => socket.emit('request_game_phase') : showGroupSelectionUI);
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
@@ -300,14 +300,16 @@ function showEndScreen(ranking) {
             `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`
           ).join("")}
         </ol>
-        ${isHost ? `<button id="next-game-btn" class="button-primary">次のゲームへ</button>` : `<p>ホストが次のゲームを開始します。</p>`}
+        ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
   `;
 
   if (isHost) {
-    document.getElementById('next-game-btn').onclick = () => socket.emit("host_start");
+    document.getElementById('change-settings-btn').onclick = () => {
+      socket.emit('request_game_phase');
+    };
   }
 
   rankingIntervalId = setInterval(() => {
@@ -497,13 +499,13 @@ function backToGroupSelection() {
   showGroupSelectionUI();
 }
 
-function submitAnswer(id) { // ここをnumberからidに変更
+function submitAnswer(id) {
   if (alreadyAnswered) return;
   alreadyAnswered = true;
   if (gameMode === 'multi') {
-    socket.emit("answer", { groupId, playerId, name: playerName, id }); // idで送信
+    socket.emit("answer", { groupId, playerId, name: playerName, id });
   } else {
-    socket.emit("single_answer", { id }); // idで送信
+    socket.emit("single_answer", { id });
   }
 }
 
@@ -584,7 +586,7 @@ function updateGameUI(state) {
 
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     div.onclick = () => {
-        if (!state.locked && !alreadyAnswered) submitAnswer(card.id); // card.idを渡す
+        if (!state.locked && !alreadyAnswered) submitAnswer(card.id);
     };
     cardsGrid.appendChild(div);
   });
@@ -628,7 +630,7 @@ function updateSinglePlayGameUI(state) {
     if (card.incorrect) div.style.background = "crimson";
 
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
-    div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); }; // card.idを渡す
+    div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); };
     cardsGrid.appendChild(div);
   });
 
