@@ -1,4 +1,4 @@
-// server.js (復帰バグ修正・完全版)
+// server.js (フロー修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -348,7 +348,6 @@ io.on("connection", (socket) => {
             Object.keys(states).forEach(key => delete states[key]);
             gamePhase = 'WAITING_FOR_NEXT_GAME';
             io.to(hostSocketId).emit('host_setup_done');
-            socket.broadcast.emit('wait_for_next_game');
         }
     }
   });
@@ -382,7 +381,6 @@ io.on("connection", (socket) => {
         Object.keys(states).forEach(key => delete states[key]);
         gamePhase = 'WAITING_FOR_NEXT_GAME';
         io.to(hostSocketId).emit('host_setup_done');
-        socket.broadcast.emit('wait_for_next_game');
     }
   });
 
@@ -416,6 +414,8 @@ io.on("connection", (socket) => {
             return;
         }
     }
+    // どのグループにも所属していなかった場合（ゲーム終了後など）
+    socket.emit('game_phase_response', { phase: gamePhase });
   });
 
   socket.on("leave_group", ({ groupId, playerId }) => {
@@ -601,6 +601,18 @@ io.on("connection", (socket) => {
         io.to(groupId).emit("state", sanitizeState(state));
         checkGameEnd(groupId);
     }
+  });
+
+  socket.on('host_preparing_next_game', () => {
+    if (socket.id !== hostSocketId) return;
+    
+    Object.keys(states).forEach(key => delete states[key]); 
+    gamePhase = 'WAITING_FOR_NEXT_GAME';
+    
+    io.emit("multiplayer_status_changed", gamePhase);
+    socket.broadcast.emit('wait_for_next_game');
+    
+    socket.emit('request_game_phase', { fromEndScreen: true });
   });
 
   socket.on('host_full_reset', () => {
