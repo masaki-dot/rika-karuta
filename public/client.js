@@ -1,4 +1,4 @@
-// client.js (復帰バグ修正・完全版)
+// client.js (最終修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -321,7 +321,7 @@ function showEndScreen(ranking) {
 
   if (isHost) {
     document.getElementById('change-settings-btn').onclick = () => {
-      socket.emit('request_game_phase', { fromEndScreen: true });
+      socket.emit('host_preparing_next_game');
     };
   }
 
