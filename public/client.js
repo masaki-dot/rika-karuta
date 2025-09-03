@@ -1,4 +1,4 @@
-// client.js (ゲーム終了後フロー修正・完全版)
+// client.js (問題変更フロー修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -107,7 +107,13 @@ function showPlayerMenuUI(phase) {
     clearAllTimers();
     updateNavBar(showRoleSelectionUI);
     const container = getContainer();
-    const multiPlayEnabled = phase === 'GROUP_SELECTION';
+    const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME';
+    const statusText = {
+        'INITIAL': '現在、ホストがゲームを準備中です...',
+        'GROUP_SELECTION': 'ホストの準備が完了しました！',
+        'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...'
+    }[phase] || '待機中...';
+
     container.innerHTML = `
         <div style="text-align: center;">
             <h2>プレイヤーメニュー</h2>
@@ -115,16 +121,22 @@ function showPlayerMenuUI(phase) {
                 <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; height: 60px; margin: 10px;" ${!multiPlayEnabled ? 'disabled' : ''}>みんなでプレイ</button>
                 <button id="single-play-btn" class="button-secondary" style="font-size: 1.5em; height: 60px; margin: 10px;">ひとりでプレイ</button>
             </div>
-            <p id="multi-play-status" style="color: var(--text-muted);">${!multiPlayEnabled ? '現在、ホストがゲームを準備中です...' : 'ホストの準備が完了しました！'}</p>
+            <p id="multi-play-status" style="color: var(--text-muted);">${statusText}</p>
         </div>
     `;
-    document.getElementById('multi-play-btn').onclick = showGroupSelectionUI;
+    
+    if (phase === 'GROUP_SELECTION') {
+        document.getElementById('multi-play-btn').onclick = showGroupSelectionUI;
+    } else if (phase === 'WAITING_FOR_NEXT_GAME') {
+        document.getElementById('multi-play-btn').onclick = showWaitingScreen;
+    }
+    
     document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
 }
 
-function showCSVUploadUI(presets = {}) {
+function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(showRoleSelectionUI);
+  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -132,7 +144,7 @@ function showCSVUploadUI(presets = {}) {
   ).join('');
 
   container.innerHTML = `
-    <h2>1. 設定と問題のアップロード</h2>
+    <h2>${fromEndScreen ? '次の問題を選択' : '1. 設定と問題のアップロード'}</h2>
     <fieldset>
       <legend>問題ソース</legend>
       <div style="display: flex; align-items: center; gap: 10px;">
@@ -172,13 +184,13 @@ function showCSVUploadUI(presets = {}) {
       <label class="label-inline" for="mode-normal">通常モード（最初から全文表示）</label>
     </fieldset>
     <br/>
-    <button id="submit-settings" class="button-primary">決定してホスト画面へ</button>
-    <hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
+    <button id="submit-settings" class="button-primary">${fromEndScreen ? 'この問題で次のゲームを開始' : '決定してホスト画面へ'}</button>
+    ${fromEndScreen ? '' : `<hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: #c05621;">データ管理</h3>
     <p>アプリ更新前に「データを取り出し」、更新後に「データを読み込み」で問題やランキングを引き継げます。</p>
     <button id="export-data-btn" class="button-outline">データを取り出し</button>
     <label for="import-file-input" class="button button-outline" style="display: inline-block;">データを読み込み</label>
-    <input type="file" id="import-file-input" accept=".json" style="display: none;" />
+    <input type="file" id="import-file-input" accept=".json" style="display: none;" />`}
   `;
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
@@ -188,9 +200,11 @@ function showCSVUploadUI(presets = {}) {
   document.getElementById('save-csv-checkbox').onchange = (e) => {
       document.getElementById('save-csv-details').style.display = e.target.checked ? 'block' : 'none';
   };
-  document.getElementById('submit-settings').onclick = handleSettingsSubmit;
-  document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
-  document.getElementById('import-file-input').onchange = handleDataImport;
+  document.getElementById('submit-settings').onclick = () => handleSettingsSubmit(fromEndScreen);
+  if (!fromEndScreen) {
+      document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
+      document.getElementById('import-file-input').onchange = handleDataImport;
+  }
   document.getElementById('delete-preset-btn').onclick = handleDeletePreset;
 }
 
@@ -227,7 +241,7 @@ function showNameInputUI() {
 
 function showHostUI() {
   clearAllTimers();
-  updateNavBar(() => socket.emit('request_game_phase'));
+  updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
@@ -287,18 +301,16 @@ function showGameScreen(state) {
 
 function showEndScreen(ranking) {
   clearAllTimers();
-  updateNavBar(isHost ? () => socket.emit('request_game_phase') : showGroupSelectionUI);
+  updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
-    <p>他のグループのゲームが終了するまで、ランキングは変動する可能性があります。</p>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div style="flex:2; min-width: 300px;">
         <h3>今回の順位</h3>
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
-          ${ranking.map(p =>
-            `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`
-          ).join("")}
+          ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
@@ -308,14 +320,22 @@ function showEndScreen(ranking) {
 
   if (isHost) {
     document.getElementById('change-settings-btn').onclick = () => {
-      socket.emit('request_game_phase');
+      socket.emit('request_game_phase', { fromEndScreen: true });
     };
   }
 
-  rankingIntervalId = setInterval(() => {
-    socket.emit("request_global_ranking");
-  }, 2000);
+  rankingIntervalId = setInterval(() => socket.emit("request_global_ranking"), 2000);
   socket.emit("request_global_ranking");
+}
+
+function showWaitingScreen() {
+    clearAllTimers();
+    updateNavBar(showGroupSelectionUI);
+    const container = getContainer();
+    container.innerHTML = `
+        <h2>待機中...</h2>
+        <p>ホストが次の問題を選択しています。しばらくお待ちください。</p>
+    `;
 }
 
 function showSinglePlaySetupUI() {
@@ -398,7 +418,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
 
 // --- イベントハンドラとロジック ---
 
-function handleSettingsSubmit() {
+function handleSettingsSubmit(isNextGame = false) {
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
   const settings = {
     numCards: parseInt(document.getElementById("numCards").value),
@@ -406,7 +426,7 @@ function handleSettingsSubmit() {
     gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
 
-  let payload = { settings };
+  let payload = { settings, isNextGame };
 
   if (sourceType === 'preset') {
     const presetId = document.getElementById('preset-select').value;
@@ -717,9 +737,9 @@ function showPointPopup(point) {
 
 // --- Socket.IO イベントリスナー ---
 
-socket.on('game_phase_response', ({ phase, presets }) => {
+socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
   if (isHost) {
-      showCSVUploadUI(presets);
+      showCSVUploadUI(presets, fromEndScreen);
   } else {
       showPlayerMenuUI(phase);
   }
@@ -728,15 +748,22 @@ socket.on('game_phase_response', ({ phase, presets }) => {
 socket.on('multiplayer_status_changed', (phase) => {
     const playerMenuButton = document.getElementById('multi-play-btn');
     if (playerMenuButton) {
-        const multiPlayEnabled = phase === 'GROUP_SELECTION';
+        const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME';
         playerMenuButton.disabled = !multiPlayEnabled;
-        document.getElementById('multi-play-status').textContent = !multiPlayEnabled ? '現在、ホストがゲームを準備中です...' : 'ホストの準備が完了しました！';
+        const statusText = {
+            'INITIAL': '現在、ホストがゲームを準備中です...',
+            'GROUP_SELECTION': 'ホストの準備が完了しました！',
+            'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...'
+        }[phase] || '待機中...';
+        document.getElementById('multi-play-status').textContent = statusText;
     }
 });
 
 socket.on('host_setup_done', () => {
     showHostUI();
 });
+
+socket.on('wait_for_next_game', showWaitingScreen);
 
 socket.on("start_group_selection", showGroupSelectionUI);
 
