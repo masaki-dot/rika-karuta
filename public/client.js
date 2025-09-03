@@ -1,4 +1,4 @@
-// client.js (showEndScreen 重複定義修正・完全版)
+// client.js (ホスト画面修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -137,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
+  updateNavBar(showRoleSelectionUI); // この画面の「戻る」は常にトップへ
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -186,12 +186,12 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
     </fieldset>
     <br/>
     <button id="submit-settings" class="button-primary">${fromEndScreen ? 'この問題で次のゲームを開始' : '決定してホスト画面へ'}</button>
-    ${fromEndScreen ? '' : `<hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
+    <hr style="border-color: #f6e05e; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: #c05621;">データ管理</h3>
     <p>アプリ更新前に「データを取り出し」、更新後に「データを読み込み」で問題やランキングを引き継げます。</p>
     <button id="export-data-btn" class="button-outline">データを取り出し</button>
     <label for="import-file-input" class="button button-outline" style="display: inline-block;">データを読み込み</label>
-    <input type="file" id="import-file-input" accept=".json" style="display: none;" />`}
+    <input type="file" id="import-file-input" accept=".json" style="display: none;" />
   `;
   document.querySelectorAll('input[name="source-type"]').forEach(radio => {
     radio.onchange = (e) => {
@@ -202,10 +202,8 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
       document.getElementById('save-csv-details').style.display = e.target.checked ? 'block' : 'none';
   };
   document.getElementById('submit-settings').onclick = () => handleSettingsSubmit(fromEndScreen);
-  if (!fromEndScreen) {
-      document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
-      document.getElementById('import-file-input').onchange = handleDataImport;
-  }
+  document.getElementById('export-data-btn').onclick = () => socket.emit('host_export_data');
+  document.getElementById('import-file-input').onchange = handleDataImport;
   document.getElementById('delete-preset-btn').onclick = handleDeletePreset;
 }
 
@@ -240,8 +238,10 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
+// ▼▼▼ ここが正しい showHostUI 関数です ▼▼▼
 function showHostUI() {
   clearAllTimers();
+  // 戻るボタンは問題設定画面に戻る
   updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
   container.innerHTML = `
@@ -300,7 +300,6 @@ function showGameScreen(state) {
   updateGameUI(state);
 }
 
-// ▼▼▼ ここが正しい showEndScreen 関数です ▼▼▼
 function showEndScreen(ranking) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
