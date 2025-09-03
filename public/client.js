@@ -1,4 +1,4 @@
-// client.js (一人プレイ修正・完全版)
+// client.js (多対一対応・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -356,7 +356,7 @@ function showSinglePlayGameUI() {
   }
 
   const timerDiv = document.getElementById('countdown-timer');
-  let timeLeft = 60; // ★★★ 1分(60秒)に変更 ★★★
+  let timeLeft = 60;
   timerDiv.textContent = `残り時間: 1:00`;
   singleGameTimerId = setInterval(() => {
     timeLeft--;
@@ -429,14 +429,14 @@ function handleSettingsSubmit() {
       header: false,
       skipEmptyLines: true,
       complete: (result) => {
-        const cards = result.data.slice(1).map(r => ({
-          number: String(r[0] || '').trim(),
-          term: String(r[1] || '').trim(),
-          text: String(r[2] || '').trim()
-        })).filter(c => c.term && c.text);
+        const rawData = result.data.slice(1).map(r => ({
+          col1: String(r[0] || '').trim(),
+          col2: String(r[1] || '').trim(),
+          col3: String(r[2] || '').trim()
+        })).filter(c => c.col1 && c.col2);
         
-        if (cards.length === 0) return alert('CSVファイルから有効な問題を読み込めませんでした。');
-        payload.cards = cards;
+        if (rawData.length === 0) return alert('CSVファイルから有効な問題を読み込めませんでした。');
+        payload.rawData = rawData;
         socket.emit("set_cards_and_settings", payload);
       }
     });
@@ -497,13 +497,13 @@ function backToGroupSelection() {
   showGroupSelectionUI();
 }
 
-function submitAnswer(number) {
+function submitAnswer(id) { // ここをnumberからidに変更
   if (alreadyAnswered) return;
   alreadyAnswered = true;
   if (gameMode === 'multi') {
-    socket.emit("answer", { groupId, playerId, name: playerName, number });
+    socket.emit("answer", { groupId, playerId, name: playerName, id }); // idで送信
   } else {
-    socket.emit("single_answer", { number });
+    socket.emit("single_answer", { id }); // idで送信
   }
 }
 
@@ -584,7 +584,7 @@ function updateGameUI(state) {
 
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     div.onclick = () => {
-        if (!state.locked && !alreadyAnswered) submitAnswer(card.number);
+        if (!state.locked && !alreadyAnswered) submitAnswer(card.id); // card.idを渡す
     };
     cardsGrid.appendChild(div);
   });
@@ -605,7 +605,6 @@ function updateGameUI(state) {
 }
 
 function updateSinglePlayGameUI(state) {
-  // ★★★ 問題文チェックを削除し、毎回UIをリセット ★★★
   hasAnimated = false;
   alreadyAnswered = false;
 
@@ -629,7 +628,7 @@ function updateSinglePlayGameUI(state) {
     if (card.incorrect) div.style.background = "crimson";
 
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
-    div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.number); };
+    div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); }; // card.idを渡す
     cardsGrid.appendChild(div);
   });
 
