@@ -1,4 +1,4 @@
-// server.js (バグ修正・安定化版)
+// server.js (グループ割り振りバグ修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -367,7 +367,7 @@ io.on("connection", (socket) => {
                 const dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData };
                 fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
                 console.log(`💾 新規プリセットを保存: ${filePath}`);
-            } else if (presetId.startsWith('user_')) {
+            } else if (presetId && presetId.startsWith('user_')) {
                 const fileName = `${presetId.replace('user_', '')}.json`;
                 filePath = path.join(USER_PRESETS_DIR, fileName);
                 
@@ -375,7 +375,7 @@ io.on("connection", (socket) => {
                     const existingData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                     if (saveAction === 'append') {
                         finalRawData = existingData.rawData.concat(rawData);
-                    } // 'overwrite'の場合は finalRawData は新しいrawDataのまま
+                    }
                     
                     const dataToSave = { ...existingData, rawData: finalRawData };
                     fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
@@ -452,16 +452,18 @@ io.on("connection", (socket) => {
   socket.on("set_name", ({ groupId, playerId, name }) => {
     if (players[playerId]) players[playerId].name = name;
     
-    const state = states[groupId];
-    if (state?.players) {
-        const player = state.players.find(p => p.playerId === playerId);
-        if (player) player.name = name;
+    if (groups[groupId]) {
+        const gPlayer = groups[groupId].players.find(p => p.playerId === playerId);
+        if (gPlayer) gPlayer.name = name;
     }
-    const gPlayer = groups[groupId]?.players.find(p => p.playerId === playerId);
-    if (gPlayer) gPlayer.name = name;
+    
+    if (states[groupId]) {
+        const statePlayer = states[groupId].players.find(p => p.playerId === playerId);
+        if (statePlayer) statePlayer.name = name;
+    }
 
-    if (state) {
-      io.to(groupId).emit("state", sanitizeState(state));
+    if (states[groupId]) {
+      io.to(groupId).emit("state", sanitizeState(states[groupId]));
     }
     if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
