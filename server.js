@@ -1,4 +1,4 @@
-// server.js (フロー修正・完全版)
+// server.js (バグ修正・安定化版)
 
 const express = require("express");
 const http = require("http");
@@ -411,13 +411,11 @@ io.on("connection", (socket) => {
                 socket.join(gId);
                 socket.emit('rejoin_game', sanitizeState(state));
             } else {
-                // ゲームが終わっている場合などはメニューに戻す
                 socket.emit('game_phase_response', { phase: gamePhase });
             }
             return;
         }
     }
-    // どのグループにも所属していなかった場合
     socket.emit('game_phase_response', { phase: gamePhase });
   });
 
