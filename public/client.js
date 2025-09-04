@@ -1,4 +1,4 @@
-// client.js (バグ修正・安定化版)
+// client.js (機能追加・安定化 完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -6,7 +6,7 @@ let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
 let groupId = "";
 let isHost = false;
-let gameMode = 'multi'; // 'multi' or 'single'
+let gameMode = 'multi';
 
 let rankingIntervalId = null;
 let readInterval = null;
@@ -137,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
+  updateNavBar(showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -264,20 +264,41 @@ function showHostUI() {
     </div>
     <hr/>
     <h3>🔀 グループ割り振り設定</h3>
-    <label>グループ数：<input id="groupCount" type="number" value="5" min="2" max="10"></label>
-    <label>各グループの人数：<input id="playersPerGroup" type="number" value="3" min="1"></label>
-    <label>上位何グループにスコア上位を集中：<input id="topGroupCount" type="number" value="1" min="1"></label>
+    <div>
+      <label>グループ数：<input id="groupCount" type="number" value="3" min="1" max="10"></label>
+      <label>上位何グループにスコア上位を集中：<input id="topGroupCount" type="number" value="1" min="1"></label>
+    </div>
+    <div id="group-size-inputs" style="margin-top: 10px;">
+    </div>
     <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
     <hr/>
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
+    <button id="change-settings-btn" class="button-outline" style="margin-top:10px;">問題・設定を変更する</button>
     <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: red;">危険な操作</h3>
     <p>進行中のゲームデータ（プレイヤー情報、累計スコアなど）を削除し、アプリを初期状態に戻します。保存済みの問題やランキングは消えません。</p>
     <button id="host-reset-all-btn" style="background-color: crimson; color: white;">ゲームを完全リセット</button>
   `;
   
+  const groupCountInput = document.getElementById('groupCount');
+  const groupSizeContainer = document.getElementById('group-size-inputs');
+
+  const updateGroupSizeInputs = () => {
+      const count = parseInt(groupCountInput.value) || 0;
+      groupSizeContainer.innerHTML = '';
+      for (let i = 1; i <= count; i++) {
+          groupSizeContainer.innerHTML += `
+              <label style="margin-right: 15px;">グループ ${i} の人数：<input type="number" class="group-size-input" value="4" min="1"></label>
+          `;
+      }
+  };
+
+  groupCountInput.oninput = updateGroupSizeInputs;
+  updateGroupSizeInputs();
+
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
+  document.getElementById('change-settings-btn').onclick = () => socket.emit('host_preparing_next_game');
   document.getElementById('host-reset-all-btn').onclick = () => {
     if (confirm('本当に進行中のゲームデータをリセットしますか？この操作は元に戻せません。')) {
       socket.emit('host_full_reset');
@@ -462,7 +483,7 @@ function handleSettingsSubmit(isNextGame = false) {
             return alert('新規保存の場合は、カテゴリ名とリスト名を入力してください。');
         }
         payload.presetInfo = { category, name };
-    } else { // append or overwrite
+    } else {
         const presetId = document.getElementById('preset-select').value;
         if (!presetId || !presetId.startsWith('user_')) {
             return alert('追加・上書きするには、保存済みのリスト（デフォルト以外）を選択してください。');
@@ -553,10 +574,12 @@ function submitAnswer(id) {
 }
 
 function submitGrouping() {
+  const groupSizes = Array.from(document.querySelectorAll('.group-size-input')).map(input => parseInt(input.value) || 0);
+  
   socket.emit("host_assign_groups", {
     groupCount: parseInt(document.getElementById("groupCount").value),
-    playersPerGroup: parseInt(document.getElementById("playersPerGroup").value),
-    topGroupCount: parseInt(document.getElementById("topGroupCount").value)
+    topGroupCount: parseInt(document.getElementById("topGroupCount").value),
+    groupSizes: groupSizes
   });
 }
 
