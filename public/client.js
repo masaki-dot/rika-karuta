@@ -1,4 +1,4 @@
-// client.js (機能1,2追加・完全版)
+// client.js (バグ修正・安定化版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -6,7 +6,7 @@ let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
 let groupId = "";
 let isHost = false;
-let gameMode = 'multi';
+let gameMode = 'multi'; // 'multi' or 'single'
 
 let rankingIntervalId = null;
 let readInterval = null;
@@ -353,8 +353,8 @@ function showWaitingScreen() {
 
 function showSinglePlaySetupUI() {
   clearAllTimers();
-  updateNavBar(showPlayerMenuUI);
   gameMode = 'single';
+  updateNavBar(showPlayerMenuUI);
   const container = getContainer();
   container.innerHTML = `
     <h2>ひとりでプレイ（1分間タイムアタック）</h2>
@@ -377,6 +377,7 @@ function showSinglePlaySetupUI() {
 
 function showSinglePlayGameUI() {
   clearAllTimers();
+  gameMode = 'single';
   updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
   if (!document.getElementById('game-area')) {
@@ -397,6 +398,7 @@ function showSinglePlayGameUI() {
     timeLeft--;
     if (timeLeft < 0) {
       clearInterval(singleGameTimerId);
+      singleGameTimerId = null;
       socket.emit('single_game_timeup');
       return;
     }
@@ -782,7 +784,7 @@ socket.on('multiplayer_status_changed', (phase) => {
 });
 
 socket.on('host_setup_done', () => {
-    showHostUI();
+    if (isHost) showHostUI();
 });
 
 socket.on('wait_for_next_game', showWaitingScreen);
