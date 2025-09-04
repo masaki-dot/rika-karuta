@@ -1,4 +1,4 @@
-// server.js (グループ参加バグ修正・完全版)
+// server.js (バグ修正・安定化版)
 
 const express = require("express");
 const http = require("http");
@@ -347,26 +347,44 @@ io.on("connection", (socket) => {
         } else {
             Object.keys(states).forEach(key => delete states[key]);
             gamePhase = 'WAITING_FOR_NEXT_GAME';
-            socket.broadcast.emit('wait_for_next_game');
             io.to(hostSocketId).emit('host_setup_done');
         }
     }
   });
 
-  socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame }) => {
+  socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
-    if (presetInfo && presetInfo.category && presetInfo.name) {
-      try {
-        if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
-        const presetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        const filePath = path.join(USER_PRESETS_DIR, `${presetId}.json`);
-        const dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData: rawData };
-        fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
-        console.log(`💾 新しいプリセットを保存しました: ${filePath}`);
-        questionPresets[`user_${presetId}`] = dataToSave;
-      } catch (err) {
-        console.error('プリセットの保存に失敗しました:', err);
-      }
+
+    if (saveAction) {
+        try {
+            if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
+            let filePath;
+            let finalRawData = [...rawData];
+
+            if (saveAction === 'new') {
+                const newPresetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                filePath = path.join(USER_PRESETS_DIR, `${newPresetId}.json`);
+                const dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData };
+                fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+                console.log(`💾 新規プリセットを保存: ${filePath}`);
+            } else if (presetId.startsWith('user_')) {
+                const fileName = `${presetId.replace('user_', '')}.json`;
+                filePath = path.join(USER_PRESETS_DIR, fileName);
+                
+                if (fs.existsSync(filePath)) {
+                    const existingData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    if (saveAction === 'append') {
+                        finalRawData = existingData.rawData.concat(rawData);
+                    } // 'overwrite'の場合は finalRawData は新しいrawDataのまま
+                    
+                    const dataToSave = { ...existingData, rawData: finalRawData };
+                    fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
+                    console.log(`💾 プリセットを更新 (${saveAction}): ${filePath}`);
+                }
+            }
+        } catch (err) {
+            console.error('プリセットの保存/更新に失敗しました:', err);
+        }
     }
 
     parseAndSetCards({ rawData });
@@ -376,12 +394,11 @@ io.on("connection", (socket) => {
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
-        io.emit("multiplayer_status_changed", gamePhase);
         socket.emit('host_setup_done');
+        io.emit("multiplayer_status_changed", gamePhase);
     } else {
         Object.keys(states).forEach(key => delete states[key]);
         gamePhase = 'WAITING_FOR_NEXT_GAME';
-        socket.broadcast.emit('wait_for_next_game');
         io.to(hostSocketId).emit('host_setup_done');
     }
   });
@@ -512,41 +529,76 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
+  socket.on("host_assign_groups", ({ groupCount, topGroupCount, groupSizes }) => {
     if (socket.id !== hostSocketId) return;
-    const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
-    const allPlayersSorted = allPlayers.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
 
-    const topPlayerCount = topGroupCount * playersPerGroup;
-    const topPlayers = allPlayersSorted.slice(0, topPlayerCount);
-    const otherPlayers = allPlayersSorted.slice(topPlayerCount);
-    const finalList = [...topPlayers, ...shuffle(otherPlayers)];
+    const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
+    const sortedPlayers = allPlayers.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+
+    const numTopPlayers = groupSizes.slice(0, topGroupCount).reduce((sum, size) => sum + size, 0);
+    const topPlayers = sortedPlayers.slice(0, numTopPlayers);
+    const otherPlayers = shuffle(sortedPlayers.slice(numTopPlayers));
+
+    const newGroupsConfig = {};
+    for (let i = 1; i <= groupCount; i++) {
+        newGroupsConfig[i] = [];
+    }
+
+    let topPlayerIndex = 0;
+    for (let i = 1; i <= topGroupCount; i++) {
+        const capacity = groupSizes[i - 1] || 0;
+        while (newGroupsConfig[i].length < capacity && topPlayerIndex < topPlayers.length) {
+            newGroupsConfig[i].push(topPlayers[topPlayerIndex]);
+            topPlayerIndex++;
+        }
+    }
+
+    let otherPlayerIndex = 0;
+    while (otherPlayerIndex < otherPlayers.length) {
+        let placed = false;
+        for (let i = topGroupCount + 1; i <= groupCount; i++) {
+            if (otherPlayerIndex >= otherPlayers.length) break;
+            const capacity = groupSizes[i - 1] || 0;
+            if (newGroupsConfig[i].length < capacity) {
+                newGroupsConfig[i].push(otherPlayers[otherPlayerIndex]);
+                otherPlayerIndex++;
+                placed = true;
+            }
+        }
+        if (!placed) break;
+    }
+    
+    const unassignedPlayers = [...topPlayers.slice(topPlayerIndex), ...otherPlayers.slice(otherPlayerIndex)];
+    let unassignedIndex = 0;
+    if (unassignedPlayers.length > 0) {
+      console.log(`${unassignedPlayers.length}人のプレイヤーが定員オーバーしました。空いているグループに追加します。`);
+      while(unassignedIndex < unassignedPlayers.length) {
+          for (let i = 1; i <= groupCount; i++) {
+              if (unassignedIndex >= unassignedPlayers.length) break;
+              newGroupsConfig[i].push(unassignedPlayers[unassignedIndex]);
+              unassignedIndex++;
+          }
+      }
+    }
     
     Object.keys(groups).forEach(k => delete groups[k]);
     Object.keys(states).forEach(k => delete states[k]);
 
     for (let i = 1; i <= groupCount; i++) {
+        const pInGroup = newGroupsConfig[i];
+        if (!pInGroup || pInGroup.length === 0) continue;
         const gId = `group${i}`;
-        groups[gId] = { players: [] };
+        groups[gId] = { players: pInGroup };
         states[gId] = initState(gId);
+        states[gId].players = pInGroup.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 }));
     }
-    
-    finalList.forEach((player, index) => {
-        const gId = `group${(index % groupCount) + 1}`;
-        groups[gId].players.push(player);
-        states[gId].players.push({ playerId: player.playerId, name: player.name, hp: 20, score: 0, correctCount: 0 });
-    });
-
     for (const [gId, group] of Object.entries(groups)) {
         for (const p of group.players) {
-            const playerSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
-            if (playerSocket) {
-                // Remove from all other rooms before joining a new one
-                for (const room of playerSocket.rooms) {
-                    if(room !== playerSocket.id) playerSocket.leave(room);
-                }
-                playerSocket.join(gId);
-                playerSocket.emit("assigned_group", gId);
+            const pSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
+            if (pSocket) {
+                for (const room of pSocket.rooms) if (room !== pSocket.id) pSocket.leave(room);
+                pSocket.join(gId);
+                pSocket.emit("assigned_group", gId);
             }
         }
     }
@@ -633,7 +685,7 @@ io.on("connection", (socket) => {
 
   socket.on('host_set_group_mode', ({ groupId, gameMode }) => {
     if (socket.id !== hostSocketId) return;
-    if (!states[groupId]) states[groupId] = initState(groupId); // stateがない場合は作成
+    if (!states[groupId]) states[groupId] = initState(groupId);
     if (states[groupId] && (gameMode === 'normal' || gameMode === 'mask')) {
       states[groupId].gameMode = gameMode;
       console.log(`👑 Host set ${groupId} to ${gameMode} mode.`);
@@ -730,12 +782,14 @@ io.on("connection", (socket) => {
         }
     }
 
+    const totalQuestions = singleYomifudas.length;
     singlePlayStates[socket.id] = {
         name, playerId, difficulty, presetId,
         allTorifudas: singleTorifudas,
         allYomifudas: singleYomifudas,
         score: 0, current: null, answered: false, startTime: 0,
-        presetName: `${presetData.category} - ${presetData.name}`
+        presetName: `${presetData.category} - ${presetData.name}`,
+        totalQuestions
     };
     
     nextSingleQuestion(socket.id, true);
@@ -757,7 +811,8 @@ io.on("connection", (socket) => {
         card.correct = true;
         const elapsedTime = Date.now() - state.startTime;
         const timeBonus = Math.max(0, 10000 - elapsedTime);
-        state.score += (100 + Math.floor(timeBonus / 100));
+        const baseScore = 50 + (state.totalQuestions * 1.5);
+        state.score += (Math.floor(baseScore + (timeBonus / 100)));
     } else {
         card.incorrect = true;
     }
