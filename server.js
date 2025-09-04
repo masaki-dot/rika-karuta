@@ -1,4 +1,4 @@
-// server.js (バグ修正・安定化版)
+// server.js (グループ参加バグ修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -342,11 +342,12 @@ io.on("connection", (socket) => {
             Object.keys(states).forEach(key => delete states[key]);
             Object.keys(groups).forEach(key => delete groups[key]);
             gamePhase = 'GROUP_SELECTION';
-            socket.emit('host_setup_done');
             io.emit("multiplayer_status_changed", gamePhase);
+            socket.emit('host_setup_done');
         } else {
             Object.keys(states).forEach(key => delete states[key]);
             gamePhase = 'WAITING_FOR_NEXT_GAME';
+            socket.broadcast.emit('wait_for_next_game');
             io.to(hostSocketId).emit('host_setup_done');
         }
     }
@@ -375,11 +376,12 @@ io.on("connection", (socket) => {
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
-        socket.emit('host_setup_done');
         io.emit("multiplayer_status_changed", gamePhase);
+        socket.emit('host_setup_done');
     } else {
         Object.keys(states).forEach(key => delete states[key]);
         gamePhase = 'WAITING_FOR_NEXT_GAME';
+        socket.broadcast.emit('wait_for_next_game');
         io.to(hostSocketId).emit('host_setup_done');
     }
   });
@@ -390,17 +392,18 @@ io.on("connection", (socket) => {
     if (!player) return;
     
     if (!groups[groupId]) groups[groupId] = { players: [] };
+    if (!states[groupId]) states[groupId] = initState(groupId);
+
     if (!groups[groupId].players.find(p => p.playerId === playerId)) {
       groups[groupId].players.push({ playerId, name: player.name, totalScore: 0 });
     }
     
-    if (!states[groupId]) states[groupId] = initState(groupId);
     const state = states[groupId];
     if (!state.players.find(p => p.playerId === playerId)) {
       state.players.push({ playerId, name: player.name, hp: 20, correctCount: 0 });
     }
     
-    io.to(groupId).emit("state", sanitizeState(state));
+    if(hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
 
   socket.on("rejoin_game", ({ playerId }) => {
@@ -443,6 +446,7 @@ io.on("connection", (socket) => {
     if (state) {
       io.to(groupId).emit("state", sanitizeState(state));
     }
+    if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
   
   socket.on("read_done", (groupId) => {
@@ -487,7 +491,7 @@ io.on("connection", (socket) => {
 
     gamePhase = 'GAME_IN_PROGRESS';
     for (const groupId of Object.keys(groups)) {
-        if (groups[groupId].players.length === 0) continue;
+        if (!groups[groupId] || groups[groupId].players.length === 0) continue;
         
         if (states[groupId] && states[groupId].readTimer) {
             clearTimeout(states[groupId].readTimer);
@@ -510,45 +514,39 @@ io.on("connection", (socket) => {
 
   socket.on("host_assign_groups", ({ groupCount, playersPerGroup, topGroupCount }) => {
     if (socket.id !== hostSocketId) return;
-    const allPlayersSorted = Object.values(groups)
-        .flatMap(g => g.players)
-        .filter(p => p.name !== "未設定")
-        .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+    const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
+    const allPlayersSorted = allPlayers.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+
     const topPlayerCount = topGroupCount * playersPerGroup;
     const topPlayers = allPlayersSorted.slice(0, topPlayerCount);
     const otherPlayers = allPlayersSorted.slice(topPlayerCount);
     const finalList = [...topPlayers, ...shuffle(otherPlayers)];
-    const newGroups = {};
-    for (let i = 1; i <= groupCount; i++) newGroups[i] = [];
-    let pIndex = 0;
-    for (let i = 1; i <= groupCount; i++) {
-        while (newGroups[i].length < playersPerGroup && pIndex < finalList.length) {
-            newGroups[i].push(finalList[pIndex++]);
-        }
-    }
-    while (pIndex < finalList.length) {
-        for (let i = groupCount; i >= 1; i--) {
-            if (pIndex >= finalList.length) break;
-            newGroups[i].push(finalList[pIndex++]);
-        }
-    }
+    
     Object.keys(groups).forEach(k => delete groups[k]);
     Object.keys(states).forEach(k => delete states[k]);
+
     for (let i = 1; i <= groupCount; i++) {
-        const pInGroup = newGroups[i];
-        if (pInGroup.length === 0) continue;
         const gId = `group${i}`;
-        groups[gId] = { players: pInGroup };
+        groups[gId] = { players: [] };
         states[gId] = initState(gId);
-        states[gId].players = pInGroup.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 }));
     }
+    
+    finalList.forEach((player, index) => {
+        const gId = `group${(index % groupCount) + 1}`;
+        groups[gId].players.push(player);
+        states[gId].players.push({ playerId: player.playerId, name: player.name, hp: 20, score: 0, correctCount: 0 });
+    });
+
     for (const [gId, group] of Object.entries(groups)) {
         for (const p of group.players) {
-            const pSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
-            if (pSocket) {
-                for (const room of pSocket.rooms) if (room !== pSocket.id) pSocket.leave(room);
-                pSocket.join(gId);
-                pSocket.emit("assigned_group", gId);
+            const playerSocket = io.sockets.sockets.get(players[p.playerId]?.socketId);
+            if (playerSocket) {
+                // Remove from all other rooms before joining a new one
+                for (const room of playerSocket.rooms) {
+                    if(room !== playerSocket.id) playerSocket.leave(room);
+                }
+                playerSocket.join(gId);
+                playerSocket.emit("assigned_group", gId);
             }
         }
     }
@@ -635,6 +633,7 @@ io.on("connection", (socket) => {
 
   socket.on('host_set_group_mode', ({ groupId, gameMode }) => {
     if (socket.id !== hostSocketId) return;
+    if (!states[groupId]) states[groupId] = initState(groupId); // stateがない場合は作成
     if (states[groupId] && (gameMode === 'normal' || gameMode === 'mask')) {
       states[groupId].gameMode = gameMode;
       console.log(`👑 Host set ${groupId} to ${gameMode} mode.`);
