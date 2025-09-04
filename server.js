@@ -1,4 +1,4 @@
-// server.js (グループ割り振りバグ修正・完全版)
+// server.js (バグ修正・安定化版)
 
 const express = require("express");
 const http = require("http");
@@ -354,7 +354,6 @@ io.on("connection", (socket) => {
 
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
-
     if (saveAction) {
         try {
             if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
@@ -404,9 +403,28 @@ io.on("connection", (socket) => {
   });
 
   socket.on("join", ({ groupId, playerId }) => {
-    socket.join(groupId);
     const player = players[playerId];
     if (!player) return;
+
+    for (const gId in groups) {
+        if (groups[gId] && groups[gId].players) {
+            groups[gId].players = groups[gId].players.filter(p => p.playerId !== playerId);
+        }
+        if (states[gId] && states[gId].players) {
+            states[gId].players = states[gId].players.filter(p => p.playerId !== playerId);
+        }
+    }
+
+    const socketInstance = io.sockets.sockets.get(player.socketId);
+    if (socketInstance) {
+        for (const room of socketInstance.rooms) {
+            if (room !== socketInstance.id) {
+                socketInstance.leave(room);
+            }
+        }
+    }
+    
+    socket.join(groupId);
     
     if (!groups[groupId]) groups[groupId] = { players: [] };
     if (!states[groupId]) states[groupId] = initState(groupId);
@@ -592,7 +610,9 @@ io.on("connection", (socket) => {
         const gId = `group${i}`;
         groups[gId] = { players: pInGroup };
         states[gId] = initState(gId);
-        states[gId].players = pInGroup.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 }));
+        states[gId].players = pInGroup.map(p => ({ 
+            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 
+        }));
     }
     for (const [gId, group] of Object.entries(groups)) {
         for (const p of group.players) {
