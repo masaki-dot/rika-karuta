@@ -1,4 +1,4 @@
-// client.js (機能追加・安定化 完全版)
+// client.js (ランキング改善・バグ修正 完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -137,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(showRoleSelectionUI);
+  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -333,22 +333,31 @@ function showGameScreen(state) {
   updateGameUI(state);
 }
 
-function showEndScreen(ranking) {
+function showEndScreen(rankingData) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+
+  const { thisGame, cumulative } = rankingData;
+  const myCumulativeData = cumulative.find(p => p.playerId === playerId);
 
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div style="flex:2; min-width: 300px;">
-        <h3>今回の順位</h3>
+        <h3>今回のゲーム順位</h3>
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
-          ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
+          ${thisGame.map(p => `<li>${p.name}（スコア: ${p.finalScore}）</li>`).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
-      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;">
+        <h3>総合ランキング</h3>
+        <ol>
+          ${cumulative.map((p, i) => `<li style="${p.playerId === playerId ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${p.name} - ${p.totalScore}点</li>`).join('')}
+        </ol>
+        ${myCumulativeData ? `<p style="margin-top: 10px; font-weight: bold;">あなたの総合順位: ${cumulative.findIndex(p => p.playerId === playerId) + 1}位</p>` : ''}
+      </div>
     </div>
   `;
 
@@ -357,9 +366,6 @@ function showEndScreen(ranking) {
       socket.emit('host_preparing_next_game');
     };
   }
-
-  rankingIntervalId = setInterval(() => socket.emit("request_global_ranking"), 2000);
-  socket.emit("request_global_ranking");
 }
 
 function showWaitingScreen() {
@@ -842,9 +848,9 @@ socket.on("rejoin_game", (state) => {
     showGameScreen(state);
 });
 
-socket.on("end", (ranking) => {
+socket.on("end", (rankingData) => {
   if (gameMode !== 'multi') return;
-  showEndScreen(ranking);
+  showEndScreen(rankingData);
 });
 
 socket.on("host_state", (allGroups) => {
