@@ -1,4 +1,4 @@
-// client.js (ランキング改善・完全版)
+// client.js (ホスト画面ランキング強化・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -270,9 +270,12 @@ function showHostUI(lastGameRanking = null) {
     <h2>👑 ホスト管理画面</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;">
-        ${lastGameRankingHTML}
+        <!-- 各グループの状況がここに表示されます -->
       </div>
-      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;">
+        ${lastGameRankingHTML}
+        <!-- 総合ランキングがここに表示されます -->
+      </div>
     </div>
     <hr/>
     <h3>🔀 グループ割り振り設定</h3>
@@ -347,7 +350,7 @@ function showGameScreen(state) {
 
 function showEndScreen(rankingData) {
   clearAllTimers();
-  updateNavBar(isHost ? () => showHostUI(rankingData.thisGameOverall) : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+  updateNavBar(isHost ? () => socket.emit('show_host_ui_with_ranking') : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
   const { thisGame, cumulative, thisGameOverall } = rankingData;
   const myPlayerId = playerId;
@@ -362,7 +365,7 @@ function showEndScreen(rankingData) {
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
           ${thisGame.map(p => {
             const overallRank = thisGameOverall.findIndex(op => op.playerId === p.playerId) + 1;
-            return `<li>${p.name}（スコア: ${p.finalScore}点 <span style="font-size: 0.8em; color: var(--text-muted);">(全体 ${overallRank}位)</span>）</li>`
+            return `<li>${p.name}（スコア: ${p.finalScore}点 <span style="font-size: 0.8em; color: var(--text-muted);">(全体 ${overallRank > 0 ? `${overallRank}位` : 'ランク外'})</span>）</li>`
           }).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
@@ -833,6 +836,10 @@ socket.on('host_setup_done', () => {
     if (isHost) showHostUI();
 });
 
+socket.on('show_host_ui_with_ranking', (ranking) => {
+    if(isHost) showHostUI(ranking);
+});
+
 socket.on('wait_for_next_game', showWaitingScreen);
 
 socket.on("start_group_selection", showGroupSelectionUI);
@@ -904,7 +911,7 @@ socket.on("host_state", (allGroups) => {
 socket.on("global_ranking", (ranking) => {
     const div = document.getElementById("globalRanking");
   if (!div) return;
-  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング</h3>
+  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 総合ランキング</h3>
                    <ol style="padding-left: 20px;">
                      ${ranking.map((p, i) => `
                        <li style="padding: 4px 0; border-bottom: 1px solid #eee;">
