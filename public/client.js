@@ -1,4 +1,4 @@
-// client.js (ランキング改善・バグ修正 完全版)
+// client.js (ランキング刷新・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -182,6 +182,7 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
       <legend>ゲーム設定</legend>
       <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
       <label>読み上げ速度(ms/5文字): <input type="number" id="speed" value="1000" min="100" /></label><br/>
+      <label>総合ランキング表示人数: <input type="number" id="ranking-display-count" value="10" min="1" /></label>
     </fieldset>
     <hr/>
     <fieldset>
@@ -339,6 +340,7 @@ function showEndScreen(rankingData) {
 
   const { thisGame, cumulative } = rankingData;
   const myCumulativeData = cumulative.find(p => p.playerId === playerId);
+  const myRank = cumulative.findIndex(p => p.playerId === playerId) + 1;
 
   const container = getContainer();
   container.innerHTML = `
@@ -356,7 +358,7 @@ function showEndScreen(rankingData) {
         <ol>
           ${cumulative.map((p, i) => `<li style="${p.playerId === playerId ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${p.name} - ${p.totalScore}点</li>`).join('')}
         </ol>
-        ${myCumulativeData ? `<p style="margin-top: 10px; font-weight: bold;">あなたの総合順位: ${cumulative.findIndex(p => p.playerId === playerId) + 1}位</p>` : ''}
+        ${myCumulativeData ? `<p style="margin-top: 10px; font-weight: bold; color: var(--primary-color);">あなたの総合順位: ${myRank}位</p>` : ''}
       </div>
     </div>
   `;
@@ -465,7 +467,8 @@ function handleSettingsSubmit(isNextGame = false) {
   const settings = {
     numCards: parseInt(document.getElementById("numCards").value),
     showSpeed: parseInt(document.getElementById("speed").value),
-    gameMode: document.querySelector('input[name="game-mode"]:checked').value
+    gameMode: document.querySelector('input[name="game-mode"]:checked').value,
+    rankingDisplayCount: parseInt(document.getElementById('ranking-display-count').value)
   };
 
   let payload = { settings, isNextGame };
@@ -947,20 +950,4 @@ socket.on('import_data_response', ({ success, message }) => {
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
-  const radioButtons = Object.entries(presets).map(([id, data], index) => `
-    <div>
-      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
-      <label for="preset-${id}">${data.category} - ${data.name}</label>
-    </div>
-  `).join('');
-  container.innerHTML = radioButtons;
-});
-
-socket.on('single_game_start', (initialState) => {
-    showSinglePlayGameUI(); 
-    updateSinglePlayGameUI(initialState);
-});
-socket.on('single_game_state', (state) => {
-    updateSinglePlayGameUI(state)
-});
-socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
+  const radioButtons = Object.entries(pres
