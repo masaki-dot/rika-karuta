@@ -1,4 +1,4 @@
-// server.js (累計スコアリセットバグ修正・完全版)
+// server.js (HP0バグ修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -25,6 +25,7 @@ let globalSettings = {};
 let gamePhase = 'INITIAL';
 let questionPresets = {};
 let lastGameRanking = [];
+let finishedGroups = new Set();
 
 // --- データ管理 ---
 const players = {};
@@ -159,6 +160,7 @@ function finalizeGame(groupId) {
     state.readTimer = null;
 
     state.locked = true;
+    finishedGroups.add(groupId);
     console.log(`[${groupId}] ゲーム終了処理を開始します。`);
 
     const finalRanking = [...state.players].sort((a, b) => {
@@ -192,16 +194,24 @@ function finalizeGame(groupId) {
             }
         }
         if(gPlayer) gPlayer.totalScore = p.totalScore;
-
-        lastGameRanking.push({ playerId: p.playerId, name: p.name, finalScore: p.finalScore });
     });
     
-    const activeGroupIds = Object.keys(groups).filter(gId => groups[gId].players.length > 0);
-    finishedGroups.add(groupId);
-
+    const activeGroupIds = Object.keys(groups).filter(gId => groups[gId] && groups[gId].players.length > 0);
     if (activeGroupIds.every(gId => finishedGroups.has(gId))) {
         console.log("全グループのゲームが終了しました。最終ランキングを計算します。");
         
+        lastGameRanking = [];
+        for(const gId of activeGroupIds) {
+            if (states[gId] && states[gId].players) {
+                states[gId].players.forEach(p => {
+                    lastGameRanking.push({
+                        playerId: p.playerId,
+                        name: p.name,
+                        finalScore: p.finalScore || 0
+                    });
+                });
+            }
+        }
         lastGameRanking.sort((a,b) => b.finalScore - a.finalScore);
         
         const cumulativeRanking = Object.values(players)
@@ -225,6 +235,7 @@ function checkGameEnd(groupId) {
   if (!state || state.locked) return;
 
   const survivors = state.players.filter(p => p.hp > 0);
+
   if (survivors.length <= 1) {
     finalizeGame(groupId);
   }
@@ -563,6 +574,7 @@ io.on("connection", (socket) => {
     console.log("▶ ホストが全体スタートを実行");
 
     gamePhase = 'GAME_IN_PROGRESS';
+    finishedGroups.clear();
     for (const groupId of Object.keys(groups)) {
         if (!groups[groupId] || groups[groupId].players.length === 0) continue;
         
@@ -596,7 +608,7 @@ io.on("connection", (socket) => {
     const sortedPlayerIds = sortingSource
         .sort((a, b) => (b[scoreKey] || 0) - (a[scoreKey] || 0))
         .map(p => p.playerId);
-
+    
     const allPlayersMap = new Map();
     allCurrentPlayers.forEach(p => allPlayersMap.set(p.playerId, p));
     
