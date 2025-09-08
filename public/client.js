@@ -1,4 +1,4 @@
-// client.js (ホスト画面ランキング強化・完全版)
+// client.js (ホスト画面ランキング表示修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -270,11 +270,9 @@ function showHostUI(lastGameRanking = null) {
     <h2>👑 ホスト管理画面</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;">
-        <!-- 各グループの状況がここに表示されます -->
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;">
         ${lastGameRankingHTML}
-        <!-- 総合ランキングがここに表示されます -->
       </div>
     </div>
     <hr/>
