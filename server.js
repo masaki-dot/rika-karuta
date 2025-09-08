@@ -165,7 +165,7 @@ function finalizeGame(groupId) {
         return (b.correctCount || 0) - (a.correctCount || 0);
     });
     
-    lastGameRanking = []; // 直前のゲーム結果をリセット
+    lastGameRanking = [];
     const alreadyUpdated = new Set();
     finalRanking.forEach((p, i) => {
         const correctCount = p.correctCount || 0;
@@ -174,7 +174,15 @@ function finalizeGame(groupId) {
         else if (i === 1) bonus = 100;
         p.finalScore = (correctCount * 10) + bonus;
 
-        const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === p.playerId);
+        let gPlayer = null;
+        for (const gId in groups) {
+            const foundPlayer = groups[gId].players.find(gp => gp.playerId === p.playerId);
+            if (foundPlayer) {
+                gPlayer = foundPlayer;
+                break;
+            }
+        }
+        
         if (gPlayer && !alreadyUpdated.has(gPlayer.playerId)) {
             gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
             p.totalScore = gPlayer.totalScore;
@@ -185,7 +193,10 @@ function finalizeGame(groupId) {
         lastGameRanking.push({ playerId: p.playerId, name: p.name, finalScore: p.finalScore });
     });
     
-    const cumulativeRanking = Object.values(groups).flatMap(g => g.players).sort((a, b) => b.totalScore - a.totalScore);
+    const cumulativeRanking = Object.values(groups)
+        .flatMap(g => g.players)
+        .sort((a, b) => b.totalScore - a.totalScore)
+        .slice(0, globalSettings.rankingDisplayCount || 10);
 
     io.to(groupId).emit("end", { thisGame: finalRanking, cumulative: cumulativeRanking });
 }
@@ -607,6 +618,7 @@ io.on("connection", (socket) => {
     const unassignedPlayers = [...topPlayers.slice(topPlayerIndex), ...otherPlayers.slice(otherPlayerIndex)];
     let unassignedIndex = 0;
     if (unassignedPlayers.length > 0) {
+      console.log(`${unassignedPlayers.length}人のプレイヤーが定員オーバーしました。空いているグループに追加します。`);
       while(unassignedIndex < unassignedPlayers.length) {
           for (let i = 1; i <= groupCount; i++) {
               if (unassignedIndex >= unassignedPlayers.length) break;
