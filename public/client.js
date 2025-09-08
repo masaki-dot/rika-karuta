@@ -1,4 +1,4 @@
-// client.js (ローディングバグ修正・完全版)
+// client.js (ランキング改善・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -253,14 +253,25 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
-function showHostUI() {
+function showHostUI(lastGameRanking = null) {
   clearAllTimers();
   updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
+  
+  const lastGameRankingHTML = lastGameRanking ? `
+    <hr/>
+    <h3>今回のゲーム 全体順位</h3>
+    <ol style="font-size: 0.9em; max-height: 200px; overflow-y: auto;">
+      ${lastGameRanking.map((p, i) => `<li>${i + 1}. ${p.name} - ${p.finalScore}点</li>`).join('')}
+    </ol>
+  ` : '';
+
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
-      <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
+      <div id="hostStatus" style="flex:2; min-width: 300px;">
+        ${lastGameRankingHTML}
+      </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
     <hr/>
@@ -336,29 +347,32 @@ function showGameScreen(state) {
 
 function showEndScreen(rankingData) {
   clearAllTimers();
-  updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+  updateNavBar(isHost ? () => showHostUI(rankingData.thisGameOverall) : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
-  const { thisGame, cumulative } = rankingData;
-  const myCumulativeData = cumulative.find(p => p.playerId === playerId);
-  const myRank = cumulative.findIndex(p => p.playerId === playerId) + 1;
+  const { thisGame, cumulative, thisGameOverall } = rankingData;
+  const myPlayerId = playerId;
+  const myRank = cumulative.findIndex(p => p.playerId === myPlayerId) + 1;
 
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div style="flex:2; min-width: 300px;">
-        <h3>今回のゲーム順位</h3>
+        <h3>今回のゲーム順位（グループ内）</h3>
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
-          ${thisGame.map(p => `<li>${p.name}（スコア: ${p.finalScore}）</li>`).join("")}
+          ${thisGame.map(p => {
+            const overallRank = thisGameOverall.findIndex(op => op.playerId === p.playerId) + 1;
+            return `<li>${p.name}（スコア: ${p.finalScore}点 <span style="font-size: 0.8em; color: var(--text-muted);">(全体 ${overallRank}位)</span>）</li>`
+          }).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;">
         <h3>総合ランキング</h3>
         <ol>
-          ${cumulative.map((p, i) => `<li style="${p.playerId === playerId ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${p.name} - ${p.totalScore}点</li>`).join('')}
+          ${cumulative.map((p, i) => `<li style="${p.playerId === myPlayerId ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${p.name} - ${p.totalScore}点</li>`).join('')}
         </ol>
-        ${myCumulativeData ? `<p style="margin-top: 10px; font-weight: bold; color: var(--primary-color);">あなたの総合順位: ${myRank}位</p>` : ''}
+        ${myRank > 0 ? `<p style="margin-top: 10px; font-weight: bold; color: var(--primary-color);">あなたの総合順位: ${myRank}位</p>` : ''}
       </div>
     </div>
   `;
