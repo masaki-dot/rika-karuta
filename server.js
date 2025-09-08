@@ -137,12 +137,13 @@ function getHostState() {
       locked: state?.locked ?? false,
       gameMode: state?.gameMode ?? globalSettings.gameMode ?? 'normal',
       players: group.players.map(p => {
+        const masterPlayer = players[p.playerId];
         const statePlayer = state?.players.find(sp => sp.playerId === p.playerId);
         return {
           name: p.name,
           hp: statePlayer?.hp ?? 20,
           correctCount: statePlayer?.correctCount ?? 0,
-          totalScore: p.totalScore ?? 0
+          totalScore: masterPlayer?.totalScore ?? p.totalScore ?? 0
         };
       })
     };
@@ -174,6 +175,15 @@ function finalizeGame(groupId) {
         else if (i === 1) bonus = 100;
         p.finalScore = (correctCount * 10) + bonus;
 
+        const masterPlayer = players[p.playerId];
+        if (masterPlayer && !alreadyUpdated.has(p.playerId)) {
+            masterPlayer.totalScore = (masterPlayer.totalScore || 0) + p.finalScore;
+            p.totalScore = masterPlayer.totalScore;
+            alreadyUpdated.add(p.playerId);
+        } else {
+            p.totalScore = masterPlayer?.totalScore ?? p.finalScore;
+        }
+        
         let gPlayer = null;
         for (const gId in groups) {
             const foundPlayer = groups[gId].players.find(gp => gp.playerId === p.playerId);
@@ -182,19 +192,13 @@ function finalizeGame(groupId) {
                 break;
             }
         }
-        
-        if (gPlayer && !alreadyUpdated.has(gPlayer.playerId)) {
-            gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
-            p.totalScore = gPlayer.totalScore;
-            alreadyUpdated.add(gPlayer.playerId);
-        } else {
-            p.totalScore = gPlayer?.totalScore ?? p.finalScore;
-        }
+        if(gPlayer) gPlayer.totalScore = p.totalScore;
+
         lastGameRanking.push({ playerId: p.playerId, name: p.name, finalScore: p.finalScore });
     });
     
-    const cumulativeRanking = Object.values(groups)
-        .flatMap(g => g.players)
+    const cumulativeRanking = Object.values(players)
+        .filter(p => p.name !== "未設定" && !p.isHost)
         .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
         .slice(0, globalSettings.rankingDisplayCount || 10);
 
@@ -324,7 +328,7 @@ io.on("connection", (socket) => {
 
   socket.on('request_new_player_id', () => {
     const playerId = uuidv4();
-    players[playerId] = { playerId, socketId: socket.id, name: "未設定" };
+    players[playerId] = { playerId, socketId: socket.id, name: "未設定", totalScore: 0 };
     socket.emit('new_player_id_assigned', playerId);
   });
 
@@ -333,7 +337,7 @@ io.on("connection", (socket) => {
       players[playerId].socketId = socket.id;
       if (name) players[playerId].name = name;
     } else {
-      players[playerId] = { playerId, socketId: socket.id, name: name || "未設定" };
+      players[playerId] = { playerId, socketId: socket.id, name: name || "未設定", totalScore: 0 };
     }
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
   });
@@ -369,6 +373,7 @@ io.on("connection", (socket) => {
 
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
+
     if (saveAction) {
         try {
             if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
@@ -445,7 +450,7 @@ io.on("connection", (socket) => {
     if (!states[groupId]) states[groupId] = initState(groupId);
 
     if (!groups[groupId].players.find(p => p.playerId === playerId)) {
-      groups[groupId].players.push({ playerId, name: player.name, totalScore: 0 });
+      groups[groupId].players.push({ playerId, name: player.name, totalScore: player.totalScore || 0 });
     }
     
     const state = states[groupId];
@@ -530,11 +535,10 @@ io.on("connection", (socket) => {
   });
   
   socket.on("request_global_ranking", () => {
-      const allPlayers = Object.values(groups)
-          .flatMap(g => g.players)
-          .filter(p => p.name !== "未設定")
+      const allPs = Object.values(players)
+          .filter(p => p.name !== "未設定" && !p.isHost)
           .map(p => ({ name: p.name, totalScore: p.totalScore || 0 }));
-      socket.emit("global_ranking", allPlayers.sort((a, b) => b.totalScore - a.totalScore));
+      socket.emit("global_ranking", allPs.sort((a, b) => b.totalScore - a.totalScore));
   });
 
   socket.on("host_start", () => {
@@ -567,7 +571,7 @@ io.on("connection", (socket) => {
   socket.on("host_assign_groups", ({ groupCount, topGroupCount, groupSizes }) => {
     if (socket.id !== hostSocketId) return;
 
-    const allCurrentPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
+    const allCurrentPlayers = Object.values(players).filter(p => p.name !== "未設定" && !p.isHost);
     
     const sortingSource = lastGameRanking.length > 0 ? lastGameRanking : allCurrentPlayers;
     const scoreKey = lastGameRanking.length > 0 ? 'finalScore' : 'totalScore';
@@ -575,7 +579,7 @@ io.on("connection", (socket) => {
     const sortedPlayerIds = sortingSource
         .sort((a, b) => (b[scoreKey] || 0) - (a[scoreKey] || 0))
         .map(p => p.playerId);
-
+    
     const allPlayersMap = new Map();
     allCurrentPlayers.forEach(p => allPlayersMap.set(p.playerId, p));
     
@@ -586,9 +590,7 @@ io.on("connection", (socket) => {
     const otherPlayers = shuffle(sortedPlayers.slice(numTopPlayers));
 
     const newGroupsConfig = {};
-    for (let i = 1; i <= groupCount; i++) {
-        newGroupsConfig[i] = [];
-    }
+    for (let i = 1; i <= groupCount; i++) newGroupsConfig[i] = [];
 
     let topPlayerIndex = 0;
     for (let i = 1; i <= topGroupCount; i++) {
@@ -615,15 +617,15 @@ io.on("connection", (socket) => {
     }
     
     const unassignedPlayers = [...topPlayers.slice(topPlayerIndex), ...otherPlayers.slice(otherPlayerIndex)];
-    let unassignedIndex = 0;
     if (unassignedPlayers.length > 0) {
-      while(unassignedIndex < unassignedPlayers.length) {
-          for (let i = 1; i <= groupCount; i++) {
-              if (unassignedIndex >= unassignedPlayers.length) break;
-              newGroupsConfig[i].push(unassignedPlayers[unassignedIndex]);
-              unassignedIndex++;
-          }
-      }
+        let unassignedIndex = 0;
+        while(unassignedIndex < unassignedPlayers.length) {
+            for (let i = 1; i <= groupCount; i++) {
+                if (unassignedIndex >= unassignedPlayers.length) break;
+                newGroupsConfig[i].push(unassignedPlayers[unassignedIndex]);
+                unassignedIndex++;
+            }
+        }
     }
     
     Object.keys(states).forEach(k => delete states[k]);
