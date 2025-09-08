@@ -166,7 +166,6 @@ function finalizeGame(groupId) {
         return (b.correctCount || 0) - (a.correctCount || 0);
     });
     
-    lastGameRanking = [];
     const alreadyUpdated = new Set();
     finalRanking.forEach((p, i) => {
         const correctCount = p.correctCount || 0;
@@ -197,12 +196,28 @@ function finalizeGame(groupId) {
         lastGameRanking.push({ playerId: p.playerId, name: p.name, finalScore: p.finalScore });
     });
     
-    const cumulativeRanking = Object.values(players)
-        .filter(p => p.name !== "未設定" && !p.isHost)
-        .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
-        .slice(0, globalSettings.rankingDisplayCount || 10);
+    const activeGroupIds = Object.keys(groups).filter(gId => groups[gId].players.length > 0);
+    finishedGroups.add(groupId);
 
-    io.to(groupId).emit("end", { thisGame: finalRanking, cumulative: cumulativeRanking });
+    if (activeGroupIds.every(gId => finishedGroups.has(gId))) {
+        console.log("全グループのゲームが終了しました。最終ランキングを計算します。");
+        
+        lastGameRanking.sort((a,b) => b.finalScore - a.finalScore);
+        
+        const cumulativeRanking = Object.values(players)
+            .filter(p => p.name !== "未設定" && !p.isHost)
+            .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
+            .slice(0, globalSettings.rankingDisplayCount || 10);
+        
+        for(const gId of activeGroupIds) {
+            io.to(gId).emit("end", { 
+                thisGame: states[gId].players.sort((a,b) => (b.finalScore || 0) - (a.finalScore || 0)), 
+                cumulative: cumulativeRanking,
+                thisGameOverall: lastGameRanking 
+            });
+        }
+        finishedGroups.clear();
+    }
 }
 
 function checkGameEnd(groupId) {
@@ -360,6 +375,7 @@ io.on("connection", (socket) => {
         if (!isNextGame) {
             Object.keys(states).forEach(key => delete states[key]);
             Object.keys(groups).forEach(key => delete groups[key]);
+            lastGameRanking = [];
             gamePhase = 'GROUP_SELECTION';
             io.emit("multiplayer_status_changed", gamePhase);
             socket.emit('host_setup_done');
@@ -412,6 +428,7 @@ io.on("connection", (socket) => {
     if (!isNextGame) {
         Object.keys(states).forEach(key => delete states[key]);
         Object.keys(groups).forEach(key => delete groups[key]);
+        lastGameRanking = [];
         gamePhase = 'GROUP_SELECTION';
         socket.emit('host_setup_done');
         io.emit("multiplayer_status_changed", gamePhase);
@@ -579,7 +596,7 @@ io.on("connection", (socket) => {
     const sortedPlayerIds = sortingSource
         .sort((a, b) => (b[scoreKey] || 0) - (a[scoreKey] || 0))
         .map(p => p.playerId);
-    
+
     const allPlayersMap = new Map();
     allCurrentPlayers.forEach(p => allPlayersMap.set(p.playerId, p));
     
