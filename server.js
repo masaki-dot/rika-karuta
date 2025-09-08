@@ -1,4 +1,4 @@
-// server.js (累計スコア維持・バグ修正版)
+// server.js (累計スコアリセットバグ修正・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -195,7 +195,7 @@ function finalizeGame(groupId) {
     
     const cumulativeRanking = Object.values(groups)
         .flatMap(g => g.players)
-        .sort((a, b) => b.totalScore - a.totalScore)
+        .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
         .slice(0, globalSettings.rankingDisplayCount || 10);
 
     io.to(groupId).emit("end", { thisGame: finalRanking, cumulative: cumulativeRanking });
@@ -369,7 +369,6 @@ io.on("connection", (socket) => {
 
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
-
     if (saveAction) {
         try {
             if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
@@ -628,19 +627,26 @@ io.on("connection", (socket) => {
     }
     
     Object.keys(states).forEach(k => delete states[k]);
-    const newGroups = {};
+    Object.keys(groups).forEach(k => delete groups[k]);
+
     for (let i = 1; i <= groupCount; i++) {
         const pInGroup = newGroupsConfig[i];
         if (!pInGroup || pInGroup.length === 0) continue;
         const gId = `group${i}`;
-        newGroups[gId] = { players: pInGroup };
+        
+        groups[gId] = {
+            players: pInGroup.map(p => ({
+                playerId: p.playerId,
+                name: p.name,
+                totalScore: allPlayersMap.get(p.playerId)?.totalScore || 0
+            }))
+        };
+        
         states[gId] = initState(gId);
         states[gId].players = pInGroup.map(p => ({ 
             playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 
         }));
     }
-    Object.keys(groups).forEach(k => delete groups[k]);
-    Object.assign(groups, newGroups);
 
     for (const [gId, group] of Object.entries(groups)) {
         for (const p of group.players) {
