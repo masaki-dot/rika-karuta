@@ -1,4 +1,4 @@
-// client.js (ランキング刷新・完全版)
+// client.js (ローディングバグ修正・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -950,4 +950,20 @@ socket.on('import_data_response', ({ success, message }) => {
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
-  const radioButtons = Object.entries(pres
+  const radioButtons = Object.entries(presets).map(([id, data], index) => `
+    <div>
+      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
+      <label for="preset-${id}">${data.category} - ${data.name}</label>
+    </div>
+  `).join('');
+  container.innerHTML = radioButtons;
+});
+
+socket.on('single_game_start', (initialState) => {
+    showSinglePlayGameUI(); 
+    updateSinglePlayGameUI(initialState);
+});
+socket.on('single_game_state', (state) => {
+    updateSinglePlayGameUI(state)
+});
+socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
