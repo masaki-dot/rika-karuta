@@ -1,4 +1,4 @@
-// server.js (バグ修正・安定化版)
+// server.js (累計スコア維持・バグ修正版)
 
 const express = require("express");
 const http = require("http");
@@ -618,7 +618,6 @@ io.on("connection", (socket) => {
     const unassignedPlayers = [...topPlayers.slice(topPlayerIndex), ...otherPlayers.slice(otherPlayerIndex)];
     let unassignedIndex = 0;
     if (unassignedPlayers.length > 0) {
-      console.log(`${unassignedPlayers.length}人のプレイヤーが定員オーバーしました。空いているグループに追加します。`);
       while(unassignedIndex < unassignedPlayers.length) {
           for (let i = 1; i <= groupCount; i++) {
               if (unassignedIndex >= unassignedPlayers.length) break;
