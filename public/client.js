@@ -259,11 +259,13 @@ function showHostUI(lastGameRanking = null) {
   const container = getContainer();
   
   const lastGameRankingHTML = lastGameRanking ? `
+    <div id="this-game-ranking">
+      <h3>今回のゲーム 全体順位</h3>
+      <ol style="font-size: 0.9em; max-height: 200px; overflow-y: auto; padding-left: 20px;">
+        ${lastGameRanking.map((p, i) => `<li>${i + 1}. ${p.name} - ${p.finalScore}点</li>`).join('')}
+      </ol>
+    </div>
     <hr/>
-    <h3>今回のゲーム 全体順位</h3>
-    <ol style="font-size: 0.9em; max-height: 200px; overflow-y: auto;">
-      ${lastGameRanking.map((p, i) => `<li>${i + 1}. ${p.name} - ${p.finalScore}点</li>`).join('')}
-    </ol>
   ` : '';
 
   container.innerHTML = `
@@ -271,8 +273,9 @@ function showHostUI(lastGameRanking = null) {
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;">
       </div>
-      <div id="globalRanking" style="flex:1; min-width: 250px;">
+      <div id="globalRankingWrapper" style="flex:1; min-width: 250px;">
         ${lastGameRankingHTML}
+        <div id="globalRanking"></div>
       </div>
     </div>
     <hr/>
