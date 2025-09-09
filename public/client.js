@@ -1,9 +1,10 @@
-// client.js (安定性維持・完全版)
+// client.js (安定性・機能改善版)
 
 // --- グローバル変数 ---
 let socket = io();
 let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
+let hostKey = localStorage.getItem('hostKey');
 let groupId = "";
 let isHost = false;
 let gameMode = 'multi';
@@ -60,12 +61,23 @@ function updateNavBar(backAction, showTop = true) {
 // --- アプリケーションの初期化 ---
 socket.on('connect', () => {
   console.log('サーバーとの接続が確立しました。');
+  const statusIndicator = document.getElementById('connection-status');
+  statusIndicator.textContent = '● 接続中';
+  statusIndicator.className = 'connected';
+
   if (!playerId) {
     socket.emit('request_new_player_id');
   } else {
     socket.emit('reconnect_player', { playerId, name: playerName });
     showRoleSelectionUI();
   }
+});
+
+socket.on('disconnect', () => {
+    console.warn('サーバーとの接続が切れました。');
+    const statusIndicator = document.getElementById('connection-status');
+    statusIndicator.textContent = '● 接続切れ';
+    statusIndicator.className = 'disconnected';
 });
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
@@ -90,11 +102,12 @@ function showRoleSelectionUI() {
                 <button id="host-btn" class="button-primary" style="font-size: 1.5em; height: 60px; margin: 10px;">ホストで参加</button>
                 <button id="player-btn" class="button-secondary" style="font-size: 1.5em; height: 60px; margin: 10px;">プレイヤーで参加</button>
             </div>
+            ${hostKey ? `<p style="color: var(--text-muted);">ホストとして復帰する場合は「ホストで参加」を押してください。<br>ホストキー: <strong>${hostKey}</strong></p>` : ''}
         </div>
     `;
     document.getElementById('host-btn').onclick = () => {
         isHost = true;
-        socket.emit('host_join', { playerId });
+        socket.emit('host_join', { playerId, hostKey }); // 復帰用にhostKeyを送信
         socket.emit('request_game_phase');
     };
     document.getElementById('player-btn').onclick = () => {
@@ -253,10 +266,11 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
-function showHostUI(lastGameRanking = null) {
+function showHostUI(hostStateData = {}) {
   clearAllTimers();
   updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
+  const { lastGameRanking, isPaused } = hostStateData;
   
   const lastGameRankingHTML = lastGameRanking ? `
     <div id="this-game-ranking">
@@ -270,12 +284,16 @@ function showHostUI(lastGameRanking = null) {
 
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
+    <p>ホストキー: <strong>${hostKey || '取得中...'}</strong> (このキーがあればブラウザを閉じても復帰できます)</p>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div id="hostStatus" style="flex:2; min-width: 300px;">
       </div>
-      <div id="globalRankingWrapper" style="flex:1; min-width: 250px;">
+      <div id="side-panel" style="flex:1; min-width: 250px;">
+        <div id="unassigned-players"></div>
         ${lastGameRankingHTML}
-        <div id="globalRanking"></div>
+        <div id="globalRankingWrapper">
+            <div id="globalRanking"></div>
+        </div>
       </div>
     </div>
     <hr/>
@@ -289,6 +307,7 @@ function showHostUI(lastGameRanking = null) {
     <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
     <hr/>
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
+    <button id="pause-game-btn" class="button-outline" style="margin-top:10px;">${isPaused ? 'ゲームを再開' : 'ゲームを一時停止'}</button>
     <button id="change-settings-btn" class="button-outline" style="margin-top:10px;">問題・設定を変更する</button>
     <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: red;">危険な操作</h3>
@@ -314,6 +333,7 @@ function showHostUI(lastGameRanking = null) {
 
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
+  document.getElementById('pause-game-btn').onclick = () => socket.emit('host_toggle_pause');
   document.getElementById('change-settings-btn').onclick = () => socket.emit('host_preparing_next_game');
   document.getElementById('host-reset-all-btn').onclick = () => {
     if (confirm('本当に進行中のゲームデータをリセットしますか？この操作は元に戻せません。')) {
@@ -323,10 +343,8 @@ function showHostUI(lastGameRanking = null) {
 
   rankingIntervalId = setInterval(() => {
     socket.emit("host_request_state");
-    socket.emit("request_global_ranking");
   }, 2000);
   socket.emit("host_request_state");
-  socket.emit("request_global_ranking");
 }
 
 function showGameScreen(state) {
@@ -336,6 +354,7 @@ function showGameScreen(state) {
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
       <div id="game-area">
+        <h3 id="group-name-display"></h3>
         <div id="yomifuda"></div>
         <div id="cards-grid"></div>
         <hr>
@@ -455,10 +474,24 @@ function showSinglePlayGameUI() {
   }, 1000);
 }
 
-function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) {
+function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName, history }) {
   clearAllTimers();
   updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
+  
+  const historyHtml = history && history.length > 0 ? `
+    <div style="flex: 1; min-width: 300px;">
+        <h3>今回の結果詳細</h3>
+        <ul style="max-height: 200px; overflow-y: auto; padding-left: 20px;">
+            ${history.map(item => `
+                <li style="color: ${item.correct ? 'green' : 'red'};">
+                    <strong>${item.correct ? '正解' : '不正解'}</strong>: ${item.questionText} (答え: ${item.answer})
+                </li>
+            `).join('')}
+        </ul>
+    </div>
+  ` : '';
+
   container.innerHTML = `
     <h2>タイムアップ！</h2>
     <h4>問題セット: ${presetName}</h4>
@@ -471,6 +504,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
           ${globalRanking.map((r, i) => `<li style="${r.isMe ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${r.name} - ${r.score}点</li>`).join('')}
         </ol>
       </div>
+      ${historyHtml}
     </div>
     <hr/>
     <button id="retry-btn" class="button-primary">もう一度挑戦</button>
@@ -635,6 +669,11 @@ function updateGameUI(state) {
     lastQuestionText = state.current.text;
   }
   
+  const groupNameDisplay = document.getElementById('group-name-display');
+  if (groupNameDisplay) {
+    groupNameDisplay.textContent = `あなたは ${state.groupId} です`;
+  }
+
   const yomifudaDiv = document.getElementById('yomifuda');
   if (yomifudaDiv && !hasAnimated && state.current?.text) {
     if (state.gameMode === 'mask' && state.current.maskedIndices) {
@@ -810,6 +849,12 @@ function showPointPopup(point) {
 
 // --- Socket.IO イベントリスナー ---
 
+socket.on('host_key_assigned', (newHostKey) => {
+    hostKey = newHostKey;
+    localStorage.setItem('hostKey', hostKey);
+    console.log(`ホストキーを受け取りました: ${hostKey}`);
+});
+
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
   if (isHost) {
       showCSVUploadUI(presets, fromEndScreen);
@@ -833,12 +878,12 @@ socket.on('multiplayer_status_changed', (phase) => {
     }
 });
 
-socket.on('host_setup_done', () => {
-    if (isHost) showHostUI();
+socket.on('host_setup_done', (hostStateData) => {
+    if (isHost) showHostUI(hostStateData);
 });
 
 socket.on('show_host_ui_with_ranking', (ranking) => {
-    if(isHost) showHostUI(ranking);
+    if(isHost) showHostUI({ lastGameRanking: ranking });
 });
 
 socket.on('wait_for_next_game', showWaitingScreen);
@@ -878,11 +923,11 @@ socket.on("end", (rankingData) => {
   showEndScreen(rankingData);
 });
 
-socket.on("host_state", (allGroups) => {
-  const div = document.getElementById("hostStatus");
-  if (!div) return;
+socket.on("host_state", ({ allGroups, unassignedPlayers, globalRanking, isPaused }) => {
+  const hostStatusDiv = document.getElementById("hostStatus");
+  if (!hostStatusDiv) return;
 
-  div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
+  hostStatusDiv.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
     const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
     const modeSelector = `
@@ -907,19 +952,35 @@ socket.on("host_state", (allGroups) => {
       socket.emit('host_set_group_mode', { groupId, gameMode });
     };
   });
-});
+  
+  const unassignedDiv = document.getElementById('unassigned-players');
+  if (unassignedDiv) {
+      if (unassignedPlayers && unassignedPlayers.length > 0) {
+        unassignedDiv.innerHTML = `<h3>未所属プレイヤー (${unassignedPlayers.length}人)</h3>
+                                   <ul style="font-size: 0.9em; max-height: 150px; overflow-y: auto;">
+                                     ${unassignedPlayers.map(p => `<li>${p.name}</li>`).join('')}
+                                   </ul><hr/>`;
+      } else {
+        unassignedDiv.innerHTML = '';
+      }
+  }
 
-socket.on("global_ranking", (ranking) => {
-    const div = document.getElementById("globalRanking");
-  if (!div) return;
-  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 総合ランキング</h3>
+  const globalRankingDiv = document.getElementById("globalRanking");
+  if (globalRankingDiv) {
+      globalRankingDiv.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 総合ランキング</h3>
                    <ol style="padding-left: 20px;">
-                     ${ranking.map((p, i) => `
+                     ${globalRanking.map((p, i) => `
                        <li style="padding: 4px 0; border-bottom: 1px solid #eee;">
                          <strong style="display: inline-block; width: 2em;">${i + 1}.</strong>
                          ${p.name} <span style="float: right; font-weight: bold;">${p.totalScore}点</span>
                        </li>`).join("")}
                    </ol>`;
+  }
+  
+  const pauseButton = document.getElementById('pause-game-btn');
+  if (pauseButton) {
+      pauseButton.textContent = isPaused ? 'ゲームを再開' : 'ゲームを一時停止';
+  }
 });
 
 socket.on("timer_start", ({ seconds }) => {
@@ -943,7 +1004,13 @@ socket.on("timer_start", ({ seconds }) => {
   }, 1000);
 });
 
+socket.on('game_paused', (isPaused) => {
+    const overlay = document.getElementById('pause-overlay');
+    overlay.style.display = isPaused ? 'flex' : 'none';
+});
+
 socket.on('force_reload', (message) => {
+    if (isHost) localStorage.removeItem('hostKey');
     alert(message);
     window.location.reload();
 });
