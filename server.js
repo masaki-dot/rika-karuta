@@ -91,7 +91,6 @@ socket.on('disconnect', () => {
 socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
   localStorage.setItem('playerId', playerId);
-  showRoleSelectionUI();
 });
 
 socket.on('initial_setup', () => {
@@ -279,7 +278,7 @@ function showNameInputUI() {
 
 function showHostUI(hostStateData = {}) {
   clearAllTimers();
-  updateNavBar(null, false); // Host UI should not have nav bar
+  updateNavBar(null, false);
   const container = getContainer();
   const { lastGameRanking, isPaused } = hostStateData;
   
