@@ -1,4 +1,4 @@
-// server.js (ホスト復帰処理・一時停止バグ修正版)
+// server.js (再接続処理・安定性強化版)
 
 const express = require("express");
 const http = require("http");
@@ -393,16 +393,8 @@ io.on("connection", (socket) => {
       players[playerId] = { playerId, socketId: socket.id, name: name || "未設定", totalScore: 0, isHost: false };
     }
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
-    
-    if(hostData.socketId) {
-        io.to(hostData.socketId).emit('request_phase_for_reconnect', {socketId: socket.id});
-    } else {
-        socket.emit('game_phase_response', {phase: 'INITIAL'});
-    }
-  });
-
-  socket.on('response_phase_for_reconnect', ({socketId}) => {
-      io.to(socketId).emit('game_phase_response', {phase: gamePhase});
+    // ★★★ 修正点 ★★★ サーバーが直接応答する
+    socket.emit('game_phase_response', {phase: gamePhase});
   });
 
   socket.on('request_game_phase', ({ fromEndScreen = false } = {}) => {
@@ -577,7 +569,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host_join", ({ playerId, hostKey }) => {
-    socket.join('host_room'); // ホストを専用ルームに参加させる
+    socket.join('host_room'); 
     let isReconnectingHost = false;
     if (hostKey && hostKey === hostData.hostKey) {
         console.log(`👑 ホストがキー [${hostKey}] を使って復帰しました。`);
