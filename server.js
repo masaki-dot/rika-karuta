@@ -1,4 +1,4 @@
-// server.js (安定性・機能改善版)
+// server.js (バグ修正・安定性強化版)
 
 const express = require("express");
 const http = require("http");
@@ -514,11 +514,12 @@ io.on("connection", (socket) => {
     for (const [gId, group] of Object.entries(groups)) {
         if (group.players.find(p => p.playerId === playerId)) {
             const state = states[gId];
-            if (state && !state.locked) {
-                socket.join(gId);
+            socket.join(gId); 
+            if (state && gamePhase === 'GAME_IN_PROGRESS' && !state.locked) {
                 socket.emit('rejoin_game', sanitizeState(state));
             } else {
-                socket.emit('game_phase_response', { phase: gamePhase });
+                // ゲーム開始前や終了後でも、グループ所属状態は復元する
+                socket.emit("assigned_group", gId);
             }
             return;
         }
@@ -574,20 +575,33 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host_join", ({ playerId, hostKey }) => {
+    let isReconnectingHost = false;
     if (hostKey && hostKey === hostData.hostKey) {
         console.log(`👑 ホストがキー [${hostKey}] を使って復帰しました。`);
+        isReconnectingHost = true;
     } else if (!hostData.hostKey) {
         hostData.hostKey = Math.random().toString(36).substring(2, 8).toUpperCase();
         console.log(`👑 新しいホストが参加しました。ホストキー: [${hostData.hostKey}]`);
     } else {
-        // すでにホストがいる場合は何もしない（あるいはエラーを返す）
-        console.log("すでに別のホストがアクティブです。");
+        socket.emit('force_reload', 'すでに別のホストがアクティブです。ページを更新します。');
         return;
     }
 
     hostData.socketId = socket.id;
     if (players[playerId]) players[playerId].isHost = true;
     socket.emit('host_key_assigned', hostData.hostKey);
+
+    if (isReconnectingHost && (gamePhase === 'GAME_IN_PROGRESS' || gamePhase === 'GROUP_SELECTION' || gamePhase === 'WAITING_FOR_NEXT_GAME')) {
+        console.log(`復帰したホスト [${socket.id}] を管理画面に戻します。`);
+        const hostStateData = { lastGameRanking: lastGameRanking, isPaused: hostData.isPaused };
+        socket.emit('host_setup_done', hostStateData);
+    } else {
+        const presetsForClient = {};
+        for(const [id, data] of Object.entries(questionPresets)) {
+            presetsForClient[id] = { category: data.category, name: data.name };
+        }
+        socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient, fromEndScreen: false });
+    }
   });
 
   socket.on("host_request_state", () => {
@@ -810,6 +824,16 @@ io.on("connection", (socket) => {
     console.log(`⏸️ ゲームが ${hostData.isPaused ? '一時停止' : '再開'} されました。`);
     io.emit('game_paused', hostData.isPaused);
     io.to(hostData.socketId).emit("host_state", getHostState());
+
+    if (!hostData.isPaused) {
+        // 再開時に各グループの次の問題へ進める
+        Object.keys(groups).forEach(groupId => {
+            const state = states[groupId];
+            if (state && !state.locked && !state.answered) {
+                nextQuestion(groupId);
+            }
+        });
+    }
   });
 
   socket.on('host_set_group_mode', ({ groupId, gameMode }) => {
@@ -1008,6 +1032,11 @@ io.on("connection", (socket) => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
     if (socket.id === hostData.socketId) {
         hostData.socketId = null;
+        if (gamePhase === 'GAME_IN_PROGRESS') {
+            hostData.isPaused = true;
+            io.emit('game_paused', hostData.isPaused);
+            console.log(`👻 ホストが切断されたため、ゲームを自動的に一時停止します。`);
+        }
         console.log(`👻 ホストがオフラインになりました。キー [${hostData.hostKey}] で復帰を待ちます。`);
     }
     const player = getPlayerBySocketId(socket.id);
