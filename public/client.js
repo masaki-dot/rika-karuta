@@ -1,4 +1,4 @@
-// client.js (機能追加・安定化 完全版)
+// client.js (安定性維持・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -137,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(showRoleSelectionUI);
+  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -182,6 +182,7 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
       <legend>ゲーム設定</legend>
       <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
       <label>読み上げ速度(ms/5文字): <input type="number" id="speed" value="1000" min="100" /></label><br/>
+      <label>総合ランキング表示人数: <input type="number" id="ranking-display-count" value="10" min="1" /></label>
     </fieldset>
     <hr/>
     <fieldset>
@@ -252,15 +253,30 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
-function showHostUI() {
+function showHostUI(lastGameRanking = null) {
   clearAllTimers();
   updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
+  
+  const lastGameRankingHTML = lastGameRanking ? `
+    <div id="this-game-ranking">
+      <h3>今回のゲーム 全体順位</h3>
+      <ol style="font-size: 0.9em; max-height: 200px; overflow-y: auto; padding-left: 20px;">
+        ${lastGameRanking.map((p, i) => `<li>${i + 1}. ${p.name} - ${p.finalScore}点</li>`).join('')}
+      </ol>
+    </div>
+    <hr/>
+  ` : '';
+
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
-      <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
-      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
+      <div id="hostStatus" style="flex:2; min-width: 300px;">
+      </div>
+      <div id="globalRankingWrapper" style="flex:1; min-width: 250px;">
+        ${lastGameRankingHTML}
+        <div id="globalRanking"></div>
+      </div>
     </div>
     <hr/>
     <h3>🔀 グループ割り振り設定</h3>
@@ -333,22 +349,35 @@ function showGameScreen(state) {
   updateGameUI(state);
 }
 
-function showEndScreen(ranking) {
+function showEndScreen(rankingData) {
   clearAllTimers();
-  updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+  updateNavBar(isHost ? () => socket.emit('show_host_ui_with_ranking') : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+
+  const { thisGame, cumulative, thisGameOverall } = rankingData;
+  const myPlayerId = playerId;
+  const myRank = cumulative.findIndex(p => p.playerId === myPlayerId) + 1;
 
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div style="flex:2; min-width: 300px;">
-        <h3>今回の順位</h3>
+        <h3>今回のゲーム順位（グループ内）</h3>
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
-          ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
+          ${thisGame.map(p => {
+            const overallRank = thisGameOverall.findIndex(op => op.playerId === p.playerId) + 1;
+            return `<li>${p.name}（スコア: ${p.finalScore}点 <span style="font-size: 0.8em; color: var(--text-muted);">(全体 ${overallRank > 0 ? `${overallRank}位` : 'ランク外'})</span>）</li>`
+          }).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
-      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;">
+        <h3>総合ランキング</h3>
+        <ol>
+          ${cumulative.map((p, i) => `<li style="${p.playerId === myPlayerId ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${p.name} - ${p.totalScore}点</li>`).join('')}
+        </ol>
+        ${myRank > 0 ? `<p style="margin-top: 10px; font-weight: bold; color: var(--primary-color);">あなたの総合順位: ${myRank}位</p>` : ''}
+      </div>
     </div>
   `;
 
@@ -357,9 +386,6 @@ function showEndScreen(ranking) {
       socket.emit('host_preparing_next_game');
     };
   }
-
-  rankingIntervalId = setInterval(() => socket.emit("request_global_ranking"), 2000);
-  socket.emit("request_global_ranking");
 }
 
 function showWaitingScreen() {
@@ -459,7 +485,8 @@ function handleSettingsSubmit(isNextGame = false) {
   const settings = {
     numCards: parseInt(document.getElementById("numCards").value),
     showSpeed: parseInt(document.getElementById("speed").value),
-    gameMode: document.querySelector('input[name="game-mode"]:checked').value
+    gameMode: document.querySelector('input[name="game-mode"]:checked').value,
+    rankingDisplayCount: parseInt(document.getElementById('ranking-display-count').value)
   };
 
   let payload = { settings, isNextGame };
@@ -810,6 +837,10 @@ socket.on('host_setup_done', () => {
     if (isHost) showHostUI();
 });
 
+socket.on('show_host_ui_with_ranking', (ranking) => {
+    if(isHost) showHostUI(ranking);
+});
+
 socket.on('wait_for_next_game', showWaitingScreen);
 
 socket.on("start_group_selection", showGroupSelectionUI);
@@ -842,9 +873,9 @@ socket.on("rejoin_game", (state) => {
     showGameScreen(state);
 });
 
-socket.on("end", (ranking) => {
+socket.on("end", (rankingData) => {
   if (gameMode !== 'multi') return;
-  showEndScreen(ranking);
+  showEndScreen(rankingData);
 });
 
 socket.on("host_state", (allGroups) => {
@@ -881,7 +912,7 @@ socket.on("host_state", (allGroups) => {
 socket.on("global_ranking", (ranking) => {
     const div = document.getElementById("globalRanking");
   if (!div) return;
-  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング</h3>
+  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 総合ランキング</h3>
                    <ol style="padding-left: 20px;">
                      ${ranking.map((p, i) => `
                        <li style="padding: 4px 0; border-bottom: 1px solid #eee;">
