@@ -1,4 +1,4 @@
-// client.js (安定性・機能改善版)
+// client.js (ホスト復帰処理・一時停止バグ修正版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -24,6 +24,8 @@ const getContainer = () => document.getElementById('app-container');
 const getNavBar = () => document.getElementById('nav-bar');
 const getNavBackBtn = () => document.getElementById('nav-back-btn');
 const getNavTopBtn = () => document.getElementById('nav-top-btn');
+
+const isGameActive = () => document.getElementById('game-area') || document.getElementById('end-screen-ranking');
 
 function clearAllTimers() {
     if (rankingIntervalId) clearInterval(rankingIntervalId);
@@ -59,6 +61,13 @@ function updateNavBar(backAction, showTop = true) {
 }
 
 // --- アプリケーションの初期化 ---
+window.addEventListener('beforeunload', (event) => {
+    if (isGameActive() && !isHost) { // ホストはリロードする可能性があるので対象外
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});
+
 socket.on('connect', () => {
   console.log('サーバーとの接続が確立しました。');
   const statusIndicator = document.getElementById('connection-status');
@@ -69,7 +78,6 @@ socket.on('connect', () => {
     socket.emit('request_new_player_id');
   } else {
     socket.emit('reconnect_player', { playerId, name: playerName });
-    showRoleSelectionUI();
   }
 });
 
@@ -84,6 +92,10 @@ socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
   localStorage.setItem('playerId', playerId);
   showRoleSelectionUI();
+});
+
+socket.on('initial_setup', () => {
+    showRoleSelectionUI();
 });
 
 // --- UI描画関数群 ---
@@ -107,8 +119,7 @@ function showRoleSelectionUI() {
     `;
     document.getElementById('host-btn').onclick = () => {
         isHost = true;
-        socket.emit('host_join', { playerId, hostKey }); // 復帰用にhostKeyを送信
-        socket.emit('request_game_phase');
+        socket.emit('host_join', { playerId, hostKey });
     };
     document.getElementById('player-btn').onclick = () => {
         isHost = false;
@@ -150,7 +161,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(fromEndScreen ? showHostUI : showRoleSelectionUI);
+  updateNavBar(fromEndScreen ? () => showHostUI() : showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -268,11 +279,11 @@ function showNameInputUI() {
 
 function showHostUI(hostStateData = {}) {
   clearAllTimers();
-  updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
+  updateNavBar(null, false); // Host UI should not have nav bar
   const container = getContainer();
   const { lastGameRanking, isPaused } = hostStateData;
   
-  const lastGameRankingHTML = lastGameRanking ? `
+  const lastGameRankingHTML = lastGameRanking && lastGameRanking.length > 0 ? `
     <div id="this-game-ranking">
       <h3>今回のゲーム 全体順位</h3>
       <ol style="font-size: 0.9em; max-height: 200px; overflow-y: auto; padding-left: 20px;">
@@ -351,20 +362,18 @@ function showGameScreen(state) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
   const container = getContainer();
-  if (!document.getElementById('game-area')) {
-    container.innerHTML = `
-      <div id="game-area">
-        <h3 id="group-name-display"></h3>
-        <div id="yomifuda"></div>
-        <div id="cards-grid"></div>
-        <hr>
-        <div style="display: flex; flex-wrap: wrap; gap: 30px;">
-          <div id="my-info"></div>
-          <div id="others-info"></div>
-        </div>
+  container.innerHTML = `
+    <div id="game-area">
+      <h3 id="group-name-display"></h3>
+      <div id="yomifuda"></div>
+      <div id="cards-grid"></div>
+      <hr>
+      <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+        <div id="my-info"></div>
+        <div id="others-info"></div>
       </div>
-    `;
-  }
+    </div>
+  `;
   updateGameUI(state);
 }
 
@@ -446,16 +455,14 @@ function showSinglePlayGameUI() {
   gameMode = 'single';
   updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
-  if (!document.getElementById('game-area')) {
-    container.innerHTML = `
-      <div id="game-area">
-        <div id="yomifuda"></div>
-        <div id="cards-grid"></div>
-        <hr>
-        <div id="single-player-info"></div>
-      </div>
-    `;
-  }
+  container.innerHTML = `
+    <div id="game-area">
+      <div id="yomifuda"></div>
+      <div id="cards-grid"></div>
+      <hr>
+      <div id="single-player-info"></div>
+    </div>
+  `;
 
   const timerDiv = document.getElementById('countdown-timer');
   let timeLeft = 60;
@@ -612,7 +619,7 @@ function fixName() {
   playerName = nameInput.value.trim();
   if (!playerName) return alert("名前を入力してください");
   localStorage.setItem('playerName', playerName);
-  socket.emit("set_name", { groupId, playerId, name: playerName });
+  socket.emit("set_name", { playerId, name: playerName });
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
 
@@ -849,6 +856,14 @@ function showPointPopup(point) {
 
 // --- Socket.IO イベントリスナー ---
 
+socket.on('game_paused', (isPaused) => {
+    // ★★★ 修正点 ★★★ ホストでない場合のみオーバーレイを表示
+    if (!isHost) {
+        const overlay = document.getElementById('pause-overlay');
+        overlay.style.display = isPaused ? 'flex' : 'none';
+    }
+});
+
 socket.on('host_key_assigned', (newHostKey) => {
     hostKey = newHostKey;
     localStorage.setItem('hostKey', hostKey);
@@ -892,28 +907,22 @@ socket.on("start_group_selection", showGroupSelectionUI);
 
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
-  socket.emit("join", { groupId, playerId });
+  // No emit needed here as server handles room joining
   getContainer().innerHTML = `<h2>あなたは <strong>${groupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
 });
 
 socket.on("state", (state) => {
-  if (gameMode !== 'multi') return;
-  if (!state) return;
-  const amIReady = playerName !== "";
-  const isGameScreenActive = document.getElementById('game-area');
-
-  if (state.current && !isGameScreenActive && amIReady) {
+  if (gameMode !== 'multi' || !state) return;
+  
+  if (state.current && !document.getElementById('game-area')) {
     showGameScreen(state);
-  } else if (isGameScreenActive) {
+  } else if (document.getElementById('game-area')) {
     updateGameUI(state);
-  } else if (!amIReady && groupId) {
-    showNameInputUI();
   }
 });
 
 socket.on("rejoin_game", (state) => {
-    if (gameMode !== 'multi') return;
-    if (!state) return;
+    if (gameMode !== 'multi' || !state) return;
     groupId = state.groupId;
     showGameScreen(state);
 });
@@ -1002,11 +1011,6 @@ socket.on("timer_start", ({ seconds }) => {
       timerDiv.textContent = "";
     }
   }, 1000);
-});
-
-socket.on('game_paused', (isPaused) => {
-    const overlay = document.getElementById('pause-overlay');
-    overlay.style.display = isPaused ? 'flex' : 'none';
 });
 
 socket.on('force_reload', (message) => {
