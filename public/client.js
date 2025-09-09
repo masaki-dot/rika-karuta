@@ -1,4 +1,4 @@
-// client.js (ホスト復帰処理・一時停止バグ修正版)
+// client.js (再接続処理・安定性強化版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -14,6 +14,7 @@ let readInterval = null;
 let unmaskIntervalId = null;
 let countdownIntervalId = null;
 let singleGameTimerId = null;
+let reconnectTimeout = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
@@ -33,7 +34,8 @@ function clearAllTimers() {
     if (unmaskIntervalId) clearInterval(unmaskIntervalId);
     if (countdownIntervalId) clearInterval(countdownIntervalId);
     if (singleGameTimerId) clearInterval(singleGameTimerId);
-    rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null;
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null; reconnectTimeout = null;
     document.getElementById('countdown-timer').textContent = '';
     console.log('All client timers cleared.');
 }
@@ -73,6 +75,12 @@ socket.on('connect', () => {
   const statusIndicator = document.getElementById('connection-status');
   statusIndicator.textContent = '● 接続中';
   statusIndicator.className = 'connected';
+  
+  // ★★★ 修正点 ★★★ 再接続時のタイムアウトを設定
+  reconnectTimeout = setTimeout(() => {
+      console.warn("再接続後、サーバーから5秒間応答がありません。トップページに戻ります。");
+      showRoleSelectionUI();
+  }, 5000);
 
   if (!playerId) {
     socket.emit('request_new_player_id');
@@ -94,6 +102,7 @@ socket.on('new_player_id_assigned', (newPlayerId) => {
 });
 
 socket.on('initial_setup', () => {
+    if(reconnectTimeout) clearTimeout(reconnectTimeout);
     showRoleSelectionUI();
 });
 
@@ -104,6 +113,7 @@ function showRoleSelectionUI() {
     updateNavBar(null, false);
     isHost = false;
     gameMode = 'multi';
+    groupId = "";
     const container = getContainer();
     container.innerHTML = `
         <div style="text-align: center;">
@@ -870,6 +880,7 @@ socket.on('host_key_assigned', (newHostKey) => {
 });
 
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
+  if (reconnectTimeout) clearTimeout(reconnectTimeout);
   if (isHost) {
       showCSVUploadUI(presets, fromEndScreen);
   } else {
@@ -893,6 +904,7 @@ socket.on('multiplayer_status_changed', (phase) => {
 });
 
 socket.on('host_setup_done', (hostStateData) => {
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
     if (isHost) showHostUI(hostStateData);
 });
 
@@ -906,7 +918,6 @@ socket.on("start_group_selection", showGroupSelectionUI);
 
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
-  // No emit needed here as server handles room joining
   getContainer().innerHTML = `<h2>あなたは <strong>${groupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
 });
 
@@ -1014,6 +1025,7 @@ socket.on("timer_start", ({ seconds }) => {
 
 socket.on('force_reload', (message) => {
     if (isHost) localStorage.removeItem('hostKey');
+    clearAllTimers();
     alert(message);
     window.location.reload();
 });
