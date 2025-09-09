@@ -1,4 +1,4 @@
-// client.js (再接続処理・安定性強化版)
+// client.js (究極安定版・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -76,7 +76,7 @@ socket.on('connect', () => {
   statusIndicator.textContent = '● 接続中';
   statusIndicator.className = 'connected';
   
-  // ★★★ 修正点 ★★★ 再接続時のタイムアウトを設定
+  getContainer().innerHTML = `<p>Loading...</p>`;
   reconnectTimeout = setTimeout(() => {
       console.warn("再接続後、サーバーから5秒間応答がありません。トップページに戻ります。");
       showRoleSelectionUI();
@@ -866,7 +866,6 @@ function showPointPopup(point) {
 // --- Socket.IO イベントリスナー ---
 
 socket.on('game_paused', (isPaused) => {
-    // ★★★ 修正点 ★★★ ホストでない場合のみオーバーレイを表示
     if (!isHost) {
         const overlay = document.getElementById('pause-overlay');
         overlay.style.display = isPaused ? 'flex' : 'none';
@@ -880,7 +879,9 @@ socket.on('host_key_assigned', (newHostKey) => {
 });
 
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
-  if (reconnectTimeout) clearTimeout(reconnectTimeout);
+  if(reconnectTimeout) clearTimeout(reconnectTimeout);
+  reconnectTimeout = null;
+  
   if (isHost) {
       showCSVUploadUI(presets, fromEndScreen);
   } else {
@@ -904,7 +905,8 @@ socket.on('multiplayer_status_changed', (phase) => {
 });
 
 socket.on('host_setup_done', (hostStateData) => {
-    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    if(reconnectTimeout) clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
     if (isHost) showHostUI(hostStateData);
 });
 
