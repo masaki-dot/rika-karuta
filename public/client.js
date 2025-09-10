@@ -1,7 +1,13 @@
-// client.js (機能追加・安定化 完全版)
+// client.js (機能改善・安定化版)
 
 // --- グローバル変数 ---
-let socket = io();
+let socket = io({
+    // 再接続を試みる設定
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+});
+
 let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
 let groupId = "";
@@ -49,7 +55,12 @@ function updateNavBar(backAction, showTop = true) {
 
     if (showTop) {
         topBtn.style.display = 'block';
-        topBtn.onclick = showRoleSelectionUI;
+        topBtn.onclick = () => {
+            // トップに戻る際に状態をリセット
+            isHost = false;
+            gameMode = 'multi';
+            showRoleSelectionUI();
+        };
     } else {
         topBtn.style.display = 'none';
     }
@@ -63,10 +74,28 @@ socket.on('connect', () => {
   if (!playerId) {
     socket.emit('request_new_player_id');
   } else {
+    // ★修正: 接続が確立するたびに再接続処理を送り、ホスト復帰などを可能にする
     socket.emit('reconnect_player', { playerId, name: playerName });
-    showRoleSelectionUI();
+    // 画面がリロードされた場合などを想定し、一旦最初の画面を表示
+    // サーバーからの応答で適切な画面に遷移する
+    if (!document.querySelector('#app-container').hasChildNodes() || document.querySelector('#app-container p').textContent === 'Loading...') {
+        showRoleSelectionUI();
+    }
   }
 });
+
+socket.on('disconnect', () => {
+    console.error('サーバーとの接続が切れました。再接続を試みます...');
+    const container = getContainer();
+    container.innerHTML = `
+        <div style="text-align: center;">
+            <h2>接続が切れました</h2>
+            <p>サーバーに再接続しています...</p>
+        </div>
+    `;
+    clearAllTimers(); // タイマーをクリア
+});
+
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
@@ -126,10 +155,13 @@ function showPlayerMenuUI(phase) {
         </div>
     `;
     
-    if (phase === 'GROUP_SELECTION') {
-        document.getElementById('multi-play-btn').onclick = showGroupSelectionUI;
-    } else if (phase === 'WAITING_FOR_NEXT_GAME' || phase === 'GAME_IN_PROGRESS') {
-        document.getElementById('multi-play-btn').onclick = () => socket.emit("rejoin_game", { playerId });
+    const multiPlayBtn = document.getElementById('multi-play-btn');
+    if (multiPlayBtn) {
+        if (phase === 'GROUP_SELECTION') {
+            multiPlayBtn.onclick = showGroupSelectionUI;
+        } else if (phase === 'WAITING_FOR_NEXT_GAME' || phase === 'GAME_IN_PROGRESS') {
+            multiPlayBtn.onclick = () => socket.emit("rejoin_game", { playerId });
+        }
     }
     
     document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
@@ -263,7 +295,7 @@ function showHostUI() {
       <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
     <hr/>
-    <h3>🔀 グループ割り振り設定</h3>
+    <h3>🔀 グループ割り振り設定 (今回のスコア順)</h3>
     <div>
       <label>グループ数：<input id="groupCount" type="number" value="3" min="1" max="10"></label>
       <label>上位何グループにスコア上位を集中：<input id="topGroupCount" type="number" value="1" min="1"></label>
@@ -317,6 +349,7 @@ function showGameScreen(state) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
   const container = getContainer();
+  // 画面がまだ構築されていない場合のみinnerHTMLを全書き換え
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
       <div id="game-area">
@@ -555,14 +588,6 @@ function fixName() {
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
 
-function backToGroupSelection() {
-  if (groupId) {
-    socket.emit("leave_group", { groupId, playerId });
-    groupId = "";
-  }
-  showGroupSelectionUI();
-}
-
 function submitAnswer(id) {
   if (alreadyAnswered) return;
   alreadyAnswered = true;
@@ -617,11 +642,6 @@ function updateGameUI(state) {
     }
     hasAnimated = true;
   }
-
-  const pointDiv = document.getElementById('current-point');
-  if (pointDiv && state.current?.point) {
-    pointDiv.textContent = `この問題: ${state.current.point}点`;
-  }
   
   const correctCard = state.current?.cards.find(c => c.correct);
   if (state.answered && correctCard && correctCard.chosenBy === playerName) {
@@ -661,15 +681,17 @@ function updateGameUI(state) {
   const otherPlayers = state.players.filter(p => p.playerId !== playerId);
 
   const myInfoDiv = document.getElementById('my-info');
-  if(myPlayer) {
+  if(myPlayer && myInfoDiv) {
     myInfoDiv.innerHTML = `<h4>自分: ${myPlayer.name} (正解: ${myPlayer.correctCount ?? 0})</h4>${renderHpBar(myPlayer.hp)}`;
   }
 
   const othersInfoDiv = document.getElementById('others-info');
-  othersInfoDiv.innerHTML = '<h4>他のプレイヤー</h4>';
-  otherPlayers.forEach(p => {
-    othersInfoDiv.innerHTML += `<div><strong>${p.name} (正解: ${p.correctCount ?? 0})</strong>${renderHpBar(p.hp)}</div>`;
-  });
+  if (othersInfoDiv) {
+      othersInfoDiv.innerHTML = '<h4>他のプレイヤー</h4>';
+      otherPlayers.forEach(p => {
+        othersInfoDiv.innerHTML += `<div><strong>${p.name} (正解: ${p.correctCount ?? 0})</strong>${renderHpBar(p.hp)}</div>`;
+      });
+  }
 }
 
 function updateSinglePlayGameUI(state) {
@@ -687,22 +709,25 @@ function updateSinglePlayGameUI(state) {
   }
 
   const cardsGrid = document.getElementById('cards-grid');
-  cardsGrid.innerHTML = '';
-  state.current?.cards.forEach(card => {
-    const div = document.createElement("div");
-    div.className = "card";
-    
-    if (card.correct) div.style.background = "gold";
-    if (card.incorrect) div.style.background = "crimson";
+  if (cardsGrid) {
+    cardsGrid.innerHTML = '';
+    state.current?.cards.forEach(card => {
+        const div = document.createElement("div");
+        div.className = "card";
+        
+        if (card.correct) div.style.background = "gold";
+        if (card.incorrect) div.style.background = "crimson";
 
-    div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
-    div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); };
-    cardsGrid.appendChild(div);
-  });
-
-  document.getElementById('single-player-info').innerHTML = `
-    <h4>スコア: ${state.score}</h4>
-  `;
+        div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
+        div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); };
+        cardsGrid.appendChild(div);
+    });
+  }
+  
+  const singlePlayerInfo = document.getElementById('single-player-info');
+  if (singlePlayerInfo) {
+      singlePlayerInfo.innerHTML = `<h4>スコア: ${state.score}</h4>`;
+  }
 }
 
 function renderHpBar(hp) {
@@ -733,7 +758,7 @@ function animateNormalText(elementId, text, speed) {
       element.textContent = text;
       clearInterval(readInterval);
       readInterval = null;
-      socket.emit("read_done", groupId);
+      if (gameMode === 'multi') socket.emit("read_done", groupId);
     } else {
       element.textContent = text.slice(0, i);
     }
@@ -802,7 +827,9 @@ socket.on('multiplayer_status_changed', (phase) => {
             'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...',
             'GAME_IN_PROGRESS': 'ゲームが進行中です。クリックして復帰します。'
         }[phase] || '待機中...';
-        document.getElementById('multi-play-status').textContent = statusText;
+        
+        const statusEl = document.getElementById('multi-play-status');
+        if (statusEl) statusEl.textContent = statusText;
     }
 });
 
@@ -811,8 +838,6 @@ socket.on('host_setup_done', () => {
 });
 
 socket.on('wait_for_next_game', showWaitingScreen);
-
-socket.on("start_group_selection", showGroupSelectionUI);
 
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
@@ -851,9 +876,13 @@ socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
 
+  // ★修正: 今回のスコアと累計スコアを表示
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
-    const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
+    const members = data.players.map(p => 
+        `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})<br>
+         <small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`
+    ).join("");
     const modeSelector = `
       <label>モード: 
         <select class="group-mode-selector" data-groupid="${gId}">
