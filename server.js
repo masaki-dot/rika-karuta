@@ -1,4 +1,4 @@
-// server.js (ホスト再接続対応・機能改善版)
+// server.js (デプロイエラー修正・ホスト再接続対応版)
 
 const express = require("express");
 const http = require("http");
@@ -19,7 +19,7 @@ const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
-let hostPlayerId = null; // ★追加: ホストのplayerIdを永続的に保持
+let hostPlayerId = null; 
 let globalTorifudas = [];
 let globalYomifudas = [];
 let globalSettings = {};
@@ -101,7 +101,7 @@ function parseAndSetCards(data) {
 function resetAllGameData() {
     console.log('🚨 ゲームデータが完全にリセットされます...');
     hostSocketId = null;
-    hostPlayerId = null; // ★修正
+    hostPlayerId = null;
     globalTorifudas = [];
     globalYomifudas = [];
     globalSettings = {};
@@ -344,11 +344,9 @@ io.on("connection", (socket) => {
     }
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
 
-    // ★★★ 修正: 再接続したプレイヤーがホストだった場合の復帰処理 ★★★
     if (players[playerId].isHost && playerId === hostPlayerId) {
         hostSocketId = socket.id;
         console.log("👑 ホストが復帰しました:", players[playerId].name);
-        // ホストに現在のUIを再表示させる
         socket.emit('host_setup_done'); 
     }
   });
@@ -535,13 +533,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host_join", ({ playerId }) => {
-    // ★修正: 既存のホストがいる場合は何もしない (二重ホスト防止)
     if (hostPlayerId && hostPlayerId !== playerId) {
         socket.emit('error_message', 'すでに別のホストがゲームを管理しています。');
         return;
     }
     hostSocketId = socket.id;
-    hostPlayerId = playerId; // ★修正
+    hostPlayerId = playerId;
     if (players[playerId]) {
         players[playerId].isHost = true;
     }
@@ -924,11 +921,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
     
-    // ★★★ 修正: ホストが切断してもゲームを継続 ★★★
     if (socket.id === hostSocketId) {
         console.warn("👑 ホストが一時的に切断しました。復帰を待ちます。");
-        hostSocketId = null; // socket.id は無効になるので null にする
-        // hostPlayerId はそのまま保持
+        hostSocketId = null;
         return;
     }
 
@@ -941,7 +936,8 @@ io.on("connection", (socket) => {
 });
 
 // サーバー起動
-const PORT = process.process.env.PORT || 3000;
+// ★★★ 修正: process.process.env -> process.env に修正 ★★★
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
