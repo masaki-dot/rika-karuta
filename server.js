@@ -1,4 +1,4 @@
-// server.js (スコア永続化・データ保存 修正版 - 完全版)
+// server.js (最終修正版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -13,7 +13,8 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'date');
+// ★★★ ディレクトリ名を 'data' に設定 ★★★
+const DATA_DIR = path.join(__dirname, 'data');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
@@ -28,24 +29,47 @@ let questionPresets = {};
 
 // --- データ管理 ---
 const players = {};
-const groups = {}; // このオブジェクトでプレイヤーの累計スコアを永続的に管理する
-const states = {}; // このオブジェクトはゲームごとにリセットされる
+const groups = {};
+const states = {};
 const singlePlayStates = {};
 
 // --- サーバー初期化処理 ---
+function initializeDirectories() {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+            console.log(`✅ Created directory: ${DATA_DIR}`);
+        }
+        if (!fs.existsSync(USER_PRESETS_DIR)) {
+            fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
+            console.log(`✅ Created directory: ${USER_PRESETS_DIR}`);
+        }
+        if (!fs.existsSync(RANKINGS_DIR)) {
+            fs.mkdirSync(RANKINGS_DIR, { recursive: true });
+            console.log(`✅ Created directory: ${RANKINGS_DIR}`);
+        }
+    } catch (err) {
+        console.error("⚠️ Failed to create data directories:", err);
+    }
+}
+initializeDirectories();
+
 function loadPresets() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  
   try {
-    const data = fs.readFileSync(path.join(DATA_DIR, 'questions.json'), 'utf8');
-    questionPresets = JSON.parse(data);
-    console.log('✅ デフォルト問題プリセットを読み込みました。');
+    const defaultPresetPath = path.join(DATA_DIR, 'questions.json');
+    if (fs.existsSync(defaultPresetPath)) {
+        const data = fs.readFileSync(defaultPresetPath, 'utf8');
+        questionPresets = JSON.parse(data);
+        console.log('✅ デフォルト問題プリセットを読み込みました。');
+    } else {
+        console.warn(`⚠️ デフォルト問題プリセットファイルが見つかりません: ${defaultPresetPath}`);
+        questionPresets = {};
+    }
   } catch (err) {
     console.error('⚠️ デフォルト問題プリセットの読み込みに失敗しました:', err);
     questionPresets = {};
   }
   
-  if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
   try {
     const userFiles = fs.readdirSync(USER_PRESETS_DIR).filter(file => file.endsWith('.json'));
     userFiles.forEach(file => {
@@ -162,14 +186,14 @@ function finalizeGame(groupId) {
         const correctCount = p.correctCount || 0;
         let bonus = 0;
         if (i === 0) bonus = 200; else if (i === 1) bonus = 100;
-        p.finalScore = (correctCount * 10) + bonus; // 今回のスコア
+        p.finalScore = (correctCount * 10) + bonus;
         p.currentScore = p.finalScore;
 
         const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === p.playerId);
         if (gPlayer && !alreadyUpdated.has(gPlayer.playerId)) {
             gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
             gPlayer.currentScore = p.finalScore;
-            p.totalScore = gPlayer.totalScore; // 最終ランキング表示用に累計スコアも渡す
+            p.totalScore = gPlayer.totalScore;
             alreadyUpdated.add(gPlayer.playerId);
         } else {
             p.totalScore = gPlayer?.totalScore ?? p.finalScore;
@@ -191,23 +215,31 @@ function nextQuestion(groupId) {
     if (!state || state.locked) return;
     if (state.readTimer) clearTimeout(state.readTimer);
     state.readTimer = null;
+    
     const usedYomifudaTexts = new Set(state.usedQuestions);
     const remainingYomifudas = globalYomifudas.filter(y => !usedYomifudaTexts.has(y.text));
-    if (remainingYomifudas.length === 0 || state.questionCount >= state.maxQuestions) {
+    
+    if (remainingYomifudas.length < (state.numCards || 5) || remainingYomifudas.length === 0 || state.questionCount >= state.maxQuestions) {
+        console.log(`[${groupId}] 問題不足または最大質問数到達のためゲームを終了します。`);
         return finalizeGame(groupId);
     }
+
     const question = remainingYomifudas[Math.floor(Math.random() * remainingYomifudas.length)];
     state.usedQuestions.push(question.text);
+
     const correctTorifuda = globalTorifudas.find(t => t.term === question.answer);
     if (!correctTorifuda) {
-        console.error(`Error: Correct torifuda not found for answer "${question.answer}"`);
-        return nextQuestion(groupId);
+        console.error(`[CRITICAL] 正解の取り札が見つかりません: "${question.answer}". 次の問題へスキップします。`);
+        setTimeout(() => nextQuestion(groupId), 3000);
+        return;
     }
     const distractors = shuffle([...globalTorifudas.filter(t => t.id !== correctTorifuda.id)]).slice(0, state.numCards - 1);
     const cards = shuffle([...distractors, correctTorifuda]);
+
     let point = 1;
     const rand = Math.random();
     if (rand < 0.05) { point = 5; } else if (rand < 0.20) { point = 3; } else if (rand < 0.60) { point = 2; }
+
     const originalText = question.text;
     let maskedIndices = [];
     if (state.gameMode === 'mask') {
@@ -216,6 +248,7 @@ function nextQuestion(groupId) {
         shuffle(indices);
         maskedIndices = indices.slice(0, Math.floor(indices.length / 2));
     }
+    
     state.current = {
         text: originalText, maskedIndices: maskedIndices, answer: question.answer, point,
         cards: cards.map(c => ({ id: c.id, term: c.term }))
@@ -225,21 +258,29 @@ function nextQuestion(groupId) {
     state.answered = false;
     state.readDone = new Set();
     state.misClicks = [];
+
     io.to(groupId).emit("state", sanitizeState(state));
 }
 
 // --- シングルプレイ用ヘルパー ---
 function readRankingFile(filePath) {
-    if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
-    if (fs.existsSync(filePath)) {
-        try { return JSON.parse(fs.readFileSync(filePath, 'utf8')); }
-        catch (e) { return {}; }
+    try {
+        if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
+        if (fs.existsSync(filePath)) {
+            return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        }
+    } catch (err) {
+        console.error(`Error reading ranking file ${filePath}:`, err);
     }
     return {};
 }
 function writeRankingFile(filePath, data) {
-    if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    try {
+        if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error(`Error writing ranking file ${filePath}:`, err);
+    }
 }
 function nextSingleQuestion(socketId, isFirstQuestion = false) {
     const state = singlePlayStates[socketId];
@@ -321,7 +362,6 @@ io.on("connection", (socket) => {
         
         if (!isNextGame) {
             Object.keys(states).forEach(key => delete states[key]);
-            // ★修正: 累計スコアをリセットするためにgroupsを初期化
             Object.keys(groups).forEach(key => delete groups[key]);
             gamePhase = 'GROUP_SELECTION';
             io.emit("multiplayer_status_changed", gamePhase);
@@ -367,7 +407,7 @@ io.on("connection", (socket) => {
                     console.log(`💾 プリセットを更新 (${saveAction}): ${filePath}`);
                 }
             }
-            loadPresets(); // 保存後にプリセットを再読み込み
+            loadPresets();
         } catch (err) {
             console.error('プリセットの保存/更新に失敗しました:', err);
         }
@@ -378,7 +418,6 @@ io.on("connection", (socket) => {
     
     if (!isNextGame) {
         Object.keys(states).forEach(key => delete states[key]);
-        // ★修正: 累計スコアをリセットするためにgroupsを初期化
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
         socket.emit('host_setup_done');
@@ -421,7 +460,7 @@ io.on("connection", (socket) => {
       groups[groupId].players.push({ 
           playerId, 
           name: player.name, 
-          totalScore: existingPlayer?.totalScore || 0, // ★修正: 累計スコアを引き継ぐ
+          totalScore: existingPlayer?.totalScore || 0,
           currentScore: 0 
       });
     }
@@ -506,7 +545,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host_request_state", () => {
-    if (socket.id === hostSocketId) socket.emit("host_state", getHostState());
+    if (socket.id === hostSocketId) {
+        socket.emit("host_state", getHostState());
+    }
   });
   
   socket.on("request_global_ranking", () => {
@@ -580,7 +621,6 @@ io.on("connection", (socket) => {
       }
     }
     
-    // ★修正: groupsを再構築する際に累計スコアを保持する
     const allPlayerScores = new Map(allPlayers.map(p => [p.playerId, p.totalScore]));
     Object.keys(groups).forEach(k => delete groups[k]);
     Object.keys(states).forEach(k => delete states[k]);
@@ -677,7 +717,7 @@ io.on("connection", (socket) => {
     if (states[groupId] && (gameMode === 'normal' || gameMode === 'mask')) {
       states[groupId].gameMode = gameMode;
       console.log(`👑 Host set ${groupId} to ${gameMode} mode.`);
-      socket.emit("host_state", getHostState());
+      io.to(hostSocketId).emit("host_state", getHostState());
     }
   });
   
@@ -734,7 +774,7 @@ io.on("connection", (socket) => {
         console.error('プリセットの削除に失敗しました:', error);
     }
   });
-
+  
   socket.on('request_presets', () => {
     const presetsForClient = {};
     for(const [id, data] of Object.entries(questionPresets)) {
@@ -827,7 +867,7 @@ io.on("connection", (socket) => {
     });
     delete singlePlayStates[socket.id];
   });
-
+  
   socket.on("disconnect", () => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
     if (socket.id === hostSocketId) {
