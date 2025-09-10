@@ -1,4 +1,4 @@
-// server.js (バグ修正・安定化版)
+// server.js (ホスト再接続対応・機能改善版)
 
 const express = require("express");
 const http = require("http");
@@ -19,6 +19,7 @@ const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
 // --- グローバル変数 ---
 let hostSocketId = null;
+let hostPlayerId = null; // ★追加: ホストのplayerIdを永続的に保持
 let globalTorifudas = [];
 let globalYomifudas = [];
 let globalSettings = {};
@@ -96,6 +97,23 @@ function parseAndSetCards(data) {
     globalYomifudas = [...yomifudas];
 }
 
+// ゲーム全体をリセットする関数 (ホストの完全リセットボタン用)
+function resetAllGameData() {
+    console.log('🚨 ゲームデータが完全にリセットされます...');
+    hostSocketId = null;
+    hostPlayerId = null; // ★修正
+    globalTorifudas = [];
+    globalYomifudas = [];
+    globalSettings = {};
+    gamePhase = 'INITIAL';
+    
+    Object.keys(players).forEach(key => delete players[key]);
+    Object.keys(groups).forEach(key => delete groups[key]);
+    Object.keys(states).forEach(key => delete states[key]);
+    console.log('🚨 リセットが完了しました。');
+}
+
+
 // --- マルチプレイ用ヘルパー ---
 function initState(groupId) {
   return {
@@ -141,6 +159,7 @@ function getHostState() {
           name: p.name,
           hp: statePlayer?.hp ?? 20,
           correctCount: statePlayer?.correctCount ?? 0,
+          currentScore: p.currentScore ?? 0,
           totalScore: p.totalScore ?? 0
         };
       })
@@ -170,11 +189,14 @@ function finalizeGame(groupId) {
         let bonus = 0;
         if (i === 0) bonus = 200;
         else if (i === 1) bonus = 100;
+        
         p.finalScore = (correctCount * 10) + bonus;
+        p.currentScore = p.finalScore;
 
         const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === p.playerId);
         if (gPlayer && !alreadyUpdated.has(gPlayer.playerId)) {
             gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
+            gPlayer.currentScore = p.finalScore;
             p.totalScore = gPlayer.totalScore;
             alreadyUpdated.add(gPlayer.playerId);
         } else {
@@ -309,7 +331,7 @@ io.on("connection", (socket) => {
 
   socket.on('request_new_player_id', () => {
     const playerId = uuidv4();
-    players[playerId] = { playerId, socketId: socket.id, name: "未設定" };
+    players[playerId] = { playerId, socketId: socket.id, name: "未設定", isHost: false };
     socket.emit('new_player_id_assigned', playerId);
   });
 
@@ -318,9 +340,17 @@ io.on("connection", (socket) => {
       players[playerId].socketId = socket.id;
       if (name) players[playerId].name = name;
     } else {
-      players[playerId] = { playerId, socketId: socket.id, name: name || "未設定" };
+      players[playerId] = { playerId, socketId: socket.id, name: name || "未設定", isHost: false };
     }
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
+
+    // ★★★ 修正: 再接続したプレイヤーがホストだった場合の復帰処理 ★★★
+    if (players[playerId].isHost && playerId === hostPlayerId) {
+        hostSocketId = socket.id;
+        console.log("👑 ホストが復帰しました:", players[playerId].name);
+        // ホストに現在のUIを再表示させる
+        socket.emit('host_setup_done'); 
+    }
   });
 
   socket.on('request_game_phase', ({ fromEndScreen = false } = {}) => {
@@ -430,12 +460,12 @@ io.on("connection", (socket) => {
     if (!states[groupId]) states[groupId] = initState(groupId);
 
     if (!groups[groupId].players.find(p => p.playerId === playerId)) {
-      groups[groupId].players.push({ playerId, name: player.name, totalScore: 0 });
+      groups[groupId].players.push({ playerId, name: player.name, totalScore: 0, currentScore: 0 });
     }
     
     const state = states[groupId];
     if (!state.players.find(p => p.playerId === playerId)) {
-      state.players.push({ playerId, name: player.name, hp: 20, correctCount: 0 });
+      state.players.push({ playerId, name: player.name, hp: 20, correctCount: 0, currentScore: 0 });
     }
     
     if(hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
@@ -505,8 +535,16 @@ io.on("connection", (socket) => {
   });
 
   socket.on("host_join", ({ playerId }) => {
+    // ★修正: 既存のホストがいる場合は何もしない (二重ホスト防止)
+    if (hostPlayerId && hostPlayerId !== playerId) {
+        socket.emit('error_message', 'すでに別のホストがゲームを管理しています。');
+        return;
+    }
     hostSocketId = socket.id;
-    if (players[playerId]) players[playerId].isHost = true;
+    hostPlayerId = playerId; // ★修正
+    if (players[playerId]) {
+        players[playerId].isHost = true;
+    }
     console.log("👑 ホストが接続しました:", players[playerId]?.name);
   });
 
@@ -542,7 +580,7 @@ io.on("connection", (socket) => {
         const group = groups[groupId];
 
         state.players = group.players.map(p => ({ 
-            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 
+            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0, currentScore: 0 
         }));
         
         nextQuestion(groupId);
@@ -553,7 +591,7 @@ io.on("connection", (socket) => {
     if (socket.id !== hostSocketId) return;
 
     const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
-    const sortedPlayers = allPlayers.sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+    const sortedPlayers = allPlayers.sort((a, b) => (b.currentScore || 0) - (a.currentScore || 0));
 
     const numTopPlayers = groupSizes.slice(0, topGroupCount).reduce((sum, size) => sum + size, 0);
     const topPlayers = sortedPlayers.slice(0, numTopPlayers);
@@ -611,7 +649,7 @@ io.on("connection", (socket) => {
         groups[gId] = { players: pInGroup };
         states[gId] = initState(gId);
         states[gId].players = pInGroup.map(p => ({ 
-            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0 
+            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0, currentScore: 0 
         }));
     }
     for (const [gId, group] of Object.entries(groups)) {
@@ -628,6 +666,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("answer", ({ groupId, playerId, name, id }) => {
+    if (!socket.rooms.has(groupId)) {
+        console.warn(`[Security] Socket ${socket.id} tried to answer for group ${groupId} without joining.`);
+        return;
+    }
+    
     const state = states[groupId];
     if (!state || !state.current || state.answered || state.locked) return;
     
@@ -682,6 +725,10 @@ io.on("connection", (socket) => {
     Object.keys(states).forEach(key => delete states[key]); 
     gamePhase = 'WAITING_FOR_NEXT_GAME';
     
+    Object.values(groups).forEach(group => {
+        group.players.forEach(p => p.currentScore = 0);
+    });
+    
     io.emit("multiplayer_status_changed", gamePhase);
     socket.broadcast.emit('wait_for_next_game');
     
@@ -690,18 +737,7 @@ io.on("connection", (socket) => {
 
   socket.on('host_full_reset', () => {
     if (socket.id !== hostSocketId) return;
-    console.log('🚨 ホストによってゲームが完全にリセットされました。');
-    hostSocketId = null;
-    globalTorifudas = [];
-    globalYomifudas = [];
-    globalSettings = {};
-    gamePhase = 'INITIAL';
-    
-    Object.keys(players).forEach(key => delete players[key]);
-    Object.keys(groups).forEach(key => delete groups[key]);
-    Object.keys(states).forEach(key => delete states[key]);
-
-    io.emit('multiplayer_status_changed', gamePhase);
+    resetAllGameData();
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
   });
 
@@ -887,6 +923,15 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
+    
+    // ★★★ 修正: ホストが切断してもゲームを継続 ★★★
+    if (socket.id === hostSocketId) {
+        console.warn("👑 ホストが一時的に切断しました。復帰を待ちます。");
+        hostSocketId = null; // socket.id は無効になるので null にする
+        // hostPlayerId はそのまま保持
+        return;
+    }
+
     const player = getPlayerBySocketId(socket.id);
     if (player) {
       console.log(`👻 ${player.name} がオフラインになりました。復帰を待ちます。`);
@@ -896,7 +941,7 @@ io.on("connection", (socket) => {
 });
 
 // サーバー起動
-const PORT = process.env.PORT || 3000;
+const PORT = process.process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
