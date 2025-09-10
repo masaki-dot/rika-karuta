@@ -129,6 +129,7 @@ function showRoleSelectionUI() {
     `;
     document.getElementById('host-btn').onclick = () => {
         isHost = true;
+        hostKey = localStorage.getItem('hostKey'); // 送信する直前に最新の値を取得
         socket.emit('host_join', { playerId, hostKey });
     };
     document.getElementById('player-btn').onclick = () => {
