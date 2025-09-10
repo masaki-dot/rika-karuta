@@ -13,7 +13,7 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.join(__dirname, 'date');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
@@ -40,7 +40,7 @@ function loadPresets() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     
-    const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
+    const data = fs.readFileSync(path.join(__dirname, 'date', 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
     console.log('✅ デフォルト問題プリセットを読み込みました。');
   } catch (err) {
