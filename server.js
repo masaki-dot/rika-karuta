@@ -1,4 +1,4 @@
-// server.js (ホスト復帰処理 修正版)
+// server.js (スコア永続化・データ保存 修正版 - 完全版)
 
 const express = require("express");
 const http = require("http");
@@ -13,7 +13,7 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'date'); // 'data' -> 'date'
+const DATA_DIR = path.join(__dirname, 'date');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
@@ -28,8 +28,8 @@ let questionPresets = {};
 
 // --- データ管理 ---
 const players = {};
-const groups = {};
-const states = {};
+const groups = {}; // このオブジェクトでプレイヤーの累計スコアを永続的に管理する
+const states = {}; // このオブジェクトはゲームごとにリセットされる
 const singlePlayStates = {};
 
 // --- サーバー初期化処理 ---
@@ -61,7 +61,7 @@ function loadPresets() {
 }
 loadPresets();
 
-// --- ヘルパー関数群 (変更なし) ---
+// --- ヘルパー関数群 ---
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -105,7 +105,8 @@ function resetAllGameData() {
     Object.keys(states).forEach(key => delete states[key]);
     console.log('🚨 リセットが完了しました。');
 }
-// --- マルチプレイ用ヘルパー (変更なし) ---
+
+// --- マルチプレイ用ヘルパー ---
 function initState(groupId) {
   return {
     groupId, players: [], questionCount: 0,
@@ -161,13 +162,14 @@ function finalizeGame(groupId) {
         const correctCount = p.correctCount || 0;
         let bonus = 0;
         if (i === 0) bonus = 200; else if (i === 1) bonus = 100;
-        p.finalScore = (correctCount * 10) + bonus;
+        p.finalScore = (correctCount * 10) + bonus; // 今回のスコア
         p.currentScore = p.finalScore;
+
         const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === p.playerId);
         if (gPlayer && !alreadyUpdated.has(gPlayer.playerId)) {
             gPlayer.totalScore = (gPlayer.totalScore || 0) + p.finalScore;
             gPlayer.currentScore = p.finalScore;
-            p.totalScore = gPlayer.totalScore;
+            p.totalScore = gPlayer.totalScore; // 最終ランキング表示用に累計スコアも渡す
             alreadyUpdated.add(gPlayer.playerId);
         } else {
             p.totalScore = gPlayer?.totalScore ?? p.finalScore;
@@ -225,7 +227,8 @@ function nextQuestion(groupId) {
     state.misClicks = [];
     io.to(groupId).emit("state", sanitizeState(state));
 }
-// --- シングルプレイ用ヘルパー (変更なし) ---
+
+// --- シングルプレイ用ヘルパー ---
 function readRankingFile(filePath) {
     if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
     if (fs.existsSync(filePath)) {
@@ -278,9 +281,7 @@ io.on("connection", (socket) => {
     socket.emit('new_player_id_assigned', playerId);
   });
 
-  // ★★★ ここからが重要な修正箇所 ★★★
   socket.on('reconnect_player', ({ playerId, name }) => {
-    // プレイヤー情報を更新または作成
     if (players[playerId]) {
       players[playerId].socketId = socket.id;
       if (name) players[playerId].name = name;
@@ -289,17 +290,12 @@ io.on("connection", (socket) => {
     }
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
 
-    // 再接続したプレイヤーがホストかどうかを判定
     if (players[playerId].isHost && playerId === hostPlayerId) {
         hostSocketId = socket.id;
         console.log("👑 ホストが復帰しました:", players[playerId].name);
-        
-        // ★修正: ゲームが進行中かどうかに応じて、送るイベントを分ける
         if (gamePhase !== 'INITIAL') {
-            // ゲームが進行中なら、ホスト管理画面に直接復帰させる
             socket.emit('host_reconnect_success');
         } else {
-            // ゲームが始まっていなければ、通常のゲーム設定画面に誘導する
             const presetsForClient = {};
             for(const [id, data] of Object.entries(questionPresets)) {
                 presetsForClient[id] = { category: data.category, name: data.name };
@@ -308,10 +304,8 @@ io.on("connection", (socket) => {
         }
     }
   });
-  // ★★★ 修正箇所ここまで ★★★
 
   socket.on('request_game_phase', ({ fromEndScreen = false } = {}) => {
-    // loadPresets(); // 頻繁な読み込みは不要な場合があるのでコメントアウトも検討
     const presetsForClient = {};
     for(const [id, data] of Object.entries(questionPresets)) {
         presetsForClient[id] = { category: data.category, name: data.name };
@@ -327,6 +321,7 @@ io.on("connection", (socket) => {
         
         if (!isNextGame) {
             Object.keys(states).forEach(key => delete states[key]);
+            // ★修正: 累計スコアをリセットするためにgroupsを初期化
             Object.keys(groups).forEach(key => delete groups[key]);
             gamePhase = 'GROUP_SELECTION';
             io.emit("multiplayer_status_changed", gamePhase);
@@ -339,36 +334,40 @@ io.on("connection", (socket) => {
     }
   });
 
-  // (以降のコードは前回の修正から変更ありません)
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
     if (saveAction) {
         try {
             if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
             let filePath;
-            let finalRawData = [...rawData];
+            let dataToSave;
 
             if (saveAction === 'new') {
                 const newPresetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
                 filePath = path.join(USER_PRESETS_DIR, `${newPresetId}.json`);
-                const dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData };
+                dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData };
                 fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
                 console.log(`💾 新規プリセットを保存: ${filePath}`);
+
             } else if (presetId && presetId.startsWith('user_')) {
                 const fileName = `${presetId.replace('user_', '')}.json`;
                 filePath = path.join(USER_PRESETS_DIR, fileName);
                 
                 if (fs.existsSync(filePath)) {
                     const existingData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    let finalRawData;
+
                     if (saveAction === 'append') {
                         finalRawData = existingData.rawData.concat(rawData);
+                    } else { // 'overwrite'
+                        finalRawData = rawData;
                     }
-                    
-                    const dataToSave = { ...existingData, rawData: finalRawData };
+                    dataToSave = { ...existingData, rawData: finalRawData };
                     fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
                     console.log(`💾 プリセットを更新 (${saveAction}): ${filePath}`);
                 }
             }
+            loadPresets(); // 保存後にプリセットを再読み込み
         } catch (err) {
             console.error('プリセットの保存/更新に失敗しました:', err);
         }
@@ -379,6 +378,7 @@ io.on("connection", (socket) => {
     
     if (!isNextGame) {
         Object.keys(states).forEach(key => delete states[key]);
+        // ★修正: 累計スコアをリセットするためにgroupsを初期化
         Object.keys(groups).forEach(key => delete groups[key]);
         gamePhase = 'GROUP_SELECTION';
         socket.emit('host_setup_done');
@@ -389,37 +389,46 @@ io.on("connection", (socket) => {
         io.to(hostSocketId).emit('host_setup_done');
     }
   });
+  
   socket.on("join", ({ groupId, playerId }) => {
     const player = players[playerId];
     if (!player) return;
-    for (const gId in groups) {
-        if (groups[gId] && groups[gId].players) {
-            groups[gId].players = groups[gId].players.filter(p => p.playerId !== playerId);
-        }
-        if (states[gId] && states[gId].players) {
-            states[gId].players = states[gId].players.filter(p => p.playerId !== playerId);
+
+    const previousGroupId = Object.keys(groups).find(gId => groups[gId].players.some(p => p.playerId === playerId));
+    let existingPlayer = null;
+
+    if (previousGroupId) {
+        existingPlayer = groups[previousGroupId].players.find(p => p.playerId === playerId);
+        groups[previousGroupId].players = groups[previousGroupId].players.filter(p => p.playerId !== playerId);
+        if (states[previousGroupId]) {
+            states[previousGroupId].players = states[previousGroupId].players.filter(p => p.playerId !== playerId);
         }
     }
+    
     const socketInstance = io.sockets.sockets.get(player.socketId);
     if (socketInstance) {
         for (const room of socketInstance.rooms) {
-            if (room !== socketInstance.id) {
-                socketInstance.leave(room);
-            }
+            if (room !== socketInstance.id) socketInstance.leave(room);
         }
     }
+    
     socket.join(groupId);
+    
     if (!groups[groupId]) groups[groupId] = { players: [] };
     if (!states[groupId]) states[groupId] = initState(groupId);
-    if (!groups[groupId].players.find(p => p.playerId === playerId)) {
-      groups[groupId].players.push({ playerId, name: player.name, totalScore: 0, currentScore: 0 });
+
+    if (!groups[groupId].players.some(p => p.playerId === playerId)) {
+      groups[groupId].players.push({ 
+          playerId, 
+          name: player.name, 
+          totalScore: existingPlayer?.totalScore || 0, // ★修正: 累計スコアを引き継ぐ
+          currentScore: 0 
+      });
     }
-    const state = states[groupId];
-    if (!state.players.find(p => p.playerId === playerId)) {
-      state.players.push({ playerId, name: player.name, hp: 20, correctCount: 0, currentScore: 0 });
-    }
+    
     if(hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
+
   socket.on("rejoin_game", ({ playerId }) => {
     for (const [gId, group] of Object.entries(groups)) {
         if (group.players.find(p => p.playerId === playerId)) {
@@ -435,6 +444,7 @@ io.on("connection", (socket) => {
     }
     socket.emit('game_phase_response', { phase: gamePhase });
   });
+
   socket.on("leave_group", ({ groupId, playerId }) => {
     socket.leave(groupId);
     if (groups[groupId]) {
@@ -444,21 +454,26 @@ io.on("connection", (socket) => {
       states[groupId].players = states[groupId].players.filter(p => p.playerId !== playerId);
     }
   });
+
   socket.on("set_name", ({ groupId, playerId, name }) => {
     if (players[playerId]) players[playerId].name = name;
+    
     if (groups[groupId]) {
         const gPlayer = groups[groupId].players.find(p => p.playerId === playerId);
         if (gPlayer) gPlayer.name = name;
     }
+    
     if (states[groupId]) {
         const statePlayer = states[groupId].players.find(p => p.playerId === playerId);
         if (statePlayer) statePlayer.name = name;
     }
+
     if (states[groupId]) {
       io.to(groupId).emit("state", sanitizeState(states[groupId]));
     }
     if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
+  
   socket.on("read_done", (groupId) => {
     const state = states[groupId];
     if (!state || !state.current || state.readTimer || state.answered || state.waitingNext) return;
@@ -474,6 +489,7 @@ io.on("connection", (socket) => {
         }
     }, 30000);
   });
+
   socket.on("host_join", ({ playerId }) => {
     if (hostPlayerId && hostPlayerId !== playerId) {
         socket.emit('error_message', 'すでに別のホストがゲームを管理しています。');
@@ -488,35 +504,38 @@ io.on("connection", (socket) => {
     }
     console.log("👑 ホストが接続しました:", players[playerId]?.name);
   });
+
   socket.on("host_request_state", () => {
     if (socket.id === hostSocketId) socket.emit("host_state", getHostState());
   });
+  
   socket.on("request_global_ranking", () => {
       const allPlayers = Object.values(groups)
           .flatMap(g => g.players).filter(p => p.name !== "未設定")
           .map(p => ({ name: p.name, totalScore: p.totalScore || 0 }));
       socket.emit("global_ranking", allPlayers.sort((a, b) => b.totalScore - a.totalScore));
   });
+
   socket.on("host_start", () => {
     if (socket.id !== hostSocketId) return;
     console.log("▶ ホストが全体スタートを実行");
     gamePhase = 'GAME_IN_PROGRESS';
     for (const groupId of Object.keys(groups)) {
         if (!groups[groupId] || groups[groupId].players.length === 0) continue;
-        if (states[groupId] && states[groupId].readTimer) {
-            clearTimeout(states[groupId].readTimer);
-        }
+        
         const currentGroupMode = states[groupId]?.gameMode || globalSettings.gameMode;
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
-        const state = states[groupId];
+        
         const group = groups[groupId];
-        state.players = group.players.map(p => ({ 
-            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0, currentScore: 0 
+        states[groupId].players = group.players.map(p => ({ 
+            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0
         }));
+        
         nextQuestion(groupId);
     }
   });
+
   socket.on("host_assign_groups", ({ groupCount, topGroupCount, groupSizes }) => {
     if (socket.id !== hostSocketId) return;
     const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
@@ -551,7 +570,7 @@ io.on("connection", (socket) => {
     const unassignedPlayers = [...topPlayers.slice(topPlayerIndex), ...otherPlayers.slice(otherPlayerIndex)];
     let unassignedIndex = 0;
     if (unassignedPlayers.length > 0) {
-      console.log(`${unassignedPlayers.length}人のプレイヤーが定員オーバーしました。空いているグループに追加します。`);
+      console.log(`${unassignedPlayers.length}人のプレイヤーが定員オーバーしました。`);
       while(unassignedIndex < unassignedPlayers.length) {
           for (let i = 1; i <= groupCount; i++) {
               if (unassignedIndex >= unassignedPlayers.length) break;
@@ -560,17 +579,24 @@ io.on("connection", (socket) => {
           }
       }
     }
+    
+    // ★修正: groupsを再構築する際に累計スコアを保持する
+    const allPlayerScores = new Map(allPlayers.map(p => [p.playerId, p.totalScore]));
     Object.keys(groups).forEach(k => delete groups[k]);
     Object.keys(states).forEach(k => delete states[k]);
+
     for (let i = 1; i <= groupCount; i++) {
         const pInGroup = newGroupsConfig[i];
         if (!pInGroup || pInGroup.length === 0) continue;
         const gId = `group${i}`;
-        groups[gId] = { players: pInGroup };
+        groups[gId] = { 
+            players: pInGroup.map(p => ({
+                ...p,
+                totalScore: allPlayerScores.get(p.playerId) || 0,
+                currentScore: 0
+            }))
+        };
         states[gId] = initState(gId);
-        states[gId].players = pInGroup.map(p => ({ 
-            playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0, currentScore: 0 
-        }));
     }
     for (const [gId, group] of Object.entries(groups)) {
         for (const p of group.players) {
@@ -584,6 +610,7 @@ io.on("connection", (socket) => {
     }
     if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
   });
+
   socket.on("answer", ({ groupId, playerId, name, id }) => {
     if (!socket.rooms.has(groupId)) { return; }
     const state = states[groupId];
@@ -625,6 +652,7 @@ io.on("connection", (socket) => {
         checkGameEnd(groupId);
     }
   });
+
   socket.on('host_preparing_next_game', () => {
     if (socket.id !== hostSocketId) return;
     Object.keys(states).forEach(key => delete states[key]); 
@@ -636,11 +664,13 @@ io.on("connection", (socket) => {
     socket.broadcast.emit('wait_for_next_game');
     socket.emit('request_game_phase', { fromEndScreen: true });
   });
+
   socket.on('host_full_reset', () => {
     if (socket.id !== hostSocketId) return;
     resetAllGameData();
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
   });
+
   socket.on('host_set_group_mode', ({ groupId, gameMode }) => {
     if (socket.id !== hostSocketId) return;
     if (!states[groupId]) states[groupId] = initState(groupId);
@@ -650,6 +680,7 @@ io.on("connection", (socket) => {
       socket.emit("host_state", getHostState());
     }
   });
+  
   socket.on('host_export_data', () => {
     if (socket.id !== hostSocketId) return;
     const backupData = { userPresets: {}, rankings: {} };
@@ -667,6 +698,7 @@ io.on("connection", (socket) => {
     }
     socket.emit('export_data_response', backupData);
   });
+
   socket.on('host_import_data', (data) => {
     if (socket.id !== hostSocketId) return;
     try {
@@ -685,6 +717,7 @@ io.on("connection", (socket) => {
         socket.emit('import_data_response', { success: false, message: 'データの読み込みに失敗しました。' });
     }
   });
+  
   socket.on('host_delete_preset', ({ presetId }) => {
     if (socket.id !== hostSocketId) return;
     if (!presetId || !presetId.startsWith('user_')) return;
@@ -701,6 +734,7 @@ io.on("connection", (socket) => {
         console.error('プリセットの削除に失敗しました:', error);
     }
   });
+
   socket.on('request_presets', () => {
     const presetsForClient = {};
     for(const [id, data] of Object.entries(questionPresets)) {
@@ -708,6 +742,7 @@ io.on("connection", (socket) => {
     }
     socket.emit('presets_list', presetsForClient);
   });
+  
   socket.on('start_single_play', ({ name, playerId, difficulty, presetId }) => {
     if (players[playerId]) players[playerId].name = name;
     const presetData = questionPresets[presetId];
@@ -737,6 +772,7 @@ io.on("connection", (socket) => {
     nextSingleQuestion(socket.id, true);
     io.to(socket.id).emit('single_game_start', singlePlayStates[socket.id]);
   });
+
   socket.on('single_answer', ({ id }) => {
     const state = singlePlayStates[socket.id];
     if (!state || state.answered) return;
@@ -757,6 +793,7 @@ io.on("connection", (socket) => {
     io.to(socket.id).emit('single_game_state', state);
     setTimeout(() => nextSingleQuestion(socket.id), 1500);
   });
+
   socket.on('single_game_timeup', () => {
     const state = singlePlayStates[socket.id];
     if (!state) return;
@@ -790,6 +827,7 @@ io.on("connection", (socket) => {
     });
     delete singlePlayStates[socket.id];
   });
+
   socket.on("disconnect", () => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
     if (socket.id === hostSocketId) {
@@ -805,6 +843,7 @@ io.on("connection", (socket) => {
   });
 });
 
+// サーバー起動
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
