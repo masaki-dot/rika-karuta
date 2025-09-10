@@ -1,10 +1,9 @@
-// client.js (ホスト認証修正・最終決定版)
+// client.js (機能追加・安定化 完全版)
 
 // --- グローバル変数 ---
 let socket = io();
 let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
-let hostKey = localStorage.getItem('hostKey');
 let groupId = "";
 let isHost = false;
 let gameMode = 'multi';
@@ -14,7 +13,6 @@ let readInterval = null;
 let unmaskIntervalId = null;
 let countdownIntervalId = null;
 let singleGameTimerId = null;
-let reconnectTimeout = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
@@ -26,16 +24,13 @@ const getNavBar = () => document.getElementById('nav-bar');
 const getNavBackBtn = () => document.getElementById('nav-back-btn');
 const getNavTopBtn = () => document.getElementById('nav-top-btn');
 
-const isGameActive = () => document.getElementById('game-area') || document.getElementById('end-screen-ranking');
-
 function clearAllTimers() {
     if (rankingIntervalId) clearInterval(rankingIntervalId);
     if (readInterval) clearInterval(readInterval);
     if (unmaskIntervalId) clearInterval(unmaskIntervalId);
     if (countdownIntervalId) clearInterval(countdownIntervalId);
     if (singleGameTimerId) clearInterval(singleGameTimerId);
-    if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null; reconnectTimeout = null;
+    rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null;
     document.getElementById('countdown-timer').textContent = '';
     console.log('All client timers cleared.');
 }
@@ -63,37 +58,14 @@ function updateNavBar(backAction, showTop = true) {
 }
 
 // --- アプリケーションの初期化 ---
-window.addEventListener('beforeunload', (event) => {
-    if (isGameActive() && !isHost) { // ホストはリロードする可能性があるので対象外
-        event.preventDefault();
-        event.returnValue = '';
-    }
-});
-
 socket.on('connect', () => {
   console.log('サーバーとの接続が確立しました。');
-  const statusIndicator = document.getElementById('connection-status');
-  statusIndicator.textContent = '● 接続中';
-  statusIndicator.className = 'connected';
-  
-  getContainer().innerHTML = `<p>Loading...</p>`;
-  reconnectTimeout = setTimeout(() => {
-      console.warn("再接続後、サーバーから5秒間応答がありません。トップページに戻ります。");
-      showRoleSelectionUI();
-  }, 5000);
-
   if (!playerId) {
     socket.emit('request_new_player_id');
   } else {
     socket.emit('reconnect_player', { playerId, name: playerName });
+    showRoleSelectionUI();
   }
-});
-
-socket.on('disconnect', () => {
-    console.warn('サーバーとの接続が切れました。');
-    const statusIndicator = document.getElementById('connection-status');
-    statusIndicator.textContent = '● 接続切れ';
-    statusIndicator.className = 'disconnected';
 });
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
@@ -109,8 +81,6 @@ function showRoleSelectionUI() {
     updateNavBar(null, false);
     isHost = false;
     gameMode = 'multi';
-    groupId = "";
-    hostKey = localStorage.getItem('hostKey'); // 最新のホストキーを再取得
     const container = getContainer();
     container.innerHTML = `
         <div style="text-align: center;">
@@ -120,13 +90,12 @@ function showRoleSelectionUI() {
                 <button id="host-btn" class="button-primary" style="font-size: 1.5em; height: 60px; margin: 10px;">ホストで参加</button>
                 <button id="player-btn" class="button-secondary" style="font-size: 1.5em; height: 60px; margin: 10px;">プレイヤーで参加</button>
             </div>
-            ${hostKey ? `<p style="color: var(--text-muted);">ホストとして復帰する場合は「ホストで参加」を押してください。<br>ホストキー: <strong>${hostKey}</strong></p>` : ''}
         </div>
     `;
     document.getElementById('host-btn').onclick = () => {
         isHost = true;
-        hostKey = localStorage.getItem('hostKey'); // 送信する直前に最新の値を取得
-        socket.emit('host_join', { playerId, hostKey });
+        socket.emit('host_join', { playerId });
+        socket.emit('request_game_phase');
     };
     document.getElementById('player-btn').onclick = () => {
         isHost = false;
@@ -168,7 +137,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(fromEndScreen ? () => socket.emit('host_join', { playerId, hostKey }) : showRoleSelectionUI);
+  updateNavBar(showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -213,7 +182,6 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
       <legend>ゲーム設定</legend>
       <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
       <label>読み上げ速度(ms/5文字): <input type="number" id="speed" value="1000" min="100" /></label><br/>
-      <label>総合ランキング表示人数: <input type="number" id="ranking-display-count" value="10" min="1" /></label>
     </fieldset>
     <hr/>
     <fieldset>
@@ -284,35 +252,15 @@ function showNameInputUI() {
   document.getElementById('fix-name-btn').onclick = fixName;
 }
 
-function showHostUI(hostStateData = {}) {
+function showHostUI() {
   clearAllTimers();
-  updateNavBar(null, false);
+  updateNavBar(() => socket.emit('request_game_phase', { fromEndScreen: true }));
   const container = getContainer();
-  const { lastGameRanking, isPaused } = hostStateData;
-  
-  const lastGameRankingHTML = lastGameRanking && lastGameRanking.length > 0 ? `
-    <div id="this-game-ranking">
-      <h3>今回のゲーム 全体順位</h3>
-      <ol style="font-size: 0.9em; max-height: 200px; overflow-y: auto; padding-left: 20px;">
-        ${lastGameRanking.map((p, i) => `<li>${i + 1}. ${p.name} - ${p.finalScore}点</li>`).join('')}
-      </ol>
-    </div>
-    <hr/>
-  ` : '';
-
   container.innerHTML = `
     <h2>👑 ホスト管理画面</h2>
-    <p>ホストキー: <strong>${hostKey || '取得中...'}</strong> (このキーがあればブラウザを閉じても復帰できます)</p>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
-      <div id="hostStatus" style="flex:2; min-width: 300px;">
-      </div>
-      <div id="side-panel" style="flex:1; min-width: 250px;">
-        <div id="unassigned-players"></div>
-        ${lastGameRankingHTML}
-        <div id="globalRankingWrapper">
-            <div id="globalRanking"></div>
-        </div>
-      </div>
+      <div id="hostStatus" style="flex:2; min-width: 300px;"></div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
     <hr/>
     <h3>🔀 グループ割り振り設定</h3>
@@ -325,7 +273,6 @@ function showHostUI(hostStateData = {}) {
     <button id="submit-grouping-btn" style="margin-top:10px;">グループ割り振りを実行</button>
     <hr/>
     <button id="host-start-all-btn" class="button-primary" style="margin-top:10px;font-size:1.2em;">全グループでゲーム開始</button>
-    <button id="pause-game-btn" class="button-outline" style="margin-top:10px;">${isPaused ? 'ゲームを再開' : 'ゲームを一時停止'}</button>
     <button id="change-settings-btn" class="button-outline" style="margin-top:10px;">問題・設定を変更する</button>
     <hr style="border-color: red; border-width: 2px; margin-top: 30px;" />
     <h3 style="color: red;">危険な操作</h3>
@@ -351,7 +298,6 @@ function showHostUI(hostStateData = {}) {
 
   document.getElementById('submit-grouping-btn').onclick = submitGrouping;
   document.getElementById('host-start-all-btn').onclick = () => socket.emit('host_start');
-  document.getElementById('pause-game-btn').onclick = () => socket.emit('host_toggle_pause');
   document.getElementById('change-settings-btn').onclick = () => socket.emit('host_preparing_next_game');
   document.getElementById('host-reset-all-btn').onclick = () => {
     if (confirm('本当に進行中のゲームデータをリセットしますか？この操作は元に戻せません。')) {
@@ -361,58 +307,48 @@ function showHostUI(hostStateData = {}) {
 
   rankingIntervalId = setInterval(() => {
     socket.emit("host_request_state");
+    socket.emit("request_global_ranking");
   }, 2000);
   socket.emit("host_request_state");
+  socket.emit("request_global_ranking");
 }
 
 function showGameScreen(state) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
   const container = getContainer();
-  container.innerHTML = `
-    <div id="game-area">
-      <h3 id="group-name-display"></h3>
-      <div id="yomifuda"></div>
-      <div id="cards-grid"></div>
-      <hr>
-      <div style="display: flex; flex-wrap: wrap; gap: 30px;">
-        <div id="my-info"></div>
-        <div id="others-info"></div>
+  if (!document.getElementById('game-area')) {
+    container.innerHTML = `
+      <div id="game-area">
+        <div id="yomifuda"></div>
+        <div id="cards-grid"></div>
+        <hr>
+        <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+          <div id="my-info"></div>
+          <div id="others-info"></div>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
   updateGameUI(state);
 }
 
-function showEndScreen(rankingData) {
+function showEndScreen(ranking) {
   clearAllTimers();
-  updateNavBar(isHost ? () => socket.emit('host_setup_done', { lastGameRanking: rankingData.thisGameOverall, isPaused: false }) : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
-
-  const { thisGame, cumulative, thisGameOverall } = rankingData;
-  const myPlayerId = playerId;
-  const myRank = cumulative.findIndex(p => p.playerId === myPlayerId) + 1;
+  updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
   const container = getContainer();
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div style="flex:2; min-width: 300px;">
-        <h3>今回のゲーム順位（グループ内）</h3>
+        <h3>今回の順位</h3>
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
-          ${thisGame.map(p => {
-            const overallRank = thisGameOverall.findIndex(op => op.playerId === p.playerId) + 1;
-            return `<li>${p.name}（スコア: ${p.finalScore}点 <span style="font-size: 0.8em; color: var(--text-muted);">(全体 ${overallRank > 0 ? `${overallRank}位` : 'ランク外'})</span>）</li>`
-          }).join("")}
+          ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}｜累計: ${p.totalScore ?? 0}）</li>`).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
-      <div id="globalRanking" style="flex:1; min-width: 250px;">
-        <h3>総合ランキング</h3>
-        <ol>
-          ${cumulative.map((p, i) => `<li style="${p.playerId === myPlayerId ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${p.name} - ${p.totalScore}点</li>`).join('')}
-        </ol>
-        ${myRank > 0 ? `<p style="margin-top: 10px; font-weight: bold; color: var(--primary-color);">あなたの総合順位: ${myRank}位</p>` : ''}
-      </div>
+      <div id="globalRanking" style="flex:1; min-width: 250px;"></div>
     </div>
   `;
 
@@ -421,6 +357,9 @@ function showEndScreen(rankingData) {
       socket.emit('host_preparing_next_game');
     };
   }
+
+  rankingIntervalId = setInterval(() => socket.emit("request_global_ranking"), 2000);
+  socket.emit("request_global_ranking");
 }
 
 function showWaitingScreen() {
@@ -462,14 +401,16 @@ function showSinglePlayGameUI() {
   gameMode = 'single';
   updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
-  container.innerHTML = `
-    <div id="game-area">
-      <div id="yomifuda"></div>
-      <div id="cards-grid"></div>
-      <hr>
-      <div id="single-player-info"></div>
-    </div>
-  `;
+  if (!document.getElementById('game-area')) {
+    container.innerHTML = `
+      <div id="game-area">
+        <div id="yomifuda"></div>
+        <div id="cards-grid"></div>
+        <hr>
+        <div id="single-player-info"></div>
+      </div>
+    `;
+  }
 
   const timerDiv = document.getElementById('countdown-timer');
   let timeLeft = 60;
@@ -488,24 +429,10 @@ function showSinglePlayGameUI() {
   }, 1000);
 }
 
-function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName, history }) {
+function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) {
   clearAllTimers();
   updateNavBar(showSinglePlaySetupUI);
   const container = getContainer();
-  
-  const historyHtml = history && history.length > 0 ? `
-    <div style="flex: 1; min-width: 300px;">
-        <h3>今回の結果詳細</h3>
-        <ul style="max-height: 200px; overflow-y: auto; padding-left: 20px;">
-            ${history.map(item => `
-                <li style="color: ${item.correct ? 'green' : 'red'};">
-                    <strong>${item.correct ? '正解' : '不正解'}</strong>: ${item.questionText} (答え: ${item.answer})
-                </li>
-            `).join('')}
-        </ul>
-    </div>
-  ` : '';
-
   container.innerHTML = `
     <h2>タイムアップ！</h2>
     <h4>問題セット: ${presetName}</h4>
@@ -518,7 +445,6 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName, h
           ${globalRanking.map((r, i) => `<li style="${r.isMe ? 'font-weight:bold; color:var(--primary-color);' : ''}">${i + 1}. ${r.name} - ${r.score}点</li>`).join('')}
         </ol>
       </div>
-      ${historyHtml}
     </div>
     <hr/>
     <button id="retry-btn" class="button-primary">もう一度挑戦</button>
@@ -533,8 +459,7 @@ function handleSettingsSubmit(isNextGame = false) {
   const settings = {
     numCards: parseInt(document.getElementById("numCards").value),
     showSpeed: parseInt(document.getElementById("speed").value),
-    gameMode: document.querySelector('input[name="game-mode"]:checked').value,
-    rankingDisplayCount: parseInt(document.getElementById('ranking-display-count').value)
+    gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
 
   let payload = { settings, isNextGame };
@@ -626,7 +551,7 @@ function fixName() {
   playerName = nameInput.value.trim();
   if (!playerName) return alert("名前を入力してください");
   localStorage.setItem('playerName', playerName);
-  socket.emit("set_name", { playerId, name: playerName });
+  socket.emit("set_name", { groupId, playerId, name: playerName });
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
 
@@ -683,11 +608,6 @@ function updateGameUI(state) {
     lastQuestionText = state.current.text;
   }
   
-  const groupNameDisplay = document.getElementById('group-name-display');
-  if (groupNameDisplay) {
-    groupNameDisplay.textContent = `あなたは ${state.groupId} です`;
-  }
-
   const yomifudaDiv = document.getElementById('yomifuda');
   if (yomifudaDiv && !hasAnimated && state.current?.text) {
     if (state.gameMode === 'mask' && state.current.maskedIndices) {
@@ -863,29 +783,7 @@ function showPointPopup(point) {
 
 // --- Socket.IO イベントリスナー ---
 
-socket.on('game_paused', (isPaused) => {
-    if (!isHost) {
-        const overlay = document.getElementById('pause-overlay');
-        overlay.style.display = isPaused ? 'flex' : 'none';
-    }
-});
-
-socket.on('host_key_assigned', (newHostKey) => {
-    hostKey = newHostKey;
-    localStorage.setItem('hostKey', hostKey);
-    console.log(`ホストキーを受け取りました: ${hostKey}`);
-});
-
-socket.on('clear_host_key', () => {
-    localStorage.removeItem('hostKey');
-    hostKey = null;
-    console.log('サーバーの指示によりホストキーを削除しました。');
-});
-
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
-  if(reconnectTimeout) clearTimeout(reconnectTimeout);
-  reconnectTimeout = null;
-  
   if (isHost) {
       showCSVUploadUI(presets, fromEndScreen);
   } else {
@@ -908,14 +806,8 @@ socket.on('multiplayer_status_changed', (phase) => {
     }
 });
 
-socket.on('host_setup_done', (hostStateData) => {
-    if(reconnectTimeout) clearTimeout(reconnectTimeout);
-    reconnectTimeout = null;
-    if (isHost) showHostUI(hostStateData);
-});
-
-socket.on('show_host_ui_with_ranking', (ranking) => {
-    if(isHost) showHostUI({ lastGameRanking: ranking });
+socket.on('host_setup_done', () => {
+    if (isHost) showHostUI();
 });
 
 socket.on('wait_for_next_game', showWaitingScreen);
@@ -924,37 +816,42 @@ socket.on("start_group_selection", showGroupSelectionUI);
 
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
+  socket.emit("join", { groupId, playerId });
   getContainer().innerHTML = `<h2>あなたは <strong>${groupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
 });
 
 socket.on("state", (state) => {
-  if (gameMode !== 'multi' || !state) return;
-  
-  if (state.current && !document.getElementById('game-area')) {
+  if (gameMode !== 'multi') return;
+  if (!state) return;
+  const amIReady = playerName !== "";
+  const isGameScreenActive = document.getElementById('game-area');
+
+  if (state.current && !isGameScreenActive && amIReady) {
     showGameScreen(state);
-  } else if (document.getElementById('game-area')) {
+  } else if (isGameScreenActive) {
     updateGameUI(state);
+  } else if (!amIReady && groupId) {
+    showNameInputUI();
   }
 });
 
 socket.on("rejoin_game", (state) => {
-    if (gameMode !== 'multi' || !state) return;
+    if (gameMode !== 'multi') return;
+    if (!state) return;
     groupId = state.groupId;
     showGameScreen(state);
 });
 
-socket.on("end", (rankingData) => {
+socket.on("end", (ranking) => {
   if (gameMode !== 'multi') return;
-  showEndScreen(rankingData);
+  showEndScreen(ranking);
 });
 
-socket.on("host_state", (hostState) => {
-  if (!isHost) return;
-  const { allGroups, unassignedPlayers, globalRanking, isPaused } = hostState;
-  const hostStatusDiv = document.getElementById("hostStatus");
-  if (!hostStatusDiv) return;
+socket.on("host_state", (allGroups) => {
+  const div = document.getElementById("hostStatus");
+  if (!div) return;
 
-  hostStatusDiv.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
+  div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
     const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})</li>`).join("");
     const modeSelector = `
@@ -979,35 +876,19 @@ socket.on("host_state", (hostState) => {
       socket.emit('host_set_group_mode', { groupId, gameMode });
     };
   });
-  
-  const unassignedDiv = document.getElementById('unassigned-players');
-  if (unassignedDiv) {
-      if (unassignedPlayers && unassignedPlayers.length > 0) {
-        unassignedDiv.innerHTML = `<h3>未所属プレイヤー (${unassignedPlayers.length}人)</h3>
-                                   <ul style="font-size: 0.9em; max-height: 150px; overflow-y: auto;">
-                                     ${unassignedPlayers.map(p => `<li>${p.name}</li>`).join('')}
-                                   </ul><hr/>`;
-      } else {
-        unassignedDiv.innerHTML = '';
-      }
-  }
+});
 
-  const globalRankingDiv = document.getElementById("globalRanking");
-  if (globalRankingDiv && globalRanking) {
-      globalRankingDiv.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 総合ランキング</h3>
+socket.on("global_ranking", (ranking) => {
+    const div = document.getElementById("globalRanking");
+  if (!div) return;
+  div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング</h3>
                    <ol style="padding-left: 20px;">
-                     ${globalRanking.map((p, i) => `
+                     ${ranking.map((p, i) => `
                        <li style="padding: 4px 0; border-bottom: 1px solid #eee;">
                          <strong style="display: inline-block; width: 2em;">${i + 1}.</strong>
                          ${p.name} <span style="float: right; font-weight: bold;">${p.totalScore}点</span>
                        </li>`).join("")}
                    </ol>`;
-  }
-  
-  const pauseButton = document.getElementById('pause-game-btn');
-  if (pauseButton) {
-      pauseButton.textContent = isPaused ? 'ゲームを再開' : 'ゲームを一時停止';
-  }
 });
 
 socket.on("timer_start", ({ seconds }) => {
@@ -1032,7 +913,6 @@ socket.on("timer_start", ({ seconds }) => {
 });
 
 socket.on('force_reload', (message) => {
-    clearAllTimers();
     alert(message);
     window.location.reload();
 });
