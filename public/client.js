@@ -1,4 +1,4 @@
-// client.js (ホスト認証修正・最終決定版)
+// client.js (安定動作版ベース・堅牢性向上・完全版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -99,6 +99,7 @@ socket.on('disconnect', () => {
 socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
   localStorage.setItem('playerId', playerId);
+  showRoleSelectionUI();
 });
 
 socket.on('initial_setup', () => {
@@ -390,7 +391,7 @@ function showGameScreen(state) {
 
 function showEndScreen(rankingData) {
   clearAllTimers();
-  updateNavBar(isHost ? () => socket.emit('show_host_ui_with_ranking') : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
+  updateNavBar(isHost ? () => socket.emit('host_setup_done', { lastGameRanking: rankingData.thisGameOverall, isPaused: false }) : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
   const { thisGame, cumulative, thisGameOverall } = rankingData;
   const myPlayerId = playerId;
