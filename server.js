@@ -1,4 +1,4 @@
-// server.js (最終修正版 - 全文)
+// server.js (大人数運用・安定性強化版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -13,7 +13,6 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-// ★★★ ディレクトリ名を 'data' に設定 ★★★
 const DATA_DIR = path.join(__dirname, 'data');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
@@ -32,6 +31,10 @@ const players = {};
 const groups = {};
 const states = {};
 const singlePlayStates = {};
+
+// ★★★ 対策2: ホストへの状態通知をまとめるためのタイマー ★★★
+let hostStateUpdateTimer = null;
+const HOST_UPDATE_INTERVAL = 2000; // 2秒ごとに更新
 
 // --- サーバー初期化処理 ---
 function initializeDirectories() {
@@ -173,9 +176,11 @@ function getHostState() {
 function finalizeGame(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
+    state.locked = true;
+
     if (state.readTimer) clearTimeout(state.readTimer);
     state.readTimer = null;
-    state.locked = true;
+    
     console.log(`[${groupId}] ゲーム終了処理を開始します。`);
     const finalRanking = [...state.players].sort((a, b) => {
         if (b.hp !== a.hp) return b.hp - a.hp;
@@ -201,6 +206,7 @@ function finalizeGame(groupId) {
     });
     finalRanking.sort((a, b) => b.finalScore - a.finalScore);
     io.to(groupId).emit("end", finalRanking);
+    notifyHostStateChanged();
 }
 function checkGameEnd(groupId) {
   const state = states[groupId];
@@ -311,6 +317,19 @@ function nextSingleQuestion(socketId, isFirstQuestion = false) {
         io.to(socketId).emit('single_game_state', state);
     }
 }
+
+function notifyHostStateChanged() {
+    if (!hostSocketId) return;
+    if (hostStateUpdateTimer) return;
+
+    hostStateUpdateTimer = setTimeout(() => {
+        if (hostSocketId) {
+            io.to(hostSocketId).emit("host_state", getHostState());
+        }
+        hostStateUpdateTimer = null;
+    }, HOST_UPDATE_INTERVAL);
+}
+
 
 // --- メインの接続処理 ---
 io.on("connection", (socket) => {
@@ -433,7 +452,7 @@ io.on("connection", (socket) => {
     const player = players[playerId];
     if (!player) return;
 
-    const previousGroupId = Object.keys(groups).find(gId => groups[gId].players.some(p => p.playerId === playerId));
+    const previousGroupId = Object.keys(groups).find(gId => groups[gId]?.players.some(p => p.playerId === playerId));
     let existingPlayer = null;
 
     if (previousGroupId) {
@@ -465,7 +484,7 @@ io.on("connection", (socket) => {
       });
     }
     
-    if(hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
+    notifyHostStateChanged();
   });
 
   socket.on("rejoin_game", ({ playerId }) => {
@@ -492,6 +511,7 @@ io.on("connection", (socket) => {
     if (states[groupId]) {
       states[groupId].players = states[groupId].players.filter(p => p.playerId !== playerId);
     }
+    notifyHostStateChanged();
   });
 
   socket.on("set_name", ({ groupId, playerId, name }) => {
@@ -501,7 +521,6 @@ io.on("connection", (socket) => {
         const gPlayer = groups[groupId].players.find(p => p.playerId === playerId);
         if (gPlayer) gPlayer.name = name;
     }
-    
     if (states[groupId]) {
         const statePlayer = states[groupId].players.find(p => p.playerId === playerId);
         if (statePlayer) statePlayer.name = name;
@@ -510,23 +529,35 @@ io.on("connection", (socket) => {
     if (states[groupId]) {
       io.to(groupId).emit("state", sanitizeState(states[groupId]));
     }
-    if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
+    notifyHostStateChanged();
   });
   
   socket.on("read_done", (groupId) => {
+    const player = Object.values(players).find(p => p.socketId === socket.id);
+    if (!player) return;
+
     const state = states[groupId];
     if (!state || !state.current || state.readTimer || state.answered || state.waitingNext) return;
-    const latestText = state.current.text;
-    io.to(groupId).emit("timer_start", { seconds: 30 });
-    state.readTimer = setTimeout(() => {
-        if (state && !state.answered && !state.waitingNext && state.current?.text === latestText) {
-            state.waitingNext = true;
-            const correctCard = state.current.cards.find(c => c.term === state.current.answer);
-            if (correctCard) correctCard.correctAnswer = true;
-            io.to(groupId).emit("state", sanitizeState(state));
-            setTimeout(() => nextQuestion(groupId), 3000);
-        }
-    }, 30000);
+    
+    state.readDone.add(player.playerId);
+    
+    const activePlayersInGroup = state.players.filter(p => p.hp > 0).length;
+    if (state.readDone.size >= Math.ceil(activePlayersInGroup / 2)) {
+        if (state.readTimer) return;
+
+        const latestText = state.current.text;
+        io.to(groupId).emit("timer_start", { seconds: 30 });
+        
+        state.readTimer = setTimeout(() => {
+            if (state && !state.answered && !state.waitingNext && state.current?.text === latestText) {
+                state.waitingNext = true;
+                const correctCard = state.current.cards.find(c => c.term === state.current.answer);
+                if (correctCard) correctCard.correctAnswer = true;
+                io.to(groupId).emit("state", sanitizeState(state));
+                setTimeout(() => nextQuestion(groupId), 3000);
+            }
+        }, 30000);
+    }
   });
 
   socket.on("host_join", ({ playerId }) => {
@@ -563,18 +594,16 @@ io.on("connection", (socket) => {
     gamePhase = 'GAME_IN_PROGRESS';
     for (const groupId of Object.keys(groups)) {
         if (!groups[groupId] || groups[groupId].players.length === 0) continue;
-        
         const currentGroupMode = states[groupId]?.gameMode || globalSettings.gameMode;
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
-        
         const group = groups[groupId];
         states[groupId].players = group.players.map(p => ({ 
             playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0
         }));
-        
         nextQuestion(groupId);
     }
+    notifyHostStateChanged();
   });
 
   socket.on("host_assign_groups", ({ groupCount, topGroupCount, groupSizes }) => {
@@ -648,7 +677,7 @@ io.on("connection", (socket) => {
             }
         }
     }
-    if (hostSocketId) io.to(hostSocketId).emit("host_state", getHostState());
+    notifyHostStateChanged();
   });
 
   socket.on("answer", ({ groupId, playerId, name, id }) => {
@@ -717,7 +746,7 @@ io.on("connection", (socket) => {
     if (states[groupId] && (gameMode === 'normal' || gameMode === 'mask')) {
       states[groupId].gameMode = gameMode;
       console.log(`👑 Host set ${groupId} to ${gameMode} mode.`);
-      io.to(hostSocketId).emit("host_state", getHostState());
+      notifyHostStateChanged();
     }
   });
   
