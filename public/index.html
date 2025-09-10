@@ -50,7 +50,7 @@
         align-items: center;
         justify-content: center;
         padding: 10px 20px;
-        margin: 5px; /* ボタン間の余白を追加 */
+        margin: 5px;
     }
     button:hover, .button:hover {
         transform: translateY(-2px);
@@ -88,7 +88,6 @@
         border: 1px solid #dcdfe6;
         color: var(--text-main);
         border-radius: 4px;
-        margin-bottom: 1rem; /* Milligramのデフォルトを維持 */
     }
 
     #app-container {
@@ -98,10 +97,9 @@
       background-color: var(--bg-content);
       border-radius: 12px;
       box-shadow: var(--shadow-medium);
-      position: relative; /* オーバーレイの基準点 */
+      position: relative;
     }
-    
-    /* ★★★ 一時停止オーバーレイのスタイル ★★★ */
+
     .pause-overlay {
         position: absolute;
         top: 0;
@@ -131,7 +129,6 @@
         border: 1px solid var(--border-color);
         box-shadow: var(--shadow-soft);
         letter-spacing: 1px;
-        line-height: 1.5; /* 文字が複数行になった場合の見栄えを改善 */
     }
 
     #cards-grid {
@@ -149,37 +146,31 @@
       box-shadow: var(--shadow-soft);
       cursor: pointer;
       background: #fff;
-      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.3s;
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
       font-weight: 800;
       font-size: 1.2em;
-      display: flex; /* 中央揃えのため */
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      min-height: 100px; /* カードの高さを担保 */
     }
     .card:hover {
       transform: translateY(-5px) scale(1.03);
       border-color: var(--primary-hover);
       box-shadow: 0 8px 16px rgba(49, 130, 206, 0.2);
     }
-    /* JavaScriptから動的にスタイルを当てるため、セレクタの特定性を上げる */
-    .card.correct {
-      background: var(--correct-glow) !important;
-      color: #744210 !important;
-      border-color: #fbd38d !important;
+    .card[style*="background: gold;"] {
+      background: var(--correct-glow);
+      color: #744210;
+      border-color: #fbd38d;
       animation: glow 1.5s infinite alternate;
     }
-    .card.incorrect {
-      background: var(--incorrect-color) !important;
-      color: white !important;
-      border-color: #fed7d7 !important;
+    .card[style*="background: crimson;"] {
+      background: var(--incorrect-color);
+      color: white;
+      border-color: #fed7d7;
       animation: shake 0.5s;
     }
-    .card.correct-answer {
-        background: #68d391 !important;
-        color: white !important;
-        border-color: #9ae6b4 !important;
+    .card[style*="background: lightgreen;"] {
+        background: #68d391;
+        color: white;
+        border-color: #9ae6b4;
     }
 
     #my-info, #others-info {
@@ -187,7 +178,6 @@
         padding: 15px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
-        flex: 1; /* 横並びになった際に幅を均等にする */
     }
     
     .hp-bar-container {
@@ -228,10 +218,9 @@
       border-radius: 10px;
       box-shadow: var(--shadow-medium);
       border: 1px solid var(--border-color);
-      z-index: 500;
     }
     #current-point { top: 15px; right: 15px; }
-    #countdown-timer { bottom: 80px; right: 15px; } /* ナビゲーションバーと被らないように調整 */
+    #countdown-timer { bottom: 80px; right: 15px; }
     
     #nav-bar {
       position: fixed;
@@ -261,28 +250,20 @@
   </style>
 </head>
 <body>
-  
   <div id="app-container">
-    <p>サーバーに接続中...</p>
+    <p>Loading...</p>
   </div>
-
   <div id="game-overlays">
     <div id="point-popup"></div>
     <div id="current-point"></div>
     <div id="countdown-timer"></div>
   </div>
-  
   <div id="nav-bar" style="display: none;">
     <button id="nav-back-btn" class="button-outline">戻る</button>
     <button id="nav-top-btn" class="button">トップに戻る</button>
   </div>
-  
-  <!-- ライブラリの読み込み -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
-  
-  <!-- アプリケーションスクリプトの読み込み -->
   <script src="client.js"></script>
-
 </body>
 </html>
