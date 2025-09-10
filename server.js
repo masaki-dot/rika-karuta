@@ -1,4 +1,4 @@
-// server.js (大人数運用・安定性強化版 - 全文)
+// server.js (ファイル保存処理 強化版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -32,9 +32,8 @@ const groups = {};
 const states = {};
 const singlePlayStates = {};
 
-// ★★★ 対策2: ホストへの状態通知をまとめるためのタイマー ★★★
 let hostStateUpdateTimer = null;
-const HOST_UPDATE_INTERVAL = 2000; // 2秒ごとに更新
+const HOST_UPDATE_INTERVAL = 2000;
 
 // --- サーバー初期化処理 ---
 function initializeDirectories() {
@@ -393,11 +392,17 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ★★★ このイベントハンドラを堅牢化 ★★★
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
-    if (saveAction) {
-        try {
+    
+    console.log("ファイル設定を受信。保存アクション:", saveAction);
+    
+    try {
+        if (saveAction) {
+            console.log("ファイル保存処理を開始...");
             if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
+            
             let filePath;
             let dataToSave;
 
@@ -424,27 +429,33 @@ io.on("connection", (socket) => {
                     dataToSave = { ...existingData, rawData: finalRawData };
                     fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
                     console.log(`💾 プリセットを更新 (${saveAction}): ${filePath}`);
+                } else {
+                    console.warn(`⚠️ 更新対象のファイルが見つかりません: ${filePath}`);
                 }
             }
-            loadPresets();
-        } catch (err) {
-            console.error('プリセットの保存/更新に失敗しました:', err);
+            loadPresets(); // 保存後にプリセットを再読み込み
+            console.log("ファイル保存処理が完了。");
         }
-    }
-
-    parseAndSetCards({ rawData });
-    globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
-    
-    if (!isNextGame) {
-        Object.keys(states).forEach(key => delete states[key]);
-        Object.keys(groups).forEach(key => delete groups[key]);
-        gamePhase = 'GROUP_SELECTION';
-        socket.emit('host_setup_done');
-        io.emit("multiplayer_status_changed", gamePhase);
-    } else {
-        Object.keys(states).forEach(key => delete states[key]);
-        gamePhase = 'WAITING_FOR_NEXT_GAME';
-        io.to(hostSocketId).emit('host_setup_done');
+    } catch (err) {
+        console.error('プリセットの保存/更新中にエラーが発生しました:', err);
+    } finally {
+        console.log("カードデータの設定処理を開始...");
+        parseAndSetCards({ rawData });
+        globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
+        
+        if (!isNextGame) {
+            Object.keys(states).forEach(key => delete states[key]);
+            Object.keys(groups).forEach(key => delete groups[key]);
+            gamePhase = 'GROUP_SELECTION';
+            console.log("ホストに準備完了を通知 (host_setup_done)");
+            socket.emit('host_setup_done');
+            io.emit("multiplayer_status_changed", gamePhase);
+        } else {
+            Object.keys(states).forEach(key => delete states[key]);
+            gamePhase = 'WAITING_FOR_NEXT_GAME';
+            console.log("ホストに次ゲーム準備完了を通知 (host_setup_done)");
+            io.to(hostSocketId).emit('host_setup_done');
+        }
     }
   });
   
@@ -912,7 +923,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// サーバー起動
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
