@@ -1,4 +1,4 @@
-// client.js (ランキング表示 修正版 - 完全版)
+// client.js (UX改善版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -88,6 +88,7 @@ socket.on('connect', () => {
 
 socket.on('disconnect', () => {
     console.error('サーバーとの接続が切れました。再接続を試みます...');
+    clearAllTimers();
     const container = getContainer();
     if (container) {
         container.innerHTML = `
@@ -97,9 +98,7 @@ socket.on('disconnect', () => {
             </div>
         `;
     }
-    clearAllTimers();
 });
-
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
@@ -371,7 +370,6 @@ function showGameScreen(state) {
   updateGameUI(state);
 }
 
-// ★★★ ランキング表示を修正 ★★★
 function showEndScreen(ranking) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
@@ -388,7 +386,6 @@ function showEndScreen(ranking) {
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
       <div id="globalRanking" style="flex:1; min-width: 250px;">
-        <!-- 全体ランキングはsocketイベントで更新 -->
       </div>
     </div>
   `;
@@ -493,7 +490,9 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
+// ★★★ UX改善: ローディング表示を追加 ★★★
 function handleSettingsSubmit(isNextGame = false) {
+  const submitBtn = document.getElementById('submit-settings');
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
   const settings = {
     numCards: parseInt(document.getElementById("numCards").value),
@@ -507,7 +506,11 @@ function handleSettingsSubmit(isNextGame = false) {
     const presetId = document.getElementById('preset-select').value;
     if (!presetId) return alert('問題リストを選んでください');
     payload.presetId = presetId;
+    
+    submitBtn.disabled = true;
+    submitBtn.textContent = '処理中...';
     socket.emit("set_preset_and_settings", payload);
+
   } else {
     const fileInput = document.getElementById("csvFile");
     if (!fileInput.files[0]) return alert("CSVファイルを選んでください");
@@ -530,6 +533,9 @@ function handleSettingsSubmit(isNextGame = false) {
         payload.presetId = presetId;
     }
 
+    submitBtn.disabled = true;
+    submitBtn.textContent = '処理中...';
+
     Papa.parse(fileInput.files[0], {
       header: false,
       skipEmptyLines: true,
@@ -540,7 +546,12 @@ function handleSettingsSubmit(isNextGame = false) {
           col3: String(r[2] || '').trim()
         })).filter(c => c.col1 && c.col2);
         
-        if (rawData.length === 0) return alert('CSVファイルから有効な問題を読み込めませんでした。');
+        if (rawData.length === 0) {
+            alert('CSVファイルから有効な問題を読み込めませんでした。');
+            submitBtn.disabled = false;
+            submitBtn.textContent = isNextGame ? 'この問題で次のゲームを開始' : '決定してホスト画面へ';
+            return;
+        }
         payload.rawData = rawData;
         socket.emit("set_cards_and_settings", payload);
       }
@@ -895,7 +906,6 @@ socket.on("host_state", (allGroups) => {
 socket.on("global_ranking", (ranking) => {
     const div = document.getElementById("globalRanking");
   if (!div) return;
-  // ★修正: ランキングのタイトルを変更
   div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング (累計)</h3>
                    <ol style="padding-left: 20px;">
                      ${ranking.map((p, i) => `
