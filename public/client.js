@@ -1,8 +1,7 @@
-// client.js (機能改善・安定化版)
+// client.js (ホスト復帰処理 修正版)
 
 // --- グローバル変数 ---
 let socket = io({
-    // 再接続を試みる設定
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
@@ -10,8 +9,9 @@ let socket = io({
 
 let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
+// ★修正: localStorageからホスト状態を読み込む
+let isHost = localStorage.getItem('isHost') === 'true'; 
 let groupId = "";
-let isHost = false;
 let gameMode = 'multi';
 
 let rankingIntervalId = null;
@@ -37,7 +37,8 @@ function clearAllTimers() {
     if (countdownIntervalId) clearInterval(countdownIntervalId);
     if (singleGameTimerId) clearInterval(singleGameTimerId);
     rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null;
-    document.getElementById('countdown-timer').textContent = '';
+    const countdownTimer = document.getElementById('countdown-timer');
+    if (countdownTimer) countdownTimer.textContent = '';
     console.log('All client timers cleared.');
 }
 
@@ -56,8 +57,9 @@ function updateNavBar(backAction, showTop = true) {
     if (showTop) {
         topBtn.style.display = 'block';
         topBtn.onclick = () => {
-            // トップに戻る際に状態をリセット
             isHost = false;
+            // ★修正: localStorageからホスト状態を削除
+            localStorage.removeItem('isHost');
             gameMode = 'multi';
             showRoleSelectionUI();
         };
@@ -74,12 +76,19 @@ socket.on('connect', () => {
   if (!playerId) {
     socket.emit('request_new_player_id');
   } else {
-    // ★修正: 接続が確立するたびに再接続処理を送り、ホスト復帰などを可能にする
     socket.emit('reconnect_player', { playerId, name: playerName });
-    // 画面がリロードされた場合などを想定し、一旦最初の画面を表示
-    // サーバーからの応答で適切な画面に遷移する
-    if (!document.querySelector('#app-container').hasChildNodes() || document.querySelector('#app-container p').textContent === 'Loading...') {
-        showRoleSelectionUI();
+    
+    // ★★★ 修正: ホスト状態に応じて初期画面を制御 ★★★
+    if (isHost) {
+        // 自分がホストだった場合、サーバーからの指示を待つ
+        getContainer().innerHTML = '<p>ホストとして再接続しています...</p>';
+    } else {
+        // 通常のプレイヤーは役割選択画面へ
+        const container = getContainer();
+        // 既に何らかのUIが表示されている場合は、そのままにする
+        if (!container.hasChildNodes() || container.querySelector('p')?.textContent === 'Loading...') {
+            showRoleSelectionUI();
+        }
     }
   }
 });
@@ -87,13 +96,15 @@ socket.on('connect', () => {
 socket.on('disconnect', () => {
     console.error('サーバーとの接続が切れました。再接続を試みます...');
     const container = getContainer();
-    container.innerHTML = `
-        <div style="text-align: center;">
-            <h2>接続が切れました</h2>
-            <p>サーバーに再接続しています...</p>
-        </div>
-    `;
-    clearAllTimers(); // タイマーをクリア
+    if (container) {
+        container.innerHTML = `
+            <div style="text-align: center;">
+                <h2>接続が切れました</h2>
+                <p>サーバーに再接続しています...</p>
+            </div>
+        `;
+    }
+    clearAllTimers();
 });
 
 
@@ -109,6 +120,7 @@ function showRoleSelectionUI() {
     clearAllTimers();
     updateNavBar(null, false);
     isHost = false;
+    localStorage.removeItem('isHost'); // 念のためクリア
     gameMode = 'multi';
     const container = getContainer();
     container.innerHTML = `
@@ -123,15 +135,18 @@ function showRoleSelectionUI() {
     `;
     document.getElementById('host-btn').onclick = () => {
         isHost = true;
+        // ★修正: ホスト状態をlocalStorageに保存
+        localStorage.setItem('isHost', 'true'); 
         socket.emit('host_join', { playerId });
         socket.emit('request_game_phase');
     };
     document.getElementById('player-btn').onclick = () => {
         isHost = false;
+        localStorage.removeItem('isHost');
         socket.emit('request_game_phase');
     };
 }
-
+// (showPlayerMenuUI以降のUI描画関数は、host-reset-all-btnの修正以外は変更ありません)
 function showPlayerMenuUI(phase) {
     clearAllTimers();
     updateNavBar(showRoleSelectionUI);
@@ -333,6 +348,8 @@ function showHostUI() {
   document.getElementById('change-settings-btn').onclick = () => socket.emit('host_preparing_next_game');
   document.getElementById('host-reset-all-btn').onclick = () => {
     if (confirm('本当に進行中のゲームデータをリセットしますか？この操作は元に戻せません。')) {
+      // ★修正: リセット時にlocalStorageもクリア
+      localStorage.removeItem('isHost');
       socket.emit('host_full_reset');
     }
   };
@@ -344,12 +361,11 @@ function showHostUI() {
   socket.emit("host_request_state");
   socket.emit("request_global_ranking");
 }
-
+// (以降の関数は変更ありません)
 function showGameScreen(state) {
   clearAllTimers();
   updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
   const container = getContainer();
-  // 画面がまだ構築されていない場合のみinnerHTMLを全書き換え
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
       <div id="game-area">
@@ -484,8 +500,6 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   `;
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
-
-// --- イベントハンドラとロジック ---
 
 function handleSettingsSubmit(isNextGame = false) {
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
@@ -816,6 +830,15 @@ socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
   }
 });
 
+// ★★★ 新しいイベントリスナーを追加 ★★★
+socket.on('host_reconnect_success', () => {
+    if (isHost) {
+        console.log('ホストとして正常に復帰しました。管理画面を表示します。');
+        showHostUI();
+    }
+});
+
+
 socket.on('multiplayer_status_changed', (phase) => {
     const playerMenuButton = document.getElementById('multi-play-btn');
     if (playerMenuButton) {
@@ -832,7 +855,7 @@ socket.on('multiplayer_status_changed', (phase) => {
         if (statusEl) statusEl.textContent = statusText;
     }
 });
-
+// (以降のリスナーは変更ありません)
 socket.on('host_setup_done', () => {
     if (isHost) showHostUI();
 });
@@ -876,7 +899,6 @@ socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
 
-  // ★修正: 今回のスコアと累計スコアを表示
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
     const members = data.players.map(p => 
@@ -943,6 +965,7 @@ socket.on("timer_start", ({ seconds }) => {
 
 socket.on('force_reload', (message) => {
     alert(message);
+    localStorage.removeItem('isHost');
     window.location.reload();
 });
 
@@ -965,8 +988,6 @@ socket.on('import_data_response', ({ success, message }) => {
         window.location.reload();
     }
 });
-
-// --- シングルプレイ用リスナー ---
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
@@ -978,7 +999,6 @@ socket.on('presets_list', (presets) => {
   `).join('');
   container.innerHTML = radioButtons;
 });
-
 socket.on('single_game_start', (initialState) => {
     showSinglePlayGameUI(); 
     updateSinglePlayGameUI(initialState);
