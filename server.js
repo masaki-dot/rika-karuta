@@ -1,4 +1,4 @@
-// server.js (デプロイエラー修正・ホスト再接続対応版)
+// server.js (ディレクトリ名修正・デプロイエラー修正・ホスト再接続対応版)
 
 const express = require("express");
 const http = require("http");
@@ -13,7 +13,8 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'data');
+// ★★★ 修正: ディレクトリ名を 'data' から 'date' に変更 ★★★
+const DATA_DIR = path.join(__dirname, 'date');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
@@ -37,7 +38,8 @@ function loadPresets() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
   
   try {
-    const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
+    // ★★★ 修正: 'data' -> DATA_DIR 変数を使うように変更 ★★★
+    const data = fs.readFileSync(path.join(DATA_DIR, 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
     console.log('✅ デフォルト問題プリセットを読み込みました。');
   } catch (err) {
@@ -936,7 +938,6 @@ io.on("connection", (socket) => {
 });
 
 // サーバー起動
-// ★★★ 修正: process.process.env -> process.env に修正 ★★★
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
