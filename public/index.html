@@ -49,7 +49,6 @@
         border: none;
         box-shadow: var(--shadow-soft);
         transition: all 0.2s ease-in-out;
-        /* ★★★ テキストを中央揃えにするための修正 ★★★ */
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -193,7 +192,7 @@
       opacity: 1;
     }
 
-    #current-point, #countdown-timer {
+    #countdown-timer {
       position: fixed;
       font-family: 'Orbitron', sans-serif;
       font-size: 1.5em;
@@ -203,11 +202,11 @@
       border-radius: 10px;
       box-shadow: var(--shadow-medium);
       border: 1px solid var(--border-color);
+      bottom: 80px; /* ナビゲーションバーの上に表示 */
+      right: 15px;
+      z-index: 999;
     }
-    #current-point { top: 15px; right: 15px; }
-    #countdown-timer { bottom: 15px; right: 15px; }
     
-    /* ★★★ ナビゲーションバーのスタイル ★★★ */
     #nav-bar {
       position: fixed;
       bottom: 0;
@@ -241,11 +240,10 @@
   </div>
   <div id="game-overlays">
     <div id="point-popup"></div>
-    <div id="current-point"></div>
+    <!-- ★修正: current-pointは不要になったので削除 -->
     <div id="countdown-timer"></div>
   </div>
   
-  <!-- ★★★ ナビゲーションバーのHTML ★★★ -->
   <div id="nav-bar" style="display: none;">
     <button id="nav-back-btn" class="button-outline">戻る</button>
     <button id="nav-top-btn">トップに戻る</button>
@@ -255,21 +253,7 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
   <script src="client.js"></script>
   
-  <script>
-    function renderHpBar(hp) {
-        const hpPercent = Math.max(0, hp / 20 * 100);
-        let hpColor;
-        if (hp <= 5) hpColor = "#e53e3e";
-        else if (hp <= 10) hpColor = "#dd6b20";
-        else hpColor = "#48bb78";
-
-        return `
-          <div style="font-size: 0.9em; margin-bottom: 4px;">HP: ${hp} / 20</div>
-          <div class="hp-bar-container">
-            <div class="hp-bar-inner" style="width: ${hpPercent}%; background-color: ${hpColor};"></div>
-          </div>
-        `;
-    }
-  </script>
+  <!-- ★★★ 修正: 重複していたscriptタグを削除 ★★★ -->
+  
 </body>
 </html>
