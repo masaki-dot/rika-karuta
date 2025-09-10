@@ -4,13 +4,10 @@
   <meta charset="UTF-8" />
   <title>理科カルタ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css">
-  
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&family=Orbitron:wght@700&display=swap" rel="stylesheet">
-
   <style>
     :root {
       --bg-main: #f4f7f6;
@@ -53,6 +50,7 @@
         align-items: center;
         justify-content: center;
         padding: 10px 20px;
+        margin: 5px; /* ボタン間の余白を追加 */
     }
     button:hover, .button:hover {
         transform: translateY(-2px);
@@ -90,6 +88,7 @@
         border: 1px solid #dcdfe6;
         color: var(--text-main);
         border-radius: 4px;
+        margin-bottom: 1rem; /* Milligramのデフォルトを維持 */
     }
 
     #app-container {
@@ -99,12 +98,25 @@
       background-color: var(--bg-content);
       border-radius: 12px;
       box-shadow: var(--shadow-medium);
+      position: relative; /* オーバーレイの基準点 */
     }
     
-    #group-name-display {
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 1.2em;
+    /* ★★★ 一時停止オーバーレイのスタイル ★★★ */
+    .pause-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.9);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        backdrop-filter: blur(4px);
+        border-radius: 12px;
+        text-align: center;
     }
 
     #yomifuda {
@@ -119,6 +131,7 @@
         border: 1px solid var(--border-color);
         box-shadow: var(--shadow-soft);
         letter-spacing: 1px;
+        line-height: 1.5; /* 文字が複数行になった場合の見栄えを改善 */
     }
 
     #cards-grid {
@@ -136,31 +149,37 @@
       box-shadow: var(--shadow-soft);
       cursor: pointer;
       background: #fff;
-      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.3s;
       font-weight: 800;
       font-size: 1.2em;
+      display: flex; /* 中央揃えのため */
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100px; /* カードの高さを担保 */
     }
     .card:hover {
       transform: translateY(-5px) scale(1.03);
       border-color: var(--primary-hover);
       box-shadow: 0 8px 16px rgba(49, 130, 206, 0.2);
     }
-    .card[style*="background: gold;"] {
-      background: var(--correct-glow);
-      color: #744210;
-      border-color: #fbd38d;
+    /* JavaScriptから動的にスタイルを当てるため、セレクタの特定性を上げる */
+    .card.correct {
+      background: var(--correct-glow) !important;
+      color: #744210 !important;
+      border-color: #fbd38d !important;
       animation: glow 1.5s infinite alternate;
     }
-    .card[style*="background: crimson;"] {
-      background: var(--incorrect-color);
-      color: white;
-      border-color: #fed7d7;
+    .card.incorrect {
+      background: var(--incorrect-color) !important;
+      color: white !important;
+      border-color: #fed7d7 !important;
       animation: shake 0.5s;
     }
-    .card[style*="background: lightgreen;"] {
-        background: #68d391;
-        color: white;
-        border-color: #9ae6b4;
+    .card.correct-answer {
+        background: #68d391 !important;
+        color: white !important;
+        border-color: #9ae6b4 !important;
     }
 
     #my-info, #others-info {
@@ -168,6 +187,7 @@
         padding: 15px;
         border-radius: 8px;
         border: 1px solid var(--border-color);
+        flex: 1; /* 横並びになった際に幅を均等にする */
     }
     
     .hp-bar-container {
@@ -208,9 +228,10 @@
       border-radius: 10px;
       box-shadow: var(--shadow-medium);
       border: 1px solid var(--border-color);
+      z-index: 500;
     }
     #current-point { top: 15px; right: 15px; }
-    #countdown-timer { bottom: 15px; right: 15px; }
+    #countdown-timer { bottom: 80px; right: 15px; } /* ナビゲーションバーと被らないように調整 */
     
     #nav-bar {
       position: fixed;
@@ -226,36 +247,6 @@
       align-items: center;
       z-index: 10000;
     }
-    
-    #connection-status {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      padding: 5px 10px;
-      font-size: 0.8em;
-      border-radius: 12px;
-      color: white;
-      z-index: 10001;
-    }
-    #connection-status.connected {
-      background-color: #48bb78;
-    }
-    #connection-status.disconnected {
-      background-color: #e53e3e;
-    }
-    
-    #pause-overlay {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.7);
-      color: white;
-      display: none;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      z-index: 20000;
-      backdrop-filter: blur(3px);
-    }
 
     @keyframes glow {
       from { box-shadow: 0 0 5px #f6e05e, 0 0 10px #f6e05e; }
@@ -270,29 +261,28 @@
   </style>
 </head>
 <body>
+  
   <div id="app-container">
-    <p>Loading...</p>
+    <p>サーバーに接続中...</p>
   </div>
+
   <div id="game-overlays">
     <div id="point-popup"></div>
     <div id="current-point"></div>
     <div id="countdown-timer"></div>
-    <div id="connection-status"></div>
-    <div id="pause-overlay">
-        <div>
-            <h2>ゲーム一時停止中</h2>
-            <p>ホストが再開するまでお待ちください。</p>
-        </div>
-    </div>
   </div>
   
   <div id="nav-bar" style="display: none;">
     <button id="nav-back-btn" class="button-outline">戻る</button>
-    <button id="nav-top-btn">トップに戻る</button>
+    <button id="nav-top-btn" class="button">トップに戻る</button>
   </div>
-
+  
+  <!-- ライブラリの読み込み -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  
+  <!-- アプリケーションスクリプトの読み込み -->
   <script src="client.js"></script>
+
 </body>
 </html>
