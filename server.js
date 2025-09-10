@@ -1,5 +1,3 @@
-// server.js (原点回帰・最終修正版)
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -13,13 +11,15 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'date'); // "date" フォルダを参照
-const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
-const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
+// ★★★ 重要な修正箇所 ★★★
+// すべてのパスをプロジェクトのルートディレクトリからの絶対パスに統一
+const DATA_DIR = path.join(__dirname, 'date');
+const USER_PRESETS_DIR = path.join(__dirname, 'date', 'user_presets');
+const RANKINGS_DIR = path.join(__dirname, 'date', 'rankings');
 
-// --- グローバル変数 (元の安定版の構造を維持) ---
+// --- グローバル変数 (初期バージョンに近いシンプルな構造に戻す) ---
 let hostSocketId = null;
-let hostKey = null; 
+let hostKey = null;
 let globalTorifudas = [];
 let globalYomifudas = [];
 let globalSettings = {};
@@ -46,7 +46,7 @@ function loadPresets() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     
-    const data = fs.readFileSync(path.join(__dirname, 'date', 'questions.json'), 'utf8');
+    const data = fs.readFileSync(path.join(DATA_DIR, 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
     console.log('✅ デフォルト問題プリセットを読み込みました。');
   } catch (err) {
