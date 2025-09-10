@@ -1,4 +1,4 @@
-// client.js (安定動作版ベース・堅牢性向上・完全版)
+// client.js (ホスト認証修正・最終決定版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -100,11 +100,6 @@ socket.on('new_player_id_assigned', (newPlayerId) => {
   playerId = newPlayerId;
   localStorage.setItem('playerId', playerId);
   showRoleSelectionUI();
-});
-
-socket.on('initial_setup', () => {
-    if(reconnectTimeout) clearTimeout(reconnectTimeout);
-    showRoleSelectionUI();
 });
 
 // --- UI描画関数群 ---
@@ -954,6 +949,7 @@ socket.on("end", (rankingData) => {
 });
 
 socket.on("host_state", (hostState) => {
+  if (!isHost) return;
   const { allGroups, unassignedPlayers, globalRanking, isPaused } = hostState;
   const hostStatusDiv = document.getElementById("hostStatus");
   if (!hostStatusDiv) return;
@@ -1036,7 +1032,6 @@ socket.on("timer_start", ({ seconds }) => {
 });
 
 socket.on('force_reload', (message) => {
-    if (isHost) localStorage.removeItem('hostKey');
     clearAllTimers();
     alert(message);
     window.location.reload();
