@@ -1,4 +1,4 @@
-// server.js (ホスト参加フロー修正・究極安定版)
+// server.js (ホスト認証修正・最終決定版)
 
 const express = require("express");
 const http = require("http");
@@ -63,7 +63,6 @@ initializeServer();
 function loadPresets() {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    
     const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
     log.info('デフォルト問題プリセットを読み込みました。');
@@ -409,9 +408,9 @@ io.on("connection", (socket) => {
     });
 
     socket.on("host_join", ({ playerId, hostKey }) => {
-        // ★★★ 最重要修正点 ★★★
+        // ★★★ ホスト認証ロジックの再々設計 ★★★
         if (!gameState.host.hostKey) {
-            log.info(`新しいホストが参加しました: ${playerId}`);
+            log.info(`新しいホストセッションを開始します: ${playerId}`);
             gameState.host.hostKey = Math.random().toString(36).substring(2, 8).toUpperCase();
         } else if (hostKey !== gameState.host.hostKey) {
             log.warn(`不正なホストキーでの参加試行を拒否しました: ${playerId}`);
@@ -422,12 +421,13 @@ io.on("connection", (socket) => {
         log.info(`ホストとして認証: ${playerId}`);
         gameState.host.playerId = playerId;
         gameState.host.socketId = socket.id;
-        if (gameState.players[playerId]) gameState.players[playerId].isHost = true;
-        
+        if (gameState.players[playerId]) {
+            gameState.players[playerId].isHost = true;
+        }
+
         socket.join('host_room');
         socket.emit('host_key_assigned', gameState.host.hostKey);
 
-        // 新規ホストか復帰ホストかで表示画面を切り替える
         if (gameState.phase === 'INITIAL') {
             socket.emit('request_game_phase', { fromEndScreen: false });
         } else {
@@ -446,15 +446,14 @@ io.on("connection", (socket) => {
                 gameState.lastGameRanking = [];
                 gameState.phase = 'GROUP_SELECTION';
                 io.emit("multiplayer_status_changed", gameState.phase);
-                socket.emit('host_setup_done', { isPaused: gameState.host.isPaused });
             } else {
                 Object.values(gameState.groups).forEach(g => {
                     if(g && g.groupId) g.state = initState(g.groupId);
                 });
                 gameState.phase = 'WAITING_FOR_NEXT_GAME';
                 io.emit("multiplayer_status_changed", gameState.phase);
-                socket.emit('host_setup_done', { isPaused: gameState.host.isPaused });
             }
+            socket.emit('host_setup_done', { isPaused: gameState.host.isPaused });
         }
     });
     
@@ -576,6 +575,7 @@ io.on("connection", (socket) => {
             settings: { numCards: 5, showSpeed: 1000, gameMode: 'mask', rankingDisplayCount: 10, maxQuestions: 10 },
             players: {}, groups: {}, gameData: { torifudas: [], yomifudas: [] }, lastGameRanking: []
         };
+        io.emit('clear_host_key'); // ★★★ 追加: 全クライアントのホストキーを削除させる
         io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
     });
 
@@ -588,7 +588,7 @@ io.on("connection", (socket) => {
         const player = getPlayerBySocketId(socket.id);
         if (player) {
             log.info(`${player.name} がオフラインになりました。`);
-            player.socketId = null; // socketIdをnullにしてオフラインを示す
+            player.socketId = null;
         }
         delete singlePlayStates[socket.id];
     });
@@ -605,10 +605,6 @@ io.on("connection", (socket) => {
         
         const sortedPlayers = [...sortingSource].sort((a, b) => (b[scoreKey] || 0) - (a[scoreKey] || 0));
     
-        const numTopPlayers = groupSizes.slice(0, topGroupCount).reduce((sum, size) => sum + (size || 0), 0);
-        const topPlayers = sortedPlayers.slice(0, numTopPlayers);
-        const otherPlayers = shuffle(sortedPlayers.slice(numTopPlayers));
-    
         const newGroupsConfig = {};
         for (let i = 1; i <= groupCount; i++) newGroupsConfig[i] = [];
     
@@ -621,21 +617,13 @@ io.on("connection", (socket) => {
         }
     
         let otherPlayerIndex = 0;
+        let groupCycleIndex = topGroupCount + 1;
         while (otherPlayerIndex < otherPlayers.length) {
-            let placed = false;
-            for (let i = topGroupCount + 1; i <= groupCount; i++) {
-                if (otherPlayerIndex >= otherPlayers.length) break;
-                if (newGroupsConfig[i].length < (groupSizes[i-1] || 0) ) {
-                    newGroupsConfig[i].push(otherPlayers[otherPlayerIndex++]);
-                    placed = true;
-                }
+            if(groupCycleIndex > groupCount) groupCycleIndex = 1; // 満杯でないグループを探す
+            if(newGroupsConfig[groupCycleIndex].length < (groupSizes[groupCycleIndex-1] || 4)) {
+                newGroupsConfig[groupCycleIndex].push(otherPlayers[otherPlayerIndex++]);
             }
-            if (!placed) { //
-                for (let i = 1; i <= groupCount; i++) {
-                    if (otherPlayerIndex >= otherPlayers.length) break;
-                    newGroupsConfig[i].push(otherPlayers[otherPlayerIndex++]);
-                }
-            }
+            groupCycleIndex++;
         }
         
         gameState.groups = {};
@@ -684,9 +672,9 @@ io.on("connection", (socket) => {
         }
       });
     
-      socket.on('host_export_data', () => { /* ... */ });
-      socket.on('host_import_data', (data) => { /* ... */ });
-      socket.on('host_delete_preset', ({ presetId }) => { /* ... */ });
+      socket.on('host_export_data', () => { /* 実装略 */ });
+      socket.on('host_import_data', (data) => { /* 実装略 */ });
+      socket.on('host_delete_preset', ({ presetId }) => { /* 実装略 */ });
     
       // --- シングルプレイ用イベント ---
       socket.on('request_presets', () => {
