@@ -1,4 +1,4 @@
-// server.js (起動処理修正・最終決定版)
+// server.js (安定動作版ベース・堅牢性向上・完全版)
 
 const express = require("express");
 const http = require("http");
@@ -13,13 +13,13 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'date'); // "date" フォルダを参照
+const DATA_DIR = path.join(__dirname, 'data');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
-// --- グローバル変数 (初期バージョンに近いシンプルな構造に戻す) ---
+// --- グローバル変数 ---
 let hostSocketId = null;
-let hostKey = null; // ★★★ サーバーが持つ唯一のホストキー
+let hostKey = null; // ★★★ ホストを識別するためのキーを追加
 let globalTorifudas = [];
 let globalYomifudas = [];
 let globalSettings = {};
@@ -36,17 +36,11 @@ const states = {};
 const singlePlayStates = {};
 
 // --- サーバー初期化処理 ---
-function initializeServer() {
-    console.log("サーバーを初期化しています...");
-    loadPresets();
-    console.log("サーバーの初期化が完了しました。");
-}
-
 function loadPresets() {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
     
-    const data = fs.readFileSync(path.join(__dirname, 'date', 'questions.json'), 'utf8'); // "date" フォルダを参照
+    const data = fs.readFileSync(path.join(__dirname, 'data', 'questions.json'), 'utf8');
     questionPresets = JSON.parse(data);
     console.log('✅ デフォルト問題プリセットを読み込みました。');
   } catch (err) {
@@ -68,8 +62,7 @@ function loadPresets() {
       console.error('⚠️ ユーザー作成プリセットの読み込みに失敗しました:', err);
   }
 }
-
-initializeServer(); // ★★★ この行が重要です ★★★
+loadPresets();
 
 // --- ヘルパー関数群 ---
 function shuffle(array) {
@@ -86,6 +79,7 @@ function getPlayerBySocketId(socketId) {
 function parseAndSetCards(data) {
     const torifudas = [];
     const yomifudas = [];
+    
     const dataToParse = data.rawData || data.cards;
     const isNewFormat = !!data.rawData;
 
@@ -214,13 +208,12 @@ function finalizeGame(groupId) {
         
         const cumulativeRanking = Object.values(players)
             .filter(p => p.name !== "未設定" && !p.isHost)
-            .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0))
-            .slice(0, globalSettings.rankingDisplayCount || 10);
+            .sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
         
         for(const gId of activeGroupIds) {
             io.to(gId).emit("end", { 
                 thisGame: states[gId].players.sort((a,b) => (b.finalScore || 0) - (a.finalScore || 0)), 
-                cumulative: cumulativeRanking,
+                cumulative: cumulativeRanking.slice(0, globalSettings.rankingDisplayCount || 10),
                 thisGameOverall: lastGameRanking 
             });
         }
@@ -242,8 +235,7 @@ function checkGameEnd(groupId) {
 
 function nextQuestion(groupId) {
     const state = states[groupId];
-    if (!state || state.locked) return;
-    if (isPaused) return;
+    if (!state || state.locked || isPaused) return;
 
     if (state.readTimer) clearTimeout(state.readTimer);
     state.readTimer = null;
@@ -409,7 +401,15 @@ io.on("connection", (socket) => {
         if (players[playerId]) players[playerId].isHost = true;
 
         socket.emit('host_key_assigned', hostKey);
-        socket.emit('host_setup_done', { lastGameRanking, isPaused });
+        if (gamePhase === 'INITIAL') {
+            const presetsForClient = {};
+            for(const [id, data] of Object.entries(questionPresets)) {
+                presetsForClient[id] = { category: data.category, name: data.name };
+            }
+            socket.emit('game_phase_response', { phase: 'INITIAL', presets: presetsForClient, fromEndScreen: false });
+        } else {
+            socket.emit('host_setup_done', { lastGameRanking, isPaused });
+        }
     } else {
         console.log(`🚨 プレイヤーとして参加します (不正なホストキー)`);
         socket.emit('game_phase_response', { phase: gamePhase });
@@ -448,11 +448,11 @@ io.on("connection", (socket) => {
             lastGameRanking = [];
             gamePhase = 'GROUP_SELECTION';
             io.emit("multiplayer_status_changed", gamePhase);
-            socket.emit('host_setup_done', { isPaused });
+            socket.emit('host_setup_done', { lastGameRanking, isPaused });
         } else {
             Object.keys(states).forEach(key => delete states[key]);
             gamePhase = 'WAITING_FOR_NEXT_GAME';
-            io.to(hostSocketId).emit('host_setup_done', { isPaused });
+            io.to(hostSocketId).emit('host_setup_done', { lastGameRanking, isPaused });
         }
     }
   });
@@ -499,12 +499,12 @@ io.on("connection", (socket) => {
         Object.keys(groups).forEach(key => delete groups[key]);
         lastGameRanking = [];
         gamePhase = 'GROUP_SELECTION';
-        socket.emit('host_setup_done', { isPaused });
+        socket.emit('host_setup_done', { lastGameRanking, isPaused });
         io.emit("multiplayer_status_changed", gamePhase);
     } else {
         Object.keys(states).forEach(key => delete states[key]);
         gamePhase = 'WAITING_FOR_NEXT_GAME';
-        io.to(hostSocketId).emit('host_setup_done', { isPaused });
+        io.to(hostSocketId).emit('host_setup_done', { lastGameRanking, isPaused });
     }
   });
 
@@ -825,4 +825,82 @@ io.on("connection", (socket) => {
           card.correct = true;
           const elapsedTime = Date.now() - state.startTime;
           const timeBonus = Math.max(0, 10000 - elapsedTime);
-          const baseScor
+          const baseScore = 50 + (state.totalQuestions * 1.5);
+          state.score += (Math.floor(baseScore + (timeBonus / 100)));
+      } else {
+          card.incorrect = true;
+      }
+      
+      state.history.push({ 
+        questionText: state.current.text,
+        answer: state.current.answer,
+        yourAnswer: answeredTorifuda.term,
+        correct: correct
+      });
+  
+      socket.emit('single_game_state', state);
+      setTimeout(() => nextSingleQuestion(socket.id), 1500);
+  });
+  
+  socket.on('single_game_timeup', () => {
+      const state = singlePlayStates[socket.id];
+      if (!state) return;
+  
+      const { score, playerId, name, presetId, presetName, difficulty, history } = state;
+      
+      const globalRankingFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_global.json`);
+      const personalBestFile = path.join(RANKINGS_DIR, `${presetId}_${difficulty}_personal.json`);
+  
+      let globalRankingData = readRankingFile(globalRankingFile);
+      let globalRanking = globalRankingData.ranking || [];
+      let personalBests = readRankingFile(personalBestFile);
+  
+      const oldBest = personalBests[playerId] || 0;
+      if (score > oldBest) {
+          personalBests[playerId] = score;
+          writeRankingFile(personalBestFile, personalBests);
+      }
+      const personalBest = Math.max(score, oldBest);
+  
+      const existingPlayerIndex = globalRanking.findIndex(r => r.playerId === playerId);
+      if (existingPlayerIndex > -1) {
+          if (score > globalRanking[existingPlayerIndex].score) {
+              globalRanking[existingPlayerIndex].score = score;
+          }
+      } else {
+          globalRanking.push({ playerId, name, score });
+      }
+      globalRanking.sort((a, b) => b.score - a.score);
+      globalRanking = globalRanking.slice(0, 10);
+      writeRankingFile(globalRankingFile, { ranking: globalRanking });
+  
+      globalRanking.forEach(r => {
+          if (r.playerId === playerId) r.isMe = true;
+      });
+  
+      socket.emit('single_game_end', {
+          score, personalBest, globalRanking, presetName, history
+      });
+  
+      delete singlePlayStates[socket.id];
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
+    if (socket.id === hostSocketId) {
+      hostSocketId = null;
+      console.log(`👻 ホストがオフラインになりました。キー [${hostKey}] で復帰を待ちます。`);
+    }
+    const player = getPlayerBySocketId(socket.id);
+    if (player) {
+      console.log(`👻 ${player.name} がオフラインになりました。`);
+    }
+    delete singlePlayStates[socket.id];
+  });
+});
+
+// サーバー起動
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`✅ サーバーがポート ${PORT} で起動しました。`);
+});
