@@ -1,4 +1,4 @@
-// client.js (究極安定版・完全版)
+// client.js (ホスト認証修正・最終決定版)
 
 // --- グローバル変数 ---
 let socket = io();
@@ -114,6 +114,7 @@ function showRoleSelectionUI() {
     isHost = false;
     gameMode = 'multi';
     groupId = "";
+    hostKey = localStorage.getItem('hostKey'); // 最新のホストキーを再取得
     const container = getContainer();
     container.innerHTML = `
         <div style="text-align: center;">
@@ -170,7 +171,7 @@ function showPlayerMenuUI(phase) {
 
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
-  updateNavBar(fromEndScreen ? () => showHostUI() : showRoleSelectionUI);
+  updateNavBar(fromEndScreen ? () => socket.emit('host_join', { playerId, hostKey }) : showRoleSelectionUI);
   gameMode = 'multi';
   const container = getContainer();
   const presetOptions = Object.entries(presets).map(([id, data]) => 
@@ -876,6 +877,12 @@ socket.on('host_key_assigned', (newHostKey) => {
     hostKey = newHostKey;
     localStorage.setItem('hostKey', hostKey);
     console.log(`ホストキーを受け取りました: ${hostKey}`);
+});
+
+socket.on('clear_host_key', () => {
+    localStorage.removeItem('hostKey');
+    hostKey = null;
+    console.log('サーバーの指示によりホストキーを削除しました。');
 });
 
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
