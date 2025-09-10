@@ -953,7 +953,8 @@ socket.on("end", (rankingData) => {
   showEndScreen(rankingData);
 });
 
-socket.on("host_state", ({ allGroups, unassignedPlayers, globalRanking, isPaused }) => {
+socket.on("host_state", (hostState) => {
+  const { allGroups, unassignedPlayers, globalRanking, isPaused } = hostState;
   const hostStatusDiv = document.getElementById("hostStatus");
   if (!hostStatusDiv) return;
 
@@ -996,7 +997,7 @@ socket.on("host_state", ({ allGroups, unassignedPlayers, globalRanking, isPaused
   }
 
   const globalRankingDiv = document.getElementById("globalRanking");
-  if (globalRankingDiv) {
+  if (globalRankingDiv && globalRanking) {
       globalRankingDiv.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 総合ランキング</h3>
                    <ol style="padding-left: 20px;">
                      ${globalRanking.map((p, i) => `
