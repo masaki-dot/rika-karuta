@@ -1,4 +1,4 @@
-// client.js (ボーナスタイムバグ修正・接続安定化版 - 全文)
+// client.js (ボーナスタイムバグ最終修正版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -663,6 +663,7 @@ function startSinglePlay() {
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
+    alreadyAnswered = false;
     lastQuestionText = state.current.text;
   }
   
@@ -704,6 +705,7 @@ function updateGameUI(state) {
       div.style.color = "white";
       chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
     } else if (state.gameSubPhase === 'showingResult' && card.correctAnswer) {
+      // 最終結果表示の時だけ、誰も取らなかった正解を表示
       div.style.background = "lightgreen";
       div.style.border = "2px solid green";
     }
@@ -712,10 +714,7 @@ function updateGameUI(state) {
     
     // カードをクリックできるかどうかの決定
     let canClick = false;
-    if (state.gameSubPhase === 'answering' && !alreadyAnswered) {
-        canClick = true;
-    }
-    if (state.gameSubPhase === 'bonusTime' && !alreadyAnswered) {
+    if ((state.gameSubPhase === 'answering' || state.gameSubPhase === 'bonusTime') && !alreadyAnswered) {
         canClick = true;
     }
 
@@ -723,7 +722,8 @@ function updateGameUI(state) {
         div.onclick = () => submitAnswer(card.id);
     } else {
         div.style.pointerEvents = 'none';
-        if(state.gameSubPhase !== 'showingResult' && !card.correct && !card.incorrect) {
+        // 正解・不正解が表示されていないカードのみ少し暗くする
+        if(!card.correct && !card.incorrect && !(state.gameSubPhase === 'showingResult' && card.correctAnswer)) {
             div.style.opacity = '0.7';
         }
     }
@@ -848,7 +848,6 @@ function showPointPopup(point) {
 
 // --- Socket.IO イベントリスナー ---
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
-  // プレイヤーの場合、isHostをfalseにリセット
   const clientIsHost = localStorage.getItem('isHost') === 'true';
   if (!clientIsHost) {
       isHost = false;
@@ -900,15 +899,7 @@ socket.on("state", (state) => {
   if (state.current?.text !== lastQuestionText) {
     alreadyAnswered = false;
   }
-  // 1着が出た後、2着を狙うために自分の回答済みフラグをリセットする
-  else if (state.gameSubPhase === 'bonusTime' && state.answered && !alreadyAnswered) {
-      // ただし、自分が1着だった場合はリセットしない
-      const firstPlaceCard = state.current.cards.find(c => c.correct && c.chosenBy === playerName);
-      if (!firstPlaceCard) {
-          alreadyAnswered = false;
-      }
-  }
-
+  
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
 
