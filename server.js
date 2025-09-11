@@ -1,4 +1,4 @@
-// server.js (スタート時 安全装置追加版 - 全文)
+// server.js (全員回答待ちルール 安定版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -225,7 +225,7 @@ function checkGameEnd(groupId) {
 
 function processAndShowResults(groupId) {
     const state = states[groupId];
-    if (!state || state.locked || state.isResultShowing) return;
+    if (!state || !state.current || state.locked || state.isResultShowing) return;
 
     console.log(`[${groupId}] 回答を締め切り、結果処理を開始します。`);
 
@@ -270,15 +270,17 @@ function processAndShowResults(groupId) {
         for (const playerId in state.playerAnswers) {
             if (state.playerAnswers[playerId].cardId === card.id) {
                 const player = state.players.find(p => p.playerId === playerId);
-                let rank = "";
-                if (firstPlace?.playerId === playerId) rank = "(1着)";
-                if (secondPlace?.playerId === playerId) rank = "(2着)";
-                
-                card.chosenBy = `${rank} ${player.name}`;
-                if (state.playerAnswers[playerId].isCorrect) {
-                    card.correct = true;
-                } else {
-                    card.incorrect = true;
+                if (player) {
+                    let rank = "";
+                    if (firstPlace?.playerId === playerId) rank = "(1着)";
+                    if (secondPlace?.playerId === playerId) rank = "(2着)";
+                    
+                    card.chosenBy = `${rank} ${player.name}`.trim();
+                    if (state.playerAnswers[playerId].isCorrect) {
+                        card.correct = true;
+                    } else {
+                        card.incorrect = true;
+                    }
                 }
             }
         }
@@ -409,6 +411,7 @@ function notifyHostStateChanged() {
         hostStateUpdateTimer = null;
     }, HOST_UPDATE_INTERVAL);
 }
+
 
 // --- メインの接続処理 ---
 io.on("connection", (socket) => {
