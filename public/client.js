@@ -614,20 +614,18 @@ function fixName() {
 }
 
 function submitAnswer(id) {
-  // ★★★ 修正: サーバーからhasAnsweredが送られてくるので、クライアント側のフラグは不要 ★★★
   const me = state.players.find(p => p.playerId === playerId);
   if (me && me.hasAnswered) return;
 
-  // UIを即座に更新して「回答済み」状態にする
   const overlay = document.getElementById('wait-for-others-overlay');
   if (overlay) overlay.style.display = 'flex';
   
   const cardsGrid = document.getElementById('cards-grid');
   if (cardsGrid) {
     Array.from(cardsGrid.children).forEach(cardEl => {
-        cardEl.style.pointerEvents = 'none'; // 全てのカードをクリック不可に
+        cardEl.style.pointerEvents = 'none';
         if (cardEl.dataset.cardId === id) {
-            cardEl.style.backgroundColor = '#e2e8f0'; // 自分が選んだカードをグレーにする
+            cardEl.style.backgroundColor = '#e2e8f0';
             cardEl.style.transform = 'scale(0.95)';
         }
     });
@@ -636,8 +634,7 @@ function submitAnswer(id) {
   if (gameMode === 'multi') {
     socket.emit("answer", { groupId, playerId, name: playerName, id });
   } else {
-    // single play
-    alreadyAnswered = true; // single playでは従来通りクライアント側で管理
+    alreadyAnswered = true;
     socket.emit("single_answer", { id });
   }
 }
@@ -700,7 +697,6 @@ function updateGameUI(state) {
     
     let chosenByHtml = '';
     
-    // 結果表示中のみ、カードの色や選択者を表示
     if (state.isResultShowing) {
         if (card.correct) {
           div.style.background = "gold";
@@ -717,7 +713,6 @@ function updateGameUI(state) {
 
     div.innerHTML = `<div class="card-term">${card.term}</div>${chosenByHtml}`;
     
-    // クリック可否をサーバーからの情報で決定
     if (state.isResultShowing || (me && me.hasAnswered)) {
         div.style.pointerEvents = 'none';
         if (!state.isResultShowing) {
