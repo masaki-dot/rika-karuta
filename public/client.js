@@ -21,7 +21,7 @@ let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
-// let alreadyAnswered = false; // ★不要になったため削除
+let alreadyAnswered = false; // single-play用に残す
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -38,8 +38,6 @@ function clearAllTimers() {
     rankingIntervalId = null; readInterval = null; unmaskIntervalId = null; countdownIntervalId = null; singleGameTimerId = null;
     const countdownTimer = document.getElementById('countdown-timer');
     if (countdownTimer) countdownTimer.textContent = '';
-    const bonusTimer = document.getElementById('bonus-timer');
-    if (bonusTimer) bonusTimer.style.display = 'none';
     console.log('All client timers cleared.');
 }
 
@@ -614,9 +612,6 @@ function fixName() {
 }
 
 function submitAnswer(id) {
-  const me = state.players.find(p => p.playerId === playerId);
-  if (me && me.hasAnswered) return;
-
   const overlay = document.getElementById('wait-for-others-overlay');
   if (overlay) overlay.style.display = 'flex';
   
