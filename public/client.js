@@ -1,4 +1,4 @@
-// client.js (ボーナスタイムバグ最終修正版 - 全文)
+// client.js (バグ修正最終版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -21,7 +21,7 @@ let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
-let alreadyAnswered = false;
+let alreadyAnswered = false; // ★この変数の管理を厳格化する
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -613,7 +613,7 @@ function fixName() {
 
 function submitAnswer(id) {
   if (alreadyAnswered) return;
-  alreadyAnswered = true;
+  alreadyAnswered = true; // ★自分自身が回答したことを記録
 
   const cardsGrid = document.getElementById('cards-grid');
   if (cardsGrid) {
@@ -622,6 +622,7 @@ function submitAnswer(id) {
               cardEl.style.backgroundColor = '#e2e8f0';
               cardEl.style.transform = 'scale(0.95)';
           }
+          // すべてのカードをクリック不可にする
           cardEl.style.pointerEvents = 'none';
       });
   }
@@ -661,6 +662,9 @@ function startSinglePlay() {
 
 // --- UI更新関数 ---
 function updateGameUI(state) {
+  // ★★★ この関数を全面的に修正 ★★★
+
+  // 新しい問題が来た場合、自分の回答フラグをリセット
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
     alreadyAnswered = false;
@@ -712,9 +716,10 @@ function updateGameUI(state) {
 
     div.innerHTML = `<div class="card-term">${card.term}</div>${chosenByHtml}`;
     
-    // カードをクリックできるかどうかの決定
+    // カードをクリックできるかどうかの決定ロジックを単純化
     let canClick = false;
-    if ((state.gameSubPhase === 'answering' || state.gameSubPhase === 'bonusTime') && !alreadyAnswered) {
+    // 自分自身がまだ回答しておらず、かつ結果表示中でなければクリック可能
+    if (!alreadyAnswered && state.gameSubPhase !== 'showingResult') {
         canClick = true;
     }
 
@@ -722,7 +727,7 @@ function updateGameUI(state) {
         div.onclick = () => submitAnswer(card.id);
     } else {
         div.style.pointerEvents = 'none';
-        // 正解・不正解が表示されていないカードのみ少し暗くする
+        // 正解・不正解が表示されていない未選択のカードのみ少し暗くする
         if(!card.correct && !card.incorrect && !(state.gameSubPhase === 'showingResult' && card.correctAnswer)) {
             div.style.opacity = '0.7';
         }
@@ -895,7 +900,7 @@ socket.on("state", (state) => {
   if (gameMode !== 'multi') return;
   if (!state) return;
 
-  // 新しい問題が来た時にだけリセット
+  // 新しい問題が来た時にだけ、自分の回答済みフラグをリセット
   if (state.current?.text !== lastQuestionText) {
     alreadyAnswered = false;
   }
