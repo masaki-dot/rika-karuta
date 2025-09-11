@@ -99,6 +99,7 @@
       background-color: var(--bg-content);
       border-radius: 12px;
       box-shadow: var(--shadow-medium);
+      position: relative; /* bonus-timerの位置の基準にする */
     }
 
     #yomifuda {
@@ -221,17 +222,18 @@
     /* ★★★ ボーナスタイマー用のスタイルを追加 ★★★ */
     #bonus-timer {
       position: absolute;
-      top: -15px;
+      top: 5px;
       left: 50%;
       transform: translateX(-50%);
       background-color: var(--secondary-color);
       color: white;
       padding: 5px 15px;
-      border-radius: 15px;
-      font-size: 1.1em;
+      border-radius: 20px;
+      font-size: 1.2em;
       font-weight: bold;
       animation: bonus-glow 1s infinite alternate;
       display: none; /* 初期状態は非表示 */
+      z-index: 100;
     }
     
     #nav-bar {
@@ -273,8 +275,6 @@
   <div id="game-overlays">
     <div id="point-popup"></div>
     <div id="countdown-timer"></div>
-    <!-- ★★★ ボーナスタイム表示用の要素を追加 ★★★ -->
-    <!-- (この要素は client.js の #game-area 内に動的に生成されます) -->
   </div>
   
   <div id="nav-bar" style="display: none;">
