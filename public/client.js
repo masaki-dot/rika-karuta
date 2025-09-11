@@ -1,4 +1,4 @@
-// client.js (接続処理 改善版 - 全文)
+// client.js (接続処理 最終修正版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -70,7 +70,6 @@ function updateNavBar(backAction, showTop = true) {
     navBar.style.display = (backAction || showTop) ? 'flex' : 'none';
 }
 
-// ★★★ 修正: サーバー通信中の待機画面を表示する関数 ★★★
 function showConnectingScreen() {
     clearAllTimers();
     updateNavBar(null, false);
@@ -86,15 +85,14 @@ function showConnectingScreen() {
 // --- アプリケーションの初期化 ---
 socket.on('connect', () => {
   console.log('サーバーとの接続が確立しました。');
-  
-  // ★★★ 修正: まず待機画面を表示し、ユーザー操作を防ぐ ★★★
   showConnectingScreen();
 
   if (!playerId) {
     console.log("新しいPlayerIDをリクエストします。");
     socket.emit('request_new_player_id');
   } else {
-    console.log(`既存のPlayerID (${playerId}) で再接続します。`);
+    console.log(`既存のPlayerID (${playerId}) で再接続します。isHost: ${isHost}`);
+    // ★★★ 修正: isHost 情報をサーバーに送信 ★★★
     socket.emit('reconnect_player', { playerId, name: playerName, isHostClient: isHost });
   }
 });
@@ -117,7 +115,6 @@ socket.on('new_player_id_assigned', (newPlayerId) => {
   console.log("新しいPlayerIDが割り当てられました:", newPlayerId);
   playerId = newPlayerId;
   localStorage.setItem('playerId', newPlayerId);
-  // ★★★ 修正: ID割り当て後、役割選択画面へ ★★★
   showRoleSelectionUI();
 });
 
@@ -143,7 +140,6 @@ function showRoleSelectionUI() {
         isHost = true;
         localStorage.setItem('isHost', 'true'); 
         socket.emit('host_join', { playerId });
-        // ★★★ 修正: 画面遷移はサーバーからの応答を待つ ★★★
         showConnectingScreen();
     };
     document.getElementById('player-btn').onclick = () => {
