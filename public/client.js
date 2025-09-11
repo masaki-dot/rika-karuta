@@ -92,7 +92,6 @@ socket.on('connect', () => {
     socket.emit('request_new_player_id');
   } else {
     console.log(`既存のPlayerID (${playerId}) で再接続します。isHost: ${isHost}`);
-    // ★★★ 修正: isHost 情報をサーバーに送信 ★★★
     socket.emit('reconnect_player', { playerId, name: playerName, isHostClient: isHost });
   }
 });
@@ -836,7 +835,12 @@ function showPointPopup(point) {
 // --- Socket.IO イベントリスナー ---
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
   if (isHost) {
-      showCSVUploadUI(presets, fromEndScreen);
+      if (presets) {
+          showCSVUploadUI(presets, fromEndScreen);
+      } else {
+          // presetsがない場合(host_joinからの応答)は再度リクエスト
+          socket.emit('request_game_phase');
+      }
   } else {
       showPlayerMenuUI(phase);
   }
