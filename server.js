@@ -1,4 +1,4 @@
-// server.js (ゲームスタート処理修正版 - 全文)
+// server.js (スタート時 安全装置追加版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -306,7 +306,6 @@ function nextQuestion(groupId) {
     
     if (globalYomifudas.length === 0) {
         console.error("[CRITICAL] 問題セットが読み込まれていません。ゲームを開始できません。");
-        // ゲーム終了処理を呼んでプレイヤーに通知する
         return finalizeGame(groupId);
     }
 
@@ -410,7 +409,6 @@ function notifyHostStateChanged() {
         hostStateUpdateTimer = null;
     }, HOST_UPDATE_INTERVAL);
 }
-
 
 // --- メインの接続処理 ---
 io.on("connection", (socket) => {
@@ -673,8 +671,6 @@ io.on("connection", (socket) => {
 
     if (globalYomifudas.length === 0) {
         console.error("⚠️ 問題セットが設定されていません。ゲームを開始できませんでした。");
-        // オプション: ホストにエラーメッセージを送る
-        // socket.emit('error_message', '問題セットが設定されていません。');
         return;
     }
 
