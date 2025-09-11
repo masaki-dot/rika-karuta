@@ -1,4 +1,4 @@
-// server.js (全員回答待ちルール版 - 全文)
+// server.js (ゲームスタート処理修正版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -304,6 +304,12 @@ function nextQuestion(groupId) {
     if (state.activeTimer) clearTimeout(state.activeTimer);
     state.activeTimer = null;
     
+    if (globalYomifudas.length === 0) {
+        console.error("[CRITICAL] 問題セットが読み込まれていません。ゲームを開始できません。");
+        // ゲーム終了処理を呼んでプレイヤーに通知する
+        return finalizeGame(groupId);
+    }
+
     const usedYomifudaTexts = new Set(state.usedQuestions);
     const remainingYomifudas = globalYomifudas.filter(y => !usedYomifudaTexts.has(y.text));
     
@@ -646,7 +652,6 @@ io.on("connection", (socket) => {
         players[playerId] = { playerId, socketId: socket.id, name: "Host", isHost: true };
     }
     console.log("👑 ホストが接続しました:", players[playerId]?.name);
-    // クライアント側で request_game_phase を送るので、ここからの応答は不要
   });
 
   socket.on("host_request_state", () => {
@@ -665,16 +670,26 @@ io.on("connection", (socket) => {
   socket.on("host_start", () => {
     if (socket.id !== hostSocketId) return;
     console.log("▶ ホストが全体スタートを実行");
+
+    if (globalYomifudas.length === 0) {
+        console.error("⚠️ 問題セットが設定されていません。ゲームを開始できませんでした。");
+        // オプション: ホストにエラーメッセージを送る
+        // socket.emit('error_message', '問題セットが設定されていません。');
+        return;
+    }
+
     gamePhase = 'GAME_IN_PROGRESS';
     for (const groupId of Object.keys(groups)) {
         if (!groups[groupId] || groups[groupId].players.length === 0) continue;
         const currentGroupMode = states[groupId]?.gameMode || globalSettings.gameMode;
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
+        
         const group = groups[groupId];
         states[groupId].players = group.players.map(p => ({ 
             playerId: p.playerId, name: p.name, hp: 20, score: 0, correctCount: 0
         }));
+        
         nextQuestion(groupId);
     }
     notifyHostStateChanged();
