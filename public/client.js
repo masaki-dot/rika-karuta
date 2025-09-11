@@ -1,4 +1,4 @@
-// client.js (バグ修正最終版 - 全文)
+// client.js (フラグ管理最終修正版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -21,7 +21,7 @@ let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
-let alreadyAnswered = false; // ★この変数の管理を厳格化する
+let alreadyAnswered = false;
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -622,7 +622,6 @@ function submitAnswer(id) {
               cardEl.style.backgroundColor = '#e2e8f0';
               cardEl.style.transform = 'scale(0.95)';
           }
-          // すべてのカードをクリック不可にする
           cardEl.style.pointerEvents = 'none';
       });
   }
@@ -900,10 +899,7 @@ socket.on("state", (state) => {
   if (gameMode !== 'multi') return;
   if (!state) return;
 
-  // 新しい問題が来た時にだけ、自分の回答済みフラグをリセット
-  if (state.current?.text !== lastQuestionText) {
-    alreadyAnswered = false;
-  }
+  // ★★★ 修正: alreadyAnsweredのリセットタイミングをupdateGameUIに移動
   
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
