@@ -1,4 +1,4 @@
-// client.js (全員回答待ちルール対応版 - 全文)
+// client.js (UX改善版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -21,7 +21,7 @@ let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
-let alreadyAnswered = false; // single-play用に残す
+let alreadyAnswered = false;
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -68,29 +68,21 @@ function updateNavBar(backAction, showTop = true) {
     navBar.style.display = (backAction || showTop) ? 'flex' : 'none';
 }
 
-function showConnectingScreen() {
-    clearAllTimers();
-    updateNavBar(null, false);
-    const container = getContainer();
-    container.innerHTML = `
-        <div style="text-align: center;">
-            <h2>サーバーと通信中...</h2>
-            <p>ページをリロードせず、しばらくお待ちください。</p>
-        </div>
-    `;
-}
-
 // --- アプリケーションの初期化 ---
 socket.on('connect', () => {
   console.log('サーバーとの接続が確立しました。');
-  showConnectingScreen();
-
   if (!playerId) {
-    console.log("新しいPlayerIDをリクエストします。");
     socket.emit('request_new_player_id');
   } else {
-    console.log(`既存のPlayerID (${playerId}) で再接続します。isHost: ${isHost}`);
-    socket.emit('reconnect_player', { playerId, name: playerName, isHostClient: isHost });
+    socket.emit('reconnect_player', { playerId, name: playerName });
+    if (isHost) {
+        getContainer().innerHTML = '<p>ホストとして再接続しています...</p>';
+    } else {
+        const container = getContainer();
+        if (!container.hasChildNodes() || container.querySelector('p')?.textContent === 'Loading...') {
+            showRoleSelectionUI();
+        }
+    }
   }
 });
 
@@ -109,7 +101,6 @@ socket.on('disconnect', () => {
 });
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
-  console.log("新しいPlayerIDが割り当てられました:", newPlayerId);
   playerId = newPlayerId;
   localStorage.setItem('playerId', newPlayerId);
   showRoleSelectionUI();
@@ -137,13 +128,12 @@ function showRoleSelectionUI() {
         isHost = true;
         localStorage.setItem('isHost', 'true'); 
         socket.emit('host_join', { playerId });
-        showConnectingScreen();
+        socket.emit('request_game_phase');
     };
     document.getElementById('player-btn').onclick = () => {
         isHost = false;
         localStorage.removeItem('isHost');
         socket.emit('request_game_phase');
-        showConnectingScreen();
     };
 }
 function showPlayerMenuUI(phase) {
@@ -366,10 +356,7 @@ function showGameScreen(state) {
   const container = getContainer();
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
-      <div id="game-area" style="position: relative;">
-        <div id="wait-for-others-overlay" class="game-overlay" style="display: none;">
-          <p>他のプレイヤーの回答を待っています...</p>
-        </div>
+      <div id="game-area">
         <div id="yomifuda"></div>
         <div id="cards-grid"></div>
         <hr>
@@ -503,6 +490,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
+// ★★★ UX改善: ローディング表示を追加 ★★★
 function handleSettingsSubmit(isNextGame = false) {
   const submitBtn = document.getElementById('submit-settings');
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
@@ -612,24 +600,11 @@ function fixName() {
 }
 
 function submitAnswer(id) {
-  const overlay = document.getElementById('wait-for-others-overlay');
-  if (overlay) overlay.style.display = 'flex';
-  
-  const cardsGrid = document.getElementById('cards-grid');
-  if (cardsGrid) {
-    Array.from(cardsGrid.children).forEach(cardEl => {
-        cardEl.style.pointerEvents = 'none';
-        if (cardEl.dataset.cardId === id) {
-            cardEl.style.backgroundColor = '#e2e8f0';
-            cardEl.style.transform = 'scale(0.95)';
-        }
-    });
-  }
-
+  if (alreadyAnswered) return;
+  alreadyAnswered = true;
   if (gameMode === 'multi') {
     socket.emit("answer", { groupId, playerId, name: playerName, id });
   } else {
-    alreadyAnswered = true;
     socket.emit("single_answer", { id });
   }
 }
@@ -664,6 +639,7 @@ function startSinglePlay() {
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
+    alreadyAnswered = false;
     lastQuestionText = state.current.text;
   }
   
@@ -677,10 +653,12 @@ function updateGameUI(state) {
     hasAnimated = true;
   }
   
-  const me = state.players.find(p => p.playerId === playerId);
-  const overlay = document.getElementById('wait-for-others-overlay');
-  if (overlay) {
-    overlay.style.display = (me && me.hasAnswered && !state.isResultShowing) ? 'flex' : 'none';
+  const correctCard = state.current?.cards.find(c => c.correct);
+  if (state.answered && correctCard && correctCard.chosenBy === playerName) {
+    const alreadyPopped = document.querySelector('#point-popup.show');
+    if (!alreadyPopped) {
+      showPointPopup(state.current.point);
+    }
   }
 
   const cardsGrid = document.getElementById('cards-grid');
@@ -688,35 +666,22 @@ function updateGameUI(state) {
   state.current?.cards.forEach(card => {
     const div = document.createElement("div");
     div.className = "card";
-    div.dataset.cardId = card.id;
-    
     let chosenByHtml = '';
-    
-    if (state.isResultShowing) {
-        if (card.correct) {
-          div.style.background = "gold";
-          chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
-        } else if (card.incorrect) {
-          div.style.background = "crimson";
-          div.style.color = "white";
-          chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
-        } else if (card.correctAnswer) {
-          div.style.background = "lightgreen";
-          div.style.border = "2px solid green";
-        }
+    if (card.correct) {
+      div.style.background = "gold";
+      chosenByHtml = `<div style="font-size:0.8em; color: black;">${card.chosenBy}</div>`;
+    } else if (card.incorrect) {
+      div.style.background = "crimson";
+      div.style.color = "white";
+      chosenByHtml = `<div style="font-size:0.8em;">${card.chosenBy}</div>`;
+    } else if (card.correctAnswer) {
+      div.style.background = "lightgreen";
+      div.style.border = "2px solid green";
     }
-
-    div.innerHTML = `<div class="card-term">${card.term}</div>${chosenByHtml}`;
-    
-    if (state.isResultShowing || (me && me.hasAnswered)) {
-        div.style.pointerEvents = 'none';
-        if (!state.isResultShowing) {
-          div.style.opacity = '0.7';
-        }
-    } else {
-        div.onclick = () => submitAnswer(card.id);
-    }
-
+    div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
+    div.onclick = () => {
+        if (!state.locked && !alreadyAnswered) submitAnswer(card.id);
+    };
     cardsGrid.appendChild(div);
   });
   
@@ -835,13 +800,9 @@ function showPointPopup(point) {
   setTimeout(() => popup.classList.remove('show'), 1500);
 }
 
+
 // --- Socket.IO イベントリスナー ---
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
-  const clientIsHost = localStorage.getItem('isHost') === 'true';
-  if (!clientIsHost) {
-      isHost = false;
-  }
-  
   if (isHost) {
       showCSVUploadUI(presets, fromEndScreen);
   } else {
@@ -871,7 +832,9 @@ socket.on('multiplayer_status_changed', (phase) => {
         if (statusEl) statusEl.textContent = statusText;
     }
 });
-socket.on('host_setup_done', () => { if (isHost) showHostUI(); });
+socket.on('host_setup_done', () => {
+    if (isHost) showHostUI();
+});
 
 socket.on('wait_for_next_game', showWaitingScreen);
 
@@ -883,7 +846,6 @@ socket.on("assigned_group", (newGroupId) => {
 socket.on("state", (state) => {
   if (gameMode !== 'multi') return;
   if (!state) return;
-  
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
 
