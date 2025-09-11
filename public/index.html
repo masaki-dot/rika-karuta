@@ -31,7 +31,7 @@
       background-color: var(--bg-main);
       color: var(--text-main);
       font-family: 'M PLUS Rounded 1c', sans-serif;
-      padding-bottom: 80px; /* ナビゲーションバーの高さ分 */
+      padding-bottom: 80px;
     }
 
     h1, h2, h3, h4 {
@@ -130,9 +130,20 @@
       box-shadow: var(--shadow-soft);
       cursor: pointer;
       background: #fff;
-      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.2s;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100px;
+    }
+    .card .card-term {
       font-weight: 800;
       font-size: 1.2em;
+    }
+    .card .chosen-by {
+      font-size: 0.8em;
+      margin-top: 4px;
     }
     .card:hover {
       transform: translateY(-5px) scale(1.03);
@@ -202,9 +213,25 @@
       border-radius: 10px;
       box-shadow: var(--shadow-medium);
       border: 1px solid var(--border-color);
-      bottom: 80px; /* ナビゲーションバーの上に表示 */
+      bottom: 80px;
       right: 15px;
       z-index: 999;
+    }
+
+    /* ★★★ ボーナスタイマー用のスタイルを追加 ★★★ */
+    #bonus-timer {
+      position: absolute;
+      top: -15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: var(--secondary-color);
+      color: white;
+      padding: 5px 15px;
+      border-radius: 15px;
+      font-size: 1.1em;
+      font-weight: bold;
+      animation: bonus-glow 1s infinite alternate;
+      display: none; /* 初期状態は非表示 */
     }
     
     #nav-bar {
@@ -232,6 +259,11 @@
       10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
       20%, 40%, 60%, 80% { transform: translateX(5px); }
     }
+
+    @keyframes bonus-glow {
+      from { box-shadow: 0 0 8px var(--secondary-color); }
+      to { box-shadow: 0 0 25px var(--secondary-color); }
+    }
   </style>
 </head>
 <body>
@@ -240,8 +272,9 @@
   </div>
   <div id="game-overlays">
     <div id="point-popup"></div>
-    <!-- ★修正: current-pointは不要になったので削除 -->
     <div id="countdown-timer"></div>
+    <!-- ★★★ ボーナスタイム表示用の要素を追加 ★★★ -->
+    <!-- (この要素は client.js の #game-area 内に動的に生成されます) -->
   </div>
   
   <div id="nav-bar" style="display: none;">
@@ -252,8 +285,6 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
   <script src="client.js"></script>
-  
-  <!-- ★★★ 修正: 重複していたscriptタグを削除 ★★★ -->
   
 </body>
 </html>
