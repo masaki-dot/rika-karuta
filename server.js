@@ -1,4 +1,4 @@
-// server.js (再接続処理 最終修正版 - 全文)
+// server.js (全員回答待ちルール版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -140,23 +140,26 @@ function initState(groupId) {
     numCards: globalSettings.numCards || 5,
     showSpeed: globalSettings.showSpeed || 1000,
     gameMode: globalSettings.gameMode || 'normal',
-    current: null, answered: false, waitingNext: false,
-    misClicks: [], usedQuestions: [], readDone: new Set(),
+    current: null, 
+    readDone: new Set(),
     eliminatedOrder: [], locked: false,
     activeTimer: null,
-    gameSubPhase: 'pending',
-    bonusEligiblePlayers: new Set(),
-    incorrectPlayers: new Set(),
+    playerAnswers: {},
+    isResultShowing: false,
   };
 }
 function sanitizeState(state) {
   if (!state) return null;
   const currentWithPoint = state.current ? { ...state.current, point: state.current.point } : null;
+  const playersWithAnswerStatus = state.players.map(p => ({
+      ...p,
+      hasAnswered: !!state.playerAnswers[p.playerId],
+  }));
   return {
-    groupId: state.groupId, players: state.players, questionCount: state.questionCount,
+    groupId: state.groupId, players: playersWithAnswerStatus, questionCount: state.questionCount,
     maxQuestions: state.maxQuestions, gameMode: state.gameMode, showSpeed: state.showSpeed,
-    current: currentWithPoint, locked: state.locked, answered: state.answered,
-    gameSubPhase: state.gameSubPhase,
+    current: currentWithPoint, locked: state.locked,
+    isResultShowing: state.isResultShowing,
   };
 }
 function getHostState() {
@@ -219,6 +222,81 @@ function checkGameEnd(groupId) {
     finalizeGame(groupId);
   }
 }
+
+function processAndShowResults(groupId) {
+    const state = states[groupId];
+    if (!state || state.locked || state.isResultShowing) return;
+
+    console.log(`[${groupId}] 回答を締め切り、結果処理を開始します。`);
+
+    if (state.activeTimer) clearTimeout(state.activeTimer);
+    state.activeTimer = null;
+    state.isResultShowing = true;
+
+    const correctAnswers = [];
+    for (const playerId in state.playerAnswers) {
+        if (state.playerAnswers[playerId].isCorrect) {
+            correctAnswers.push({ playerId, timestamp: state.playerAnswers[playerId].timestamp });
+        }
+    }
+    correctAnswers.sort((a, b) => a.timestamp - b.timestamp);
+
+    const firstPlace = correctAnswers.length > 0 ? correctAnswers[0] : null;
+    const secondPlace = correctAnswers.length > 1 ? correctAnswers[1] : null;
+
+    state.players.forEach(p => {
+        const answerInfo = state.playerAnswers[p.playerId];
+        
+        if (firstPlace && p.playerId === firstPlace.playerId) {
+            p.correctCount = (p.correctCount || 0) + 1;
+            console.log(`[${groupId}] 1着: ${p.name}`);
+        } 
+        else if (secondPlace && p.playerId === secondPlace.playerId) {
+            p.correctCount = (p.correctCount || 0) + 1;
+            console.log(`[${groupId}] 2着: ${p.name}`);
+        }
+        else if (firstPlace) {
+             p.hp = Math.max(0, p.hp - state.current.point);
+        }
+
+        if (answerInfo && !answerInfo.isCorrect) {
+            if (p.playerId !== firstPlace?.playerId && p.playerId !== secondPlace?.playerId) {
+                p.hp = Math.max(0, p.hp - state.current.point);
+            }
+        }
+    });
+
+    state.current.cards.forEach(card => {
+        for (const playerId in state.playerAnswers) {
+            if (state.playerAnswers[playerId].cardId === card.id) {
+                const player = state.players.find(p => p.playerId === playerId);
+                let rank = "";
+                if (firstPlace?.playerId === playerId) rank = "(1着)";
+                if (secondPlace?.playerId === playerId) rank = "(2着)";
+                
+                card.chosenBy = `${rank} ${player.name}`;
+                if (state.playerAnswers[playerId].isCorrect) {
+                    card.correct = true;
+                } else {
+                    card.incorrect = true;
+                }
+            }
+        }
+    });
+
+    const correctCard = state.current.cards.find(c => c.term === state.current.answer);
+    if (correctCard) correctCard.correctAnswer = true;
+
+    io.to(groupId).emit("state", sanitizeState(state));
+    checkGameEnd(groupId);
+    
+    if (!state.locked) {
+        state.activeTimer = setTimeout(() => {
+            nextQuestion(groupId);
+        }, 5000);
+    }
+}
+
 function nextQuestion(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -230,7 +308,6 @@ function nextQuestion(groupId) {
     const remainingYomifudas = globalYomifudas.filter(y => !usedYomifudaTexts.has(y.text));
     
     if (remainingYomifudas.length < (state.numCards || 5) || remainingYomifudas.length === 0 || state.questionCount >= state.maxQuestions) {
-        console.log(`[${groupId}] 問題不足または最大質問数到達のためゲームを終了します。`);
         return finalizeGame(groupId);
     }
 
@@ -261,38 +338,13 @@ function nextQuestion(groupId) {
     }
     
     state.questionCount++;
-    state.waitingNext = false;
-    state.answered = false;
     state.readDone = new Set();
-    state.misClicks = [];
-    state.gameSubPhase = 'answering';
-    state.bonusEligiblePlayers = new Set(state.players.filter(p => p.hp > 0).map(p => p.playerId));
-    state.incorrectPlayers = new Set();
+    state.playerAnswers = {};
+    state.isResultShowing = false;
 
     io.to(groupId).emit("state", sanitizeState(state));
 }
-function showResultAndProceed(groupId, delay = 3000) {
-    const state = states[groupId];
-    if (!state || state.locked) return;
 
-    if (state.activeTimer) clearTimeout(state.activeTimer);
-    state.activeTimer = null;
-
-    state.gameSubPhase = 'showingResult';
-    const correctCard = state.current.cards.find(c => c.term === state.current.answer);
-    if (correctCard) {
-        correctCard.correctAnswer = true;
-    }
-    io.to(groupId).emit("state", sanitizeState(state));
-
-    state.activeTimer = setTimeout(() => {
-        if (!state.locked) {
-            nextQuestion(groupId);
-        }
-    }, delay);
-}
-
-// --- シングルプレイ用ヘルパー ---
 function readRankingFile(filePath) {
     try {
         if (!fs.existsSync(RANKINGS_DIR)) fs.mkdirSync(RANKINGS_DIR, { recursive: true });
@@ -345,7 +397,6 @@ function nextSingleQuestion(socketId, isFirstQuestion = false) {
 function notifyHostStateChanged() {
     if (!hostSocketId) return;
     if (hostStateUpdateTimer) return;
-
     hostStateUpdateTimer = setTimeout(() => {
         if (hostSocketId) {
             io.to(hostSocketId).emit("host_state", getHostState());
@@ -567,24 +618,23 @@ io.on("connection", (socket) => {
   });
   
   socket.on("read_done", (groupId) => {
-    const player = getPlayerBySocketId(socket.id);
-    if (!player) return;
     const state = states[groupId];
-    if (!state || !state.current || state.activeTimer || state.answered || state.waitingNext) return;
-    state.readDone.add(player.playerId);
-    const activePlayersInGroup = state.players.filter(p => p.hp > 0).length;
-    if (state.readDone.size >= Math.ceil(activePlayersInGroup / 2)) {
-        if (state.activeTimer) return;
+    if (!state || !state.current || state.activeTimer) return;
+    
+    if (state.readDone.size === 0) {
         io.to(groupId).emit("timer_start", { seconds: 30 });
         state.activeTimer = setTimeout(() => {
-            showResultAndProceed(groupId);
+            processAndShowResults(groupId);
         }, 30000);
+    }
+    const player = getPlayerBySocketId(socket.id);
+    if (player) {
+        state.readDone.add(player.playerId);
     }
   });
 
   socket.on("host_join", ({ playerId }) => {
     if (hostPlayerId && hostPlayerId !== playerId) {
-        socket.emit('error_message', 'すでに別のホストがゲームを管理しています。');
         socket.emit('game_phase_response', { phase: gamePhase, presets: {} });
         return;
     }
@@ -596,8 +646,7 @@ io.on("connection", (socket) => {
         players[playerId] = { playerId, socketId: socket.id, name: "Host", isHost: true };
     }
     console.log("👑 ホストが接続しました:", players[playerId]?.name);
-    // ★★★ 修正: このイベントからは応答を返さない ★★★
-    // クライアント側で request_game_phase を送るため、そちらで応答する
+    // クライアント側で request_game_phase を送るので、ここからの応答は不要
   });
 
   socket.on("host_request_state", () => {
@@ -706,82 +755,27 @@ io.on("connection", (socket) => {
   });
 
   socket.on("answer", ({ groupId, playerId, name, id }) => {
-    if (!socket.rooms.has(groupId)) return;
     const state = states[groupId];
-    if (!state || !state.current || state.locked || state.answered) return;
+    if (!state || !state.current || state.locked || state.isResultShowing) return;
     const playerState = state.players.find(p => p.playerId === playerId);
-    if (!playerState || playerState.hp <= 0) return;
+    if (!playerState || playerState.hp <= 0 || state.playerAnswers[playerId]) return;
 
     const answeredTorifuda = globalTorifudas.find(t => t.id === id);
     if (!answeredTorifuda) return;
+    
+    const isCorrect = state.current.answer === answeredTorifuda.term;
 
-    const correct = state.current.answer === answeredTorifuda.term;
-    const point = state.current.point;
+    state.playerAnswers[playerId] = {
+        cardId: id,
+        isCorrect: isCorrect,
+        timestamp: Date.now()
+    };
 
-    if (state.gameSubPhase === 'answering') {
-        if (correct) {
-            if (state.activeTimer) clearTimeout(state.activeTimer);
-            state.activeTimer = null;
-            state.answered = true;
-            state.gameSubPhase = 'bonusTime';
-            
-            playerState.correctCount = (playerState.correctCount || 0) + 1;
-            state.current.cards.find(c => c.id === id).correct = true;
-            state.current.cards.find(c => c.id === id).chosenBy = name;
-            
-            state.players.forEach(p => {
-                if (p.playerId !== playerId) p.hp = Math.max(0, p.hp - point);
-            });
-            
-            io.to(groupId).emit("state", sanitizeState(state));
-            checkGameEnd(groupId);
-            
-            if (!state.locked) {
-                state.activeTimer = setTimeout(() => {
-                    showResultAndProceed(groupId);
-                }, 5000);
-            }
-        } else {
-            playerState.hp -= point;
-            state.bonusEligiblePlayers.delete(playerId);
-            state.incorrectPlayers.add(playerId);
+    io.to(groupId).emit("state", sanitizeState(state));
 
-            state.current.cards.find(c => c.id === id).incorrect = true;
-            state.current.cards.find(c => c.id === id).chosenBy = name;
-            io.to(groupId).emit("state", sanitizeState(state));
-            
-            checkGameEnd(groupId);
-            if (state.locked) return;
-
-            const activePlayers = state.players.filter(p => p.hp > 0);
-            if (state.incorrectPlayers.size >= activePlayers.length) {
-                console.log(`[${groupId}] 全員が誤答しました。`);
-                showResultAndProceed(groupId);
-            }
-        }
-    }
-    else if (state.gameSubPhase === 'bonusTime') {
-        if (!state.bonusEligiblePlayers.has(playerId)) return;
-
-        if (correct) {
-            if (state.activeTimer) clearTimeout(state.activeTimer);
-            state.activeTimer = null;
-            
-            playerState.correctCount = (playerState.correctCount || 0) + 1;
-            state.current.cards.find(c => c.id === id).correct = true;
-            state.current.cards.find(c => c.id === id).chosenBy = `(2着) ${name}`;
-            
-            showResultAndProceed(groupId);
-        } else {
-            playerState.hp -= point;
-            state.bonusEligiblePlayers.delete(playerId);
-            
-            state.current.cards.find(c => c.id === id).incorrect = true;
-            state.current.cards.find(c => c.id === id).chosenBy = name;
-            io.to(groupId).emit("state", sanitizeState(state));
-            
-            checkGameEnd(groupId);
-        }
+    const activePlayers = state.players.filter(p => p.hp > 0);
+    if (Object.keys(state.playerAnswers).length >= activePlayers.length) {
+        processAndShowResults(groupId);
     }
   });
 
