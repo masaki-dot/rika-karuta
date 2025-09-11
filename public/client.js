@@ -1,4 +1,4 @@
-// client.js (フラグ管理最終修正版 - 全文)
+// client.js (全員回答待ちルール版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -21,7 +21,6 @@ let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
-let alreadyAnswered = false;
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -369,7 +368,9 @@ function showGameScreen(state) {
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
       <div id="game-area" style="position: relative;">
-        <div id="bonus-timer"></div>
+        <div id="wait-for-others-overlay" class="game-overlay" style="display: none;">
+          <p>他のプレイヤーの回答を待っています...</p>
+        </div>
         <div id="yomifuda"></div>
         <div id="cards-grid"></div>
         <hr>
@@ -612,23 +613,31 @@ function fixName() {
 }
 
 function submitAnswer(id) {
-  if (alreadyAnswered) return;
-  alreadyAnswered = true; // ★自分自身が回答したことを記録
+  // ★★★ 修正: この関数内では alreadyAnswered を変更しない ★★★
+  // alreadyAnswered は state イベント受信時にサーバーからの情報で更新される
+  const me = state.players.find(p => p.playerId === playerId);
+  if (me && me.hasAnswered) return;
 
+  // UIを即座に更新して「回答済み」状態にする
+  const overlay = document.getElementById('wait-for-others-overlay');
+  if (overlay) overlay.style.display = 'flex';
+  
   const cardsGrid = document.getElementById('cards-grid');
   if (cardsGrid) {
-      Array.from(cardsGrid.children).forEach(cardEl => {
-          if (cardEl.dataset.cardId === id) {
-              cardEl.style.backgroundColor = '#e2e8f0';
-              cardEl.style.transform = 'scale(0.95)';
-          }
-          cardEl.style.pointerEvents = 'none';
-      });
+    Array.from(cardsGrid.children).forEach(cardEl => {
+        cardEl.style.pointerEvents = 'none'; // 全てのカードをクリック不可に
+        if (cardEl.dataset.cardId === id) {
+            cardEl.style.backgroundColor = '#e2e8f0'; // 自分が選んだカードをグレーにする
+            cardEl.style.transform = 'scale(0.95)';
+        }
+    });
   }
 
   if (gameMode === 'multi') {
     socket.emit("answer", { groupId, playerId, name: playerName, id });
   } else {
+    // single play
+    alreadyAnswered = true;
     socket.emit("single_answer", { id });
   }
 }
@@ -661,12 +670,8 @@ function startSinglePlay() {
 
 // --- UI更新関数 ---
 function updateGameUI(state) {
-  // ★★★ この関数を全面的に修正 ★★★
-
-  // 新しい問題が来た場合、自分の回答フラグをリセット
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
-    alreadyAnswered = false;
     lastQuestionText = state.current.text;
   }
   
@@ -680,14 +685,10 @@ function updateGameUI(state) {
     hasAnimated = true;
   }
   
-  const bonusTimerDiv = document.getElementById('bonus-timer');
-  if (bonusTimerDiv) {
-      if (state.gameSubPhase === 'bonusTime') {
-          bonusTimerDiv.textContent = 'ボーナスタイム！ (5秒)';
-          bonusTimerDiv.style.display = 'block';
-      } else {
-          bonusTimerDiv.style.display = 'none';
-      }
+  const me = state.players.find(p => p.playerId === playerId);
+  const overlay = document.getElementById('wait-for-others-overlay');
+  if (overlay) {
+    overlay.style.display = (me && me.hasAnswered && !state.isResultShowing) ? 'flex' : 'none';
   }
 
   const cardsGrid = document.getElementById('cards-grid');
@@ -699,37 +700,27 @@ function updateGameUI(state) {
     
     let chosenByHtml = '';
     
-    // カードの色の決定
-    if (card.correct) {
-      div.style.background = "gold";
-      chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
-    } else if (card.incorrect) {
-      div.style.background = "crimson";
-      div.style.color = "white";
-      chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
-    } else if (state.gameSubPhase === 'showingResult' && card.correctAnswer) {
-      // 最終結果表示の時だけ、誰も取らなかった正解を表示
-      div.style.background = "lightgreen";
-      div.style.border = "2px solid green";
+    if (state.isResultShowing) {
+        if (card.correct) {
+          div.style.background = "gold";
+          chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
+        } else if (card.incorrect) {
+          div.style.background = "crimson";
+          div.style.color = "white";
+          chosenByHtml = `<div class="chosen-by">${card.chosenBy}</div>`;
+        } else if (card.correctAnswer) {
+          div.style.background = "lightgreen";
+          div.style.border = "2px solid green";
+        }
     }
 
     div.innerHTML = `<div class="card-term">${card.term}</div>${chosenByHtml}`;
     
-    // カードをクリックできるかどうかの決定ロジックを単純化
-    let canClick = false;
-    // 自分自身がまだ回答しておらず、かつ結果表示中でなければクリック可能
-    if (!alreadyAnswered && state.gameSubPhase !== 'showingResult') {
-        canClick = true;
-    }
-
-    if (canClick) {
-        div.onclick = () => submitAnswer(card.id);
-    } else {
+    if (state.isResultShowing || (me && me.hasAnswered)) {
         div.style.pointerEvents = 'none';
-        // 正解・不正解が表示されていない未選択のカードのみ少し暗くする
-        if(!card.correct && !card.incorrect && !(state.gameSubPhase === 'showingResult' && card.correctAnswer)) {
-            div.style.opacity = '0.7';
-        }
+        div.style.opacity = '0.7';
+    } else {
+        div.onclick = () => submitAnswer(card.id);
     }
 
     cardsGrid.appendChild(div);
@@ -898,8 +889,6 @@ socket.on("assigned_group", (newGroupId) => {
 socket.on("state", (state) => {
   if (gameMode !== 'multi') return;
   if (!state) return;
-
-  // ★★★ 修正: alreadyAnsweredのリセットタイミングをupdateGameUIに移動
   
   const amIReady = playerName !== "";
   const isGameScreenActive = document.getElementById('game-area');
