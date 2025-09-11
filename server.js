@@ -1,4 +1,4 @@
-// server.js (1〜4の全修正案反映版 - 完全な全文)
+// server.js (再接続処理 最終修正版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -365,16 +365,21 @@ io.on("connection", (socket) => {
     socket.emit('new_player_id_assigned', playerId);
   });
 
-  socket.on('reconnect_player', ({ playerId, name }) => {
+  socket.on('reconnect_player', ({ playerId, name, isHostClient }) => {
     if (players[playerId]) {
       players[playerId].socketId = socket.id;
       if (name) players[playerId].name = name;
     } else {
-      players[playerId] = { playerId, socketId: socket.id, name: name || "未設定", isHost: false };
+      players[playerId] = { playerId, socketId: socket.id, name: name || "未設定", isHost: isHostClient || false };
     }
     console.log(`🔄 ${players[playerId].name}(${playerId.substring(0,4)})が再接続しました。`);
 
-    if (players[playerId].isHost && playerId === hostPlayerId) {
+    const presetsForClient = {};
+    for(const [id, data] of Object.entries(questionPresets)) {
+        presetsForClient[id] = { category: data.category, name: data.name };
+    }
+
+    if (isHostClient && players[playerId].isHost && playerId === hostPlayerId) {
         hostSocketId = socket.id;
         console.log("👑 ホストが復帰しました:", players[playerId].name);
         
@@ -382,13 +387,30 @@ io.on("connection", (socket) => {
         if (gamePhase !== 'INITIAL' && totalPlayers > 0) {
             socket.emit('host_reconnect_success');
         } else {
-            const presetsForClient = {};
-            for(const [id, data] of Object.entries(questionPresets)) {
-                presetsForClient[id] = { category: data.category, name: data.name };
+            socket.emit('game_phase_response', { phase: 'INITIAL', presets: presetsForClient });
+        }
+        return;
+    }
+
+    for (const [gId, group] of Object.entries(groups)) {
+        if (group.players.find(p => p.playerId === playerId)) {
+            const state = states[gId];
+            if (state && !state.locked) {
+                console.log(`[Rejoin] ${name} をグループ ${gId} に復帰させます。`);
+                socket.join(gId);
+                socket.emit('rejoin_game', sanitizeState(state));
+            } else {
+                socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
             }
-            socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
+            return;
         }
     }
+
+    console.log(`[Rejoin] ${name} はどのグループにも属していません。プレイヤーメニューへ誘導します。`);
+    if (isHostClient) {
+        players[playerId].isHost = false;
+    }
+    socket.emit('game_phase_response', { phase: gamePhase, presets: presetsForClient });
   });
 
   socket.on('request_game_phase', ({ fromEndScreen = false } = {}) => {
@@ -422,64 +444,49 @@ io.on("connection", (socket) => {
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
     
-    console.log("ファイル設定を受信。保存アクション:", saveAction);
-    
     try {
         if (saveAction) {
-            console.log("ファイル保存処理を開始...");
             if (!fs.existsSync(USER_PRESETS_DIR)) fs.mkdirSync(USER_PRESETS_DIR, { recursive: true });
-            
             let filePath;
             let dataToSave;
-
             if (saveAction === 'new') {
                 const newPresetId = `${Date.now()}_${presetInfo.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
                 filePath = path.join(USER_PRESETS_DIR, `${newPresetId}.json`);
                 dataToSave = { category: presetInfo.category, name: presetInfo.name, rawData };
                 fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
                 console.log(`💾 新規プリセットを保存: ${filePath}`);
-
             } else if (presetId && presetId.startsWith('user_')) {
                 const fileName = `${presetId.replace('user_', '')}.json`;
                 filePath = path.join(USER_PRESETS_DIR, fileName);
-                
                 if (fs.existsSync(filePath)) {
                     const existingData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                     let finalRawData;
-
                     if (saveAction === 'append') {
                         finalRawData = existingData.rawData.concat(rawData);
-                    } else { // 'overwrite'
+                    } else {
                         finalRawData = rawData;
                     }
                     dataToSave = { ...existingData, rawData: finalRawData };
                     fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2));
                     console.log(`💾 プリセットを更新 (${saveAction}): ${filePath}`);
-                } else {
-                    console.warn(`⚠️ 更新対象のファイルが見つかりません: ${filePath}`);
                 }
             }
             loadPresets();
-            console.log("ファイル保存処理が完了。");
         }
     } catch (err) {
         console.error('プリセットの保存/更新中にエラーが発生しました:', err);
     } finally {
-        console.log("カードデータの設定処理を開始...");
         parseAndSetCards({ rawData });
         globalSettings = { ...settings, maxQuestions: globalYomifudas.length };
-        
         if (!isNextGame) {
             Object.keys(states).forEach(key => delete states[key]);
             Object.keys(groups).forEach(key => delete groups[key]);
             gamePhase = 'GROUP_SELECTION';
-            console.log("ホストに準備完了を通知 (host_setup_done)");
             socket.emit('host_setup_done');
             io.emit("multiplayer_status_changed", gamePhase);
         } else {
             Object.keys(states).forEach(key => delete states[key]);
             gamePhase = 'WAITING_FOR_NEXT_GAME';
-            console.log("ホストに次ゲーム準備完了を通知 (host_setup_done)");
             io.to(hostSocketId).emit('host_setup_done');
         }
     }
@@ -488,10 +495,8 @@ io.on("connection", (socket) => {
   socket.on("join", ({ groupId, playerId }) => {
     const player = players[playerId];
     if (!player) return;
-
     const previousGroupId = Object.keys(groups).find(gId => groups[gId]?.players.some(p => p.playerId === playerId));
     let existingPlayer = null;
-
     if (previousGroupId) {
         existingPlayer = groups[previousGroupId].players.find(p => p.playerId === playerId);
         groups[previousGroupId].players = groups[previousGroupId].players.filter(p => p.playerId !== playerId);
@@ -499,28 +504,22 @@ io.on("connection", (socket) => {
             states[previousGroupId].players = states[previousGroupId].players.filter(p => p.playerId !== playerId);
         }
     }
-    
     const socketInstance = io.sockets.sockets.get(player.socketId);
     if (socketInstance) {
         for (const room of socketInstance.rooms) {
             if (room !== socketInstance.id) socketInstance.leave(room);
         }
     }
-    
     socket.join(groupId);
-    
     if (!groups[groupId]) groups[groupId] = { players: [] };
     if (!states[groupId]) states[groupId] = initState(groupId);
-
     if (!groups[groupId].players.some(p => p.playerId === playerId)) {
       groups[groupId].players.push({ 
-          playerId, 
-          name: player.name, 
+          playerId, name: player.name, 
           totalScore: existingPlayer?.totalScore || 0,
           currentScore: 0 
       });
     }
-    
     notifyHostStateChanged();
   });
 
@@ -532,12 +531,12 @@ io.on("connection", (socket) => {
                 socket.join(gId);
                 socket.emit('rejoin_game', sanitizeState(state));
             } else {
-                socket.emit('game_phase_response', { phase: gamePhase });
+                socket.emit('game_phase_response', { phase: gamePhase, presets: {} });
             }
             return;
         }
     }
-    socket.emit('game_phase_response', { phase: gamePhase });
+    socket.emit('game_phase_response', { phase: gamePhase, presets: {} });
   });
 
   socket.on("leave_group", ({ groupId, playerId }) => {
@@ -553,7 +552,6 @@ io.on("connection", (socket) => {
 
   socket.on("set_name", ({ groupId, playerId, name }) => {
     if (players[playerId]) players[playerId].name = name;
-    
     if (groups[groupId]) {
         const gPlayer = groups[groupId].players.find(p => p.playerId === playerId);
         if (gPlayer) gPlayer.name = name;
@@ -562,7 +560,6 @@ io.on("connection", (socket) => {
         const statePlayer = states[groupId].players.find(p => p.playerId === playerId);
         if (statePlayer) statePlayer.name = name;
     }
-
     if (states[groupId]) {
       io.to(groupId).emit("state", sanitizeState(states[groupId]));
     }
@@ -576,7 +573,6 @@ io.on("connection", (socket) => {
     if (!state || !state.current || state.activeTimer || state.answered || state.waitingNext) return;
     state.readDone.add(player.playerId);
     const activePlayersInGroup = state.players.filter(p => p.hp > 0).length;
-
     if (state.readDone.size >= Math.ceil(activePlayersInGroup / 2)) {
         if (state.activeTimer) return;
         io.to(groupId).emit("timer_start", { seconds: 30 });
@@ -589,6 +585,7 @@ io.on("connection", (socket) => {
   socket.on("host_join", ({ playerId }) => {
     if (hostPlayerId && hostPlayerId !== playerId) {
         socket.emit('error_message', 'すでに別のホストがゲームを管理しています。');
+        socket.emit('game_phase_response', { phase: gamePhase, presets: {} });
         return;
     }
     hostSocketId = socket.id;
@@ -599,6 +596,7 @@ io.on("connection", (socket) => {
         players[playerId] = { playerId, socketId: socket.id, name: "Host", isHost: true };
     }
     console.log("👑 ホストが接続しました:", players[playerId]?.name);
+    socket.emit('game_phase_response', { phase: gamePhase, presets: {} });
   });
 
   socket.on("host_request_state", () => {
@@ -664,9 +662,9 @@ io.on("connection", (socket) => {
         if (!placed) break;
     }
     const unassignedPlayers = [...topPlayers.slice(topPlayerIndex), ...otherPlayers.slice(otherPlayerIndex)];
-    let unassignedIndex = 0;
     if (unassignedPlayers.length > 0) {
       console.log(`${unassignedPlayers.length}人のプレイヤーが定員オーバーしました。`);
+      let unassignedIndex = 0;
       while(unassignedIndex < unassignedPlayers.length) {
           for (let i = 1; i <= groupCount; i++) {
               if (unassignedIndex >= unassignedPlayers.length) break;
