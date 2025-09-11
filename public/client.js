@@ -1,4 +1,4 @@
-// client.js (新ルール対応・UX改善版 - 全文)
+// client.js (接続処理 改善版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -39,7 +39,7 @@ function clearAllTimers() {
     const countdownTimer = document.getElementById('countdown-timer');
     if (countdownTimer) countdownTimer.textContent = '';
     const bonusTimer = document.getElementById('bonus-timer');
-    if (bonusTimer) bonusTimer.textContent = '';
+    if (bonusTimer) bonusTimer.style.display = 'none';
     console.log('All client timers cleared.');
 }
 
@@ -59,7 +59,7 @@ function updateNavBar(backAction, showTop = true) {
         topBtn.style.display = 'block';
         topBtn.onclick = () => {
             isHost = false;
-            localStorage.removeItem('isHost'); // ★4. ホスト情報を確実にクリア
+            localStorage.removeItem('isHost');
             gameMode = 'multi';
             showRoleSelectionUI();
         };
@@ -70,21 +70,32 @@ function updateNavBar(backAction, showTop = true) {
     navBar.style.display = (backAction || showTop) ? 'flex' : 'none';
 }
 
+// ★★★ 修正: サーバー通信中の待機画面を表示する関数 ★★★
+function showConnectingScreen() {
+    clearAllTimers();
+    updateNavBar(null, false);
+    const container = getContainer();
+    container.innerHTML = `
+        <div style="text-align: center;">
+            <h2>サーバーと通信中...</h2>
+            <p>ページをリロードせず、しばらくお待ちください。</p>
+        </div>
+    `;
+}
+
 // --- アプリケーションの初期化 ---
 socket.on('connect', () => {
   console.log('サーバーとの接続が確立しました。');
+  
+  // ★★★ 修正: まず待機画面を表示し、ユーザー操作を防ぐ ★★★
+  showConnectingScreen();
+
   if (!playerId) {
+    console.log("新しいPlayerIDをリクエストします。");
     socket.emit('request_new_player_id');
   } else {
-    socket.emit('reconnect_player', { playerId, name: playerName });
-    if (isHost) {
-        getContainer().innerHTML = '<p>ホストとして再接続しています...</p>';
-    } else {
-        const container = getContainer();
-        if (!container.hasChildNodes() || container.querySelector('p')?.textContent === 'Loading...') {
-            showRoleSelectionUI();
-        }
-    }
+    console.log(`既存のPlayerID (${playerId}) で再接続します。`);
+    socket.emit('reconnect_player', { playerId, name: playerName, isHostClient: isHost });
   }
 });
 
@@ -103,8 +114,10 @@ socket.on('disconnect', () => {
 });
 
 socket.on('new_player_id_assigned', (newPlayerId) => {
+  console.log("新しいPlayerIDが割り当てられました:", newPlayerId);
   playerId = newPlayerId;
   localStorage.setItem('playerId', newPlayerId);
+  // ★★★ 修正: ID割り当て後、役割選択画面へ ★★★
   showRoleSelectionUI();
 });
 
@@ -130,12 +143,14 @@ function showRoleSelectionUI() {
         isHost = true;
         localStorage.setItem('isHost', 'true'); 
         socket.emit('host_join', { playerId });
-        socket.emit('request_game_phase');
+        // ★★★ 修正: 画面遷移はサーバーからの応答を待つ ★★★
+        showConnectingScreen();
     };
     document.getElementById('player-btn').onclick = () => {
         isHost = false;
         localStorage.removeItem('isHost');
         socket.emit('request_game_phase');
+        showConnectingScreen();
     };
 }
 function showPlayerMenuUI(phase) {
@@ -561,8 +576,36 @@ function handleSettingsSubmit(isNextGame = false) {
   }
 }
 
-function handleDataImport(event) { /* (変更なし) */ }
-function handleDeletePreset() { /* (変更なし) */ }
+function handleDataImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = JSON.parse(e.target.result);
+            if (confirm('現在のサーバーデータを上書きします。よろしいですか？')) {
+                socket.emit('host_import_data', data);
+            }
+        } catch (error) {
+            alert('ファイルの読み込みに失敗しました。有効なJSONファイルではありません。');
+        }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+}
+
+function handleDeletePreset() {
+    const presetSelect = document.getElementById('preset-select');
+    const presetId = presetSelect.value;
+    if (!presetId || !presetId.startsWith('user_')) {
+        return alert('デフォルトの問題リストは削除できません。');
+    }
+    const selectedOption = presetSelect.options[presetSelect.selectedIndex];
+    const presetName = selectedOption.text;
+    if (confirm(`本当に「${presetName}」を削除しますか？この操作は元に戻せません。`)) {
+        socket.emit('host_delete_preset', { presetId });
+    }
+}
 
 function fixName() {
   const nameInput = document.getElementById("nameInput");
@@ -573,20 +616,18 @@ function fixName() {
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
 
-// ★2. クリック時の即時フィードバックを実装
 function submitAnswer(id) {
   if (alreadyAnswered) return;
   alreadyAnswered = true;
 
-  // サーバーに送信する前にUIを即座に変更
   const cardsGrid = document.getElementById('cards-grid');
   if (cardsGrid) {
       Array.from(cardsGrid.children).forEach(cardEl => {
           if (cardEl.dataset.cardId === id) {
-              cardEl.style.backgroundColor = '#e2e8f0'; // 選択中カラー
+              cardEl.style.backgroundColor = '#e2e8f0';
               cardEl.style.transform = 'scale(0.95)';
           }
-          cardEl.style.pointerEvents = 'none'; // 他のカードを無効化
+          cardEl.style.pointerEvents = 'none';
       });
   }
 
@@ -597,9 +638,30 @@ function submitAnswer(id) {
   }
 }
 
-function submitGrouping() { /* (変更なし) */ }
-function startSinglePlay() { /* (変更なし) */ }
+function submitGrouping() {
+  const groupSizes = Array.from(document.querySelectorAll('.group-size-input')).map(input => parseInt(input.value) || 0);
+  
+  socket.emit("host_assign_groups", {
+    groupCount: parseInt(document.getElementById("groupCount").value),
+    topGroupCount: parseInt(document.getElementById("topGroupCount").value),
+    groupSizes: groupSizes
+  });
+}
 
+function startSinglePlay() {
+  const nameInput = document.getElementById("nameInput");
+  playerName = nameInput.value.trim();
+  if (!playerName) return alert("名前を入力してください");
+  localStorage.setItem('playerName', playerName);
+
+  const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
+  if (!presetId) return alert('問題を選んでください');
+
+  const difficulty = document.getElementById('difficulty-select').value;
+
+  socket.emit('start_single_play', { name: playerName, playerId, difficulty, presetId });
+  getContainer().innerHTML = `<p>ゲーム準備中...</p>`;
+}
 
 // --- UI更新関数 ---
 function updateGameUI(state) {
@@ -619,7 +681,6 @@ function updateGameUI(state) {
     hasAnimated = true;
   }
   
-  // ★ボーナスタイム表示
   const bonusTimerDiv = document.getElementById('bonus-timer');
   if (bonusTimerDiv) {
       if (state.gameSubPhase === 'bonusTime') {
@@ -635,7 +696,7 @@ function updateGameUI(state) {
   state.current?.cards.forEach(card => {
     const div = document.createElement("div");
     div.className = "card";
-    div.dataset.cardId = card.id; // クリックフィードバック用
+    div.dataset.cardId = card.id;
     
     let chosenByHtml = '';
     if (card.correct) {
@@ -652,8 +713,7 @@ function updateGameUI(state) {
 
     div.innerHTML = `<div class="card-term">${card.term}</div>${chosenByHtml}`;
     
-    // 既に回答済み、または結果表示フェーズならクリックできないようにする
-    if (state.answered || state.gameSubPhase === 'showingResult') {
+    if (state.answered || state.gameSubPhase === 'showingResult' || (state.gameSubPhase === 'bonusTime' && alreadyAnswered)) {
         div.style.pointerEvents = 'none';
         div.style.opacity = '0.7';
     } else {
@@ -679,18 +739,139 @@ function updateGameUI(state) {
   }
 }
 
-function updateSinglePlayGameUI(state) { /* (変更なし) */ }
-function renderHpBar(hp) { /* (変更なし) */ }
-function animateNormalText(elementId, text, speed) { /* (変更なし) */ }
-function animateMaskedText(elementId, text, maskedIndices) { /* (変更なし) */ }
-function showPointPopup(point) { /* (変更なし) */ }
+function updateSinglePlayGameUI(state) {
+  hasAnimated = false;
+  alreadyAnswered = false;
+  const yomifudaDiv = document.getElementById('yomifuda');
+  if (yomifudaDiv && !hasAnimated && state.current?.text) {
+    if (state.difficulty === 'hard') {
+      animateMaskedText('yomifuda', state.current.text, state.current.maskedIndices);
+    } else {
+      yomifudaDiv.textContent = state.current.text;
+    }
+    hasAnimated = true;
+  }
+  const cardsGrid = document.getElementById('cards-grid');
+  if (cardsGrid) {
+    cardsGrid.innerHTML = '';
+    state.current?.cards.forEach(card => {
+        const div = document.createElement("div");
+        div.className = "card";
+        if (card.correct) div.style.background = "gold";
+        if (card.incorrect) div.style.background = "crimson";
+        div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
+        div.onclick = () => { if (!alreadyAnswered) submitAnswer(card.id); };
+        cardsGrid.appendChild(div);
+    });
+  }
+  const singlePlayerInfo = document.getElementById('single-player-info');
+  if (singlePlayerInfo) {
+      singlePlayerInfo.innerHTML = `<h4>スコア: ${state.score}</h4>`;
+  }
+}
+
+function renderHpBar(hp) {
+    const hpPercent = Math.max(0, hp / 20 * 100);
+    let hpColor;
+    if (hp <= 5) hpColor = "#e53e3e";
+    else if (hp <= 10) hpColor = "#dd6b20";
+    else hpColor = "#48bb78";
+    return `
+      <div style="font-size: 0.9em; margin-bottom: 4px;">HP: ${hp} / 20</div>
+      <div class="hp-bar-container">
+        <div class="hp-bar-inner" style="width: ${hpPercent}%; background-color: ${hpColor};"></div>
+      </div>
+    `;
+}
+
+function animateNormalText(elementId, text, speed) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  if (readInterval) clearInterval(readInterval);
+  element.textContent = "";
+  let i = 0;
+  readInterval = setInterval(() => {
+    i += 5;
+    if (i >= text.length) {
+      element.textContent = text;
+      clearInterval(readInterval);
+      readInterval = null;
+      if (gameMode === 'multi') socket.emit("read_done", groupId);
+    } else {
+      element.textContent = text.slice(0, i);
+    }
+  }, speed);
+}
+
+function animateMaskedText(elementId, text, maskedIndices) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  if (unmaskIntervalId) clearInterval(unmaskIntervalId);
+  let textChars = text.split('');
+  let remainingIndices = [...maskedIndices];
+  for (const index of remainingIndices) {
+    if (textChars[index] !== ' ' && textChars[index] !== '　') textChars[index] = '？';
+  }
+  element.textContent = textChars.join('');
+  const revealSpeed = remainingIndices.length > 0 ? 20000 / remainingIndices.length : 200;
+  unmaskIntervalId = setInterval(() => {
+    if (remainingIndices.length === 0) {
+      clearInterval(unmaskIntervalId);
+      unmaskIntervalId = null;
+      element.textContent = text;
+      if (gameMode === 'multi') socket.emit("read_done", groupId);
+      return;
+    }
+    const randomIndex = Math.floor(Math.random() * remainingIndices.length);
+    const indexToReveal = remainingIndices.splice(randomIndex, 1)[0];
+    textChars[indexToReveal] = text[indexToReveal];
+    element.textContent = textChars.join('');
+  }, revealSpeed);
+}
+
+function showPointPopup(point) {
+  const popup = document.getElementById('point-popup');
+  if (!popup) return;
+  popup.textContent = `+${point}点!`;
+  popup.className = 'show';
+  setTimeout(() => popup.classList.remove('show'), 1500);
+}
 
 // --- Socket.IO イベントリスナー ---
-socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => { /* (変更なし) */ });
-socket.on('host_reconnect_success', () => { /* (変更なし) */ });
-socket.on('multiplayer_status_changed', (phase) => { /* (変更なし) */ });
+socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
+  if (isHost) {
+      showCSVUploadUI(presets, fromEndScreen);
+  } else {
+      showPlayerMenuUI(phase);
+  }
+});
+
+socket.on('host_reconnect_success', () => {
+    if (isHost) {
+        console.log('ホストとして正常に復帰しました。管理画面を表示します。');
+        showHostUI();
+    }
+});
+
+socket.on('multiplayer_status_changed', (phase) => {
+    const playerMenuButton = document.getElementById('multi-play-btn');
+    if (playerMenuButton) {
+        const multiPlayEnabled = phase === 'GROUP_SELECTION' || phase === 'WAITING_FOR_NEXT_GAME' || phase === 'GAME_IN_PROGRESS';
+        playerMenuButton.disabled = !multiPlayEnabled;
+        const statusText = {
+            'INITIAL': '現在、ホストがゲームを準備中です...',
+            'GROUP_SELECTION': 'ホストの準備が完了しました！',
+            'WAITING_FOR_NEXT_GAME': 'ホストが次の問題を選択中です...',
+            'GAME_IN_PROGRESS': 'ゲームが進行中です。クリックして復帰します。'
+        }[phase] || '待機中...';
+        const statusEl = document.getElementById('multi-play-status');
+        if (statusEl) statusEl.textContent = statusText;
+    }
+});
 socket.on('host_setup_done', () => { if (isHost) showHostUI(); });
+
 socket.on('wait_for_next_game', showWaitingScreen);
+
 socket.on("assigned_group", (newGroupId) => {
   groupId = newGroupId;
   getContainer().innerHTML = `<h2>あなたは <strong>${newGroupId}</strong> に割り振られました</h2><p>ホストが開始するまでお待ちください。</p>`;
@@ -700,7 +881,6 @@ socket.on("state", (state) => {
   if (gameMode !== 'multi') return;
   if (!state) return;
 
-  // 回答済みフラグをリセットするのは、新しい問題が来た時だけ
   if (state.current?.text !== lastQuestionText) {
     alreadyAnswered = false;
   }
@@ -799,9 +979,41 @@ socket.on('force_reload', (message) => {
     window.location.reload();
 });
 
-socket.on('export_data_response', (data) => { /* (変更なし) */ });
-socket.on('import_data_response', ({ success, message }) => { /* (変更なし) */ });
-socket.on('presets_list', (presets) => { /* (変更なし) */ });
-socket.on('single_game_start', (initialState) => { /* (変更なし) */ });
-socket.on('single_game_state', (state) => { /* (変更なし) */ });
-socket.on('single_game_end', (result) => { /* (変更なし) */ });
+socket.on('export_data_response', (data) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rika_karuta_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert('データの取り出しが完了しました。');
+});
+
+socket.on('import_data_response', ({ success, message }) => {
+    alert(message);
+    if (success) {
+        window.location.reload();
+    }
+});
+socket.on('presets_list', (presets) => {
+  const container = document.getElementById('preset-list-container');
+  if (!container) return;
+  const radioButtons = Object.entries(presets).map(([id, data], index) => `
+    <div>
+      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
+      <label for="preset-${id}">${data.category} - ${data.name}</label>
+    </div>
+  `).join('');
+  container.innerHTML = radioButtons;
+});
+socket.on('single_game_start', (initialState) => {
+    showSinglePlayGameUI(); 
+    updateSinglePlayGameUI(initialState);
+});
+socket.on('single_game_state', (state) => {
+    updateSinglePlayGameUI(state)
+});
+socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
