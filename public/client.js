@@ -1,4 +1,4 @@
-// client.js (全員回答待ちルール版 - 全文)
+// client.js (全員回答待ちルール対応版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -21,6 +21,7 @@ let singleGameTimerId = null;
 
 let lastQuestionText = "";
 let hasAnimated = false;
+// let alreadyAnswered = false; // ★不要になったため削除
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -613,8 +614,7 @@ function fixName() {
 }
 
 function submitAnswer(id) {
-  // ★★★ 修正: この関数内では alreadyAnswered を変更しない ★★★
-  // alreadyAnswered は state イベント受信時にサーバーからの情報で更新される
+  // ★★★ 修正: サーバーからhasAnsweredが送られてくるので、クライアント側のフラグは不要 ★★★
   const me = state.players.find(p => p.playerId === playerId);
   if (me && me.hasAnswered) return;
 
@@ -637,7 +637,7 @@ function submitAnswer(id) {
     socket.emit("answer", { groupId, playerId, name: playerName, id });
   } else {
     // single play
-    alreadyAnswered = true;
+    alreadyAnswered = true; // single playでは従来通りクライアント側で管理
     socket.emit("single_answer", { id });
   }
 }
@@ -700,6 +700,7 @@ function updateGameUI(state) {
     
     let chosenByHtml = '';
     
+    // 結果表示中のみ、カードの色や選択者を表示
     if (state.isResultShowing) {
         if (card.correct) {
           div.style.background = "gold";
@@ -716,9 +717,12 @@ function updateGameUI(state) {
 
     div.innerHTML = `<div class="card-term">${card.term}</div>${chosenByHtml}`;
     
+    // クリック可否をサーバーからの情報で決定
     if (state.isResultShowing || (me && me.hasAnswered)) {
         div.style.pointerEvents = 'none';
-        div.style.opacity = '0.7';
+        if (!state.isResultShowing) {
+          div.style.opacity = '0.7';
+        }
     } else {
         div.onclick = () => submitAnswer(card.id);
     }
