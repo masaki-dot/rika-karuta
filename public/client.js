@@ -1,4 +1,4 @@
-// client.js (新ルール対応版 - 全文)
+// client.js (ポイント表示追加版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -107,8 +107,6 @@ socket.on('new_player_id_assigned', (newPlayerId) => {
 });
 
 // --- UI描画関数群 ---
-
-// ★変更: ホストボタンを目立たない位置に変更
 function showRoleSelectionUI() {
     clearAllTimers();
     updateNavBar(null, false);
@@ -364,8 +362,7 @@ function showGameScreen(state) {
   if (!document.getElementById('game-area')) {
     container.innerHTML = `
       <div id="game-area">
-        <!-- ★変更: 結果表示エリアを追加 -->
-        <div id="round-result-display" style="text-align:center; min-height: 1.5em; margin-bottom: 10px; font-size: 1.5em; font-weight: bold; color: var(--primary-color);"></div>
+        <div id="round-result-display" style="text-align:center; min-height: 2em; margin-bottom: 10px; font-size: 1.5em; font-weight: bold; color: var(--primary-color);"></div>
         <div id="yomifuda"></div>
         <div id="cards-grid"></div>
         <hr>
@@ -499,7 +496,6 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
-// (handleSettingsSubmit, handleDataImport, handleDeletePreset などの関数は変更なし)
 function handleSettingsSubmit(isNextGame = false) {
   const submitBtn = document.getElementById('submit-settings');
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
@@ -508,53 +504,36 @@ function handleSettingsSubmit(isNextGame = false) {
     showSpeed: parseInt(document.getElementById("speed").value),
     gameMode: document.querySelector('input[name="game-mode"]:checked').value
   };
-
   let payload = { settings, isNextGame };
-
   if (sourceType === 'preset') {
     const presetId = document.getElementById('preset-select').value;
     if (!presetId) return alert('問題リストを選んでください');
     payload.presetId = presetId;
-    
     submitBtn.disabled = true;
     submitBtn.textContent = '処理中...';
     socket.emit("set_preset_and_settings", payload);
-
   } else {
     const fileInput = document.getElementById("csvFile");
     if (!fileInput.files[0]) return alert("CSVファイルを選んでください");
-
     const saveAction = document.querySelector('input[name="save-action"]:checked').value;
     payload.saveAction = saveAction;
-    
     if (saveAction === 'new') {
         const category = document.getElementById('csv-category-name').value.trim();
         const name = document.getElementById('csv-list-name').value.trim();
-        if (!category || !name) {
-            return alert('新規保存の場合は、カテゴリ名とリスト名を入力してください。');
-        }
+        if (!category || !name) return alert('新規保存の場合は、カテゴリ名とリスト名を入力してください。');
         payload.presetInfo = { category, name };
     } else {
         const presetId = document.getElementById('preset-select').value;
-        if (!presetId || !presetId.startsWith('user_')) {
-            return alert('追加・上書きするには、保存済みのリスト（デフォルト以外）を選択してください。');
-        }
+        if (!presetId || !presetId.startsWith('user_')) return alert('追加・上書きするには、保存済みのリスト（デフォルト以外）を選択してください。');
         payload.presetId = presetId;
     }
-
     submitBtn.disabled = true;
     submitBtn.textContent = '処理中...';
-
     Papa.parse(fileInput.files[0], {
       header: false,
       skipEmptyLines: true,
       complete: (result) => {
-        const rawData = result.data.slice(1).map(r => ({
-          col1: String(r[0] || '').trim(),
-          col2: String(r[1] || '').trim(),
-          col3: String(r[2] || '').trim()
-        })).filter(c => c.col1 && c.col2);
-        
+        const rawData = result.data.slice(1).map(r => ({ col1: String(r[0] || '').trim(), col2: String(r[1] || '').trim(), col3: String(r[2] || '').trim() })).filter(c => c.col1 && c.col2);
         if (rawData.length === 0) {
             alert('CSVファイルから有効な問題を読み込めませんでした。');
             submitBtn.disabled = false;
@@ -574,9 +553,7 @@ function handleDataImport(event) {
     reader.onload = (e) => {
         try {
             const data = JSON.parse(e.target.result);
-            if (confirm('現在のサーバーデータを上書きします。よろしいですか？')) {
-                socket.emit('host_import_data', data);
-            }
+            if (confirm('現在のサーバーデータを上書きします。よろしいですか？')) socket.emit('host_import_data', data);
         } catch (error) { alert('ファイルの読み込みに失敗しました。'); }
     };
     reader.readAsText(file);
@@ -589,7 +566,6 @@ function handleDeletePreset() {
     const presetName = presetSelect.options[presetSelect.selectedIndex].text;
     if (confirm(`本当に「${presetName}」を削除しますか？`)) socket.emit('host_delete_preset', { presetId });
 }
-
 function fixName() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
@@ -598,7 +574,6 @@ function fixName() {
   socket.emit("set_name", { groupId, playerId, name: playerName });
   getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
-
 function submitAnswer(id) {
   if (alreadyAnswered) return;
   alreadyAnswered = true;
@@ -608,36 +583,27 @@ function submitAnswer(id) {
     socket.emit("single_answer", { id });
   }
 }
-
 function submitGrouping() {
   const groupSizes = Array.from(document.querySelectorAll('.group-size-input')).map(input => parseInt(input.value) || 0);
-  
   socket.emit("host_assign_groups", {
     groupCount: parseInt(document.getElementById("groupCount").value),
     topGroupCount: parseInt(document.getElementById("topGroupCount").value),
     groupSizes: groupSizes
   });
 }
-
 function startSinglePlay() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
   if (!playerName) return alert("名前を入力してください");
   localStorage.setItem('playerName', playerName);
-
   const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
   if (!presetId) return alert('問題を選んでください');
-
   const difficulty = document.getElementById('difficulty-select').value;
-
   socket.emit('start_single_play', { name: playerName, playerId, difficulty, presetId });
   getContainer().innerHTML = `<p>ゲーム準備中...</p>`;
 }
 
-
 // --- UI更新関数 ---
-
-// ★変更: 新ルールに対応したUI更新ロジック
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
@@ -655,21 +621,28 @@ function updateGameUI(state) {
     hasAnimated = true;
   }
   
-  // ★変更: 1着・2着の結果を表示
+  // ★変更: 結果表示にポイント情報を追加
   const resultDisplay = document.getElementById('round-result-display');
   if (resultDisplay) {
     if (state.answered && state.current?.roundResults) {
         const { first, second } = state.current.roundResults;
+        const point = state.current.point;
         let resultText = '';
-        if (first) resultText += `🥇 1着: ${first} `;
-        if (second) resultText += `🥈 2着: ${second}`;
-        resultDisplay.innerHTML = resultText || '正解者なし...';
+        
+        if (first) resultText += `🥇 1着: ${first} (+10点)<br>`;
+        if (second) resultText += `🥈 2着: ${second} (+10点)<br>`;
+
+        if(point > 0 && !first) resultText += '正解者なし... ';
+        if(point > 0 && (state.players.length > 1 || !first)) {
+            resultText += `<span style="color: var(--incorrect-color); font-size: 0.8em;">(1着以外 HP-${point})</span>`;
+        }
+
+        resultDisplay.innerHTML = resultText;
     } else {
         resultDisplay.innerHTML = '';
     }
   }
 
-  // ★変更: カード表示ロジックを全面的に見直し
   const cardsGrid = document.getElementById('cards-grid');
   cardsGrid.innerHTML = '';
   state.current?.cards.forEach(card => {
@@ -677,12 +650,10 @@ function updateGameUI(state) {
     div.className = "card";
     
     let chosenByHtml = '';
-    // 結果発表後、誰がどのカードを選んだかを表示
     if (state.answered && card.chosenBy && card.chosenBy.length > 0) {
         chosenByHtml = `<div style="font-size:0.8em; color: #555;">${card.chosenBy.join(', ')}</div>`;
     }
 
-    // 結果発表後のカードのスタイル
     if (state.answered) {
         if (card.correctAnswer) {
             div.style.background = "gold";
@@ -695,25 +666,20 @@ function updateGameUI(state) {
     
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     
-    // 回答受付中のクリック処理
     if (!state.answered && !alreadyAnswered) {
         div.onclick = () => {
             submitAnswer(card.id);
-            // 自分の選択をハイライト
             div.style.outline = '3px solid var(--primary-color)';
             div.style.transform = 'scale(0.95)';
-            // 他のカードはクリック不可に
             document.querySelectorAll('#cards-grid .card').forEach(c => c.onclick = null);
         };
     } else {
         div.style.cursor = 'default';
         div.onclick = null;
     }
-
     cardsGrid.appendChild(div);
   });
   
-  // プレイヤー情報の表示（HPなど）
   const myPlayer = state.players.find(p => p.playerId === playerId);
   const otherPlayers = state.players.filter(p => p.playerId !== playerId);
   const myInfoDiv = document.getElementById('my-info');
@@ -774,7 +740,6 @@ function renderHpBar(hp) {
     `;
 }
 
-// (animateNormalText, animateMaskedText, showPointPopup などの関数は変更なし)
 function animateNormalText(elementId, text, speed) {
   const element = document.getElementById(elementId);
   if (!element) return;
@@ -824,14 +789,10 @@ function showPointPopup(point) {
   setTimeout(() => popup.classList.remove('show'), 1500);
 }
 
-
-// --- Socket.IO イベントリスナー (変更なし) ---
+// --- Socket.IO イベントリスナー ---
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => {
-  if (isHost) {
-      showCSVUploadUI(presets, fromEndScreen);
-  } else {
-      showPlayerMenuUI(phase);
-  }
+  if (isHost) { showCSVUploadUI(presets, fromEndScreen); } 
+  else { showPlayerMenuUI(phase); }
 });
 socket.on('host_reconnect_success', () => { if (isHost) showHostUI(); });
 socket.on('multiplayer_status_changed', (phase) => {
@@ -878,41 +839,18 @@ socket.on("host_state", (allGroups) => {
   if (!div) return;
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
-    const members = data.players.map(p => 
-        `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})<br>
-         <small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`
-    ).join("");
-    const modeSelector = `
-      <label>モード: 
-        <select class="group-mode-selector" data-groupid="${gId}">
-          <option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option>
-          <option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option>
-        </select>
-      </label>
-    `;
-    return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">
-              <strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong>
-              ${modeSelector}
-              <ul>${members}</ul>
-            </div>`;
+    const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})<br><small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`).join("");
+    const modeSelector = `<label>モード: <select class="group-mode-selector" data-groupid="${gId}"><option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option><option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option></select></label>`;
+    return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;"><strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong> ${modeSelector}<ul>${members}</ul></div>`;
   }).join("");
   document.querySelectorAll('.group-mode-selector').forEach(selector => {
-    selector.onchange = (e) => {
-      socket.emit('host_set_group_mode', { groupId: e.target.dataset.groupid, gameMode: e.target.value });
-    };
+    selector.onchange = (e) => socket.emit('host_set_group_mode', { groupId: e.target.dataset.groupid, gameMode: e.target.value });
   });
 });
 socket.on("global_ranking", (ranking) => {
     const div = document.getElementById("globalRanking");
     if (!div) return;
-    div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング (累計)</h3>
-                   <ol style="padding-left: 20px;">
-                     ${ranking.map((p, i) => `
-                       <li style="padding: 4px 0; border-bottom: 1px solid #eee;">
-                         <strong style="display: inline-block; width: 2em;">${i + 1}.</strong>
-                         ${p.name} <span style="float: right; font-weight: bold;">${p.totalScore}点</span>
-                       </li>`).join("")}
-                   </ol>`;
+    div.innerHTML = `<h3><span style="font-size: 1.5em;">🌏</span> 全体ランキング (累計)</h3><ol style="padding-left: 20px;">${ranking.map((p, i) => `<li style="padding: 4px 0; border-bottom: 1px solid #eee;"><strong style="display: inline-block; width: 2em;">${i + 1}.</strong> ${p.name} <span style="float: right; font-weight: bold;">${p.totalScore}点</span></li>`).join("")}</ol>`;
 });
 socket.on("timer_start", ({ seconds }) => {
     const timerDiv = document.getElementById('countdown-timer');
@@ -947,16 +885,8 @@ socket.on('import_data_response', ({ success, message }) => {
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
-  container.innerHTML = Object.entries(presets).map(([id, data], index) => `
-    <div>
-      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
-      <label for="preset-${id}">${data.category} - ${data.name}</label>
-    </div>
-  `).join('');
+  container.innerHTML = Object.entries(presets).map(([id, data], index) => `<div><input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}><label for="preset-${id}">${data.category} - ${data.name}</label></div>`).join('');
 });
-socket.on('single_game_start', (initialState) => {
-    showSinglePlayGameUI(); 
-    updateSinglePlayGameUI(initialState);
-});
+socket.on('single_game_start', (initialState) => { showSinglePlayGameUI(); updateSinglePlayGameUI(initialState); });
 socket.on('single_game_state', (state) => updateSinglePlayGameUI(state));
 socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
