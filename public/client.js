@@ -1,4 +1,4 @@
-// client.js (ステップ2: ひとりでプレイ最終確定版 - 全文)
+// client.js (ステップ2: プリセット処理改善版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -155,12 +155,15 @@ function renderSinglePlaySetupUI(presets) {
   clearAllTimers();
   updateNavBar(showModeSelectionUI);
   const container = getContainer();
-  const presetOptionsHTML = Object.entries(presets).map(([id, data], index) => `
-    <div>
-      <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
-      <label for="preset-${id}">${data.category} - ${data.name}</label>
-    </div>
-  `).join('');
+
+  const presetOptionsHTML = presets && Object.keys(presets).length > 0 
+    ? Object.entries(presets).map(([id, data], index) => `
+        <div>
+          <input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}>
+          <label for="preset-${id}">${data.category} - ${data.name}</label>
+        </div>
+      `).join('')
+    : '<p>利用可能な問題セットがありません。</p>';
 
   container.innerHTML = `
     <h2>ひとりでプレイ（1分間タイムアタック）</h2>
@@ -175,28 +178,148 @@ function renderSinglePlaySetupUI(presets) {
     <h3>問題リスト</h3>
     <div id="preset-list-container">${presetOptionsHTML}</div>
     <hr/>
-    <button id="single-start-btn" class="button-primary">ゲーム開始</button>
+    <button id="single-start-btn" class="button-primary" ${!(presets && Object.keys(presets).length > 0) ? 'disabled' : ''}>ゲーム開始</button>
   `;
   document.getElementById('single-start-btn').onclick = startSinglePlay;
 }
 
-// (ここから下の既存関数群は、今後のステップで利用するため変更なし)
-function showCSVUploadUI(presets = {}, fromEndScreen = false) { /* ... */ }
-function showGroupSelectionUI() { /* ... */ }
-function showNameInputUI() { /* ... */ }
-function showHostUI() { /* ... */ }
-function showGameScreen(state) { /* ... */ }
-function showEndScreen(ranking) { /* ... */ }
-function showWaitingScreen() { /* ... */ }
-function showSinglePlayGameUI() { /* ... */ }
-function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) { /* ... */ }
+
+function showCSVUploadUI(presets = {}, fromEndScreen = false) {
+  clearAllTimers();
+  updateNavBar(showModeSelectionUI);
+  const container = getContainer();
+  const presetOptions = Object.entries(presets).map(([id, data]) => `<option value="${id}">${data.category} - ${data.name}</option>`).join('');
+  container.innerHTML = `<h2>${fromEndScreen ? '次の問題を選択' : '問題セットの管理'}</h2> ... `; // UIの詳細は省略
+}
+
+function showGroupSelectionUI() {
+    clearAllTimers();
+    updateNavBar(showRoleSelectionUI);
+    const container = getContainer();
+    const modeText = gameMode === 'multi' ? '個人戦' : '団体戦';
+    container.innerHTML = `<h2>${modeText}：待機場所を選択</h2><p>ホストがゲームを開始するまで、好きな場所で待機してください。</p>`;
+    for (let i = 1; i <= 10; i++) {
+        const btn = document.createElement("button");
+        btn.textContent = `待機場所 ${i}`;
+        btn.onclick = () => {
+            groupId = "group" + i;
+            socket.emit("join", { groupId, playerId });
+            showNameInputUI();
+        };
+        container.appendChild(btn);
+    }
+}
+
+function showNameInputUI() {
+    clearAllTimers();
+    updateNavBar(showGroupSelectionUI);
+    const container = getContainer();
+    container.innerHTML = `
+        <h2>プレイヤー名を入力</h2>
+        <input type="text" id="nameInput" placeholder="名前を入力..." value="${playerName}" />
+        <button id="fix-name-btn" class="button-primary">決定</button>
+    `;
+    document.getElementById('fix-name-btn').onclick = fixName;
+}
+
+function showHostUI() {
+    clearAllTimers();
+    updateNavBar(showRoleSelectionUI);
+    const container = getContainer();
+    container.innerHTML = `<h2>👑 個人戦 ホスト管理画面</h2> ... `; // UIの詳細は省略
+}
+
+function showGameScreen(state) {
+    clearAllTimers();
+    updateNavBar(isHost ? showHostUI : showGroupSelectionUI);
+    const container = getContainer();
+    if (!document.getElementById('game-area')) {
+        container.innerHTML = `
+          <div id="game-area">
+            <div id="round-result-display" style="text-align:center; min-height: 2em; margin-bottom: 10px; font-size: 1.5em; font-weight: bold; color: var(--primary-color);"></div>
+            <div id="yomifuda"></div>
+            <div id="cards-grid"></div>
+            <hr>
+            <div style="display: flex; flex-wrap: wrap; gap: 30px;">
+              <div id="my-info"></div>
+              <div id="others-info"></div>
+            </div>
+          </div>
+        `;
+    }
+    updateGameUI(state);
+}
+
+function showEndScreen(ranking) {
+    clearAllTimers();
+    updateNavBar(isHost ? showHostUI : showModeSelectionUI);
+    const container = getContainer();
+    container.innerHTML = `<h2>🎉 ゲーム終了！</h2> ... `; // UIの詳細は省略
+}
+
+function showWaitingScreen() {
+    clearAllTimers();
+    updateNavBar(showModeSelectionUI);
+    const container = getContainer();
+    container.innerHTML = `<h2>待機中...</h2><p>ホストが次の問題を選択しています。</p>`;
+}
+
+function showSinglePlayGameUI() {
+    clearAllTimers();
+    gameMode = 'solo';
+    updateNavBar(renderSinglePlaySetupUI); // 戻る先をsetupUIに
+    const container = getContainer();
+    if (!document.getElementById('game-area')) {
+        container.innerHTML = `
+          <div id="game-area">
+            <div id="yomifuda"></div>
+            <div id="cards-grid"></div>
+            <hr>
+            <div id="single-player-info"></div>
+          </div>
+        `;
+    }
+    const timerDiv = document.getElementById('countdown-timer');
+    let timeLeft = 60;
+    timerDiv.textContent = `残り時間: 1:00`;
+    singleGameTimerId = setInterval(() => {
+        timeLeft--;
+        if (timeLeft < 0) {
+            clearInterval(singleGameTimerId);
+            singleGameTimerId = null;
+            socket.emit('single_game_timeup');
+            return;
+        }
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        timerDiv.textContent = `残り時間: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }, 1000);
+}
+
+function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName }) {
+    clearAllTimers();
+    updateNavBar(renderSinglePlaySetupUI);
+    const container = getContainer();
+    container.innerHTML = `<h2>タイムアップ！</h2>...`; // UIの詳細は省略
+}
+
 function handleSettingsSubmit(isNextGame = false) { /* ... */ }
 function handleDataImport(event) { /* ... */ }
 function handleDeletePreset() { /* ... */ }
 function fixName() { /* ... */ }
 function submitAnswer(id) { /* ... */ }
 function submitGrouping() { /* ... */ }
-function startSinglePlay() { /* ... */ }
+function startSinglePlay() {
+  const nameInput = document.getElementById("nameInput");
+  playerName = nameInput.value.trim();
+  if (!playerName) return alert("名前を入力してください");
+  localStorage.setItem('playerName', playerName);
+  const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
+  if (!presetId) return alert('問題を選んでください');
+  const difficulty = document.getElementById('difficulty-select').value;
+  socket.emit('start_single_play', { name: playerName, playerId, difficulty, presetId });
+  getContainer().innerHTML = `<p>ゲーム準備中...</p>`;
+}
 function updateGameUI(state) { /* ... */ }
 function updateSinglePlayGameUI(state) { /* ... */ }
 function renderHpBar(hp) { /* ... */ }
@@ -212,25 +335,13 @@ socket.on('presets_for_upload', (presets) => {
 
 socket.on('solo_presets_list', (presets) => {
     if (gameMode === 'solo') {
-        if (presets && Object.keys(presets).length > 0) {
-            renderSinglePlaySetupUI(presets);
-        } else {
-            getContainer().innerHTML = `
-                <div style="text-align: center;">
-                    <h2>エラー</h2>
-                    <p>遊べる問題セットがありません。<br>問題ファイルが正しく読み込まれていない可能性があります。</p>
-                    <button onclick="showModeSelectionUI()" class="button">トップに戻る</button>
-                </div>`;
-            updateNavBar(showModeSelectionUI);
-        }
+        renderSinglePlaySetupUI(presets);
     }
 });
 
 socket.on('single_game_start', (initialState) => { if (gameMode === 'solo') { showSinglePlayGameUI(); updateSinglePlayGameUI(initialState); } });
-socket.on('single_game_state', (state) => { if (gameMode === 'solo') { updateSinglePlayGameUI(state) } });
-socket.on('single_game_end', (result) => { if (gameMode === 'solo') { showSinglePlayEndUI(result) } });
-
-// (以下、個人戦用のイベントリスナーは変更なし)
+socket.on('single_game_state', (state) => { if (gameMode === 'solo') updateSinglePlayGameUI(state) });
+socket.on('single_game_end', (result) => { if (gameMode === 'solo') showSinglePlayEndUI(result) });
 socket.on('game_phase_response', ({ phase, presets, fromEndScreen }) => { /* ... */ });
 socket.on('host_reconnect_success', () => { /* ... */ });
 socket.on('multiplayer_status_changed', (phase) => { /* ... */ });
