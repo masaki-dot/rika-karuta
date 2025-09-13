@@ -360,6 +360,12 @@ function notifyHostStateChanged() {
 io.on("connection", (socket) => {
   console.log(`✅ プレイヤーが接続しました: ${socket.id}`);
 
+  socket.on('request_presets_for_upload', () => {
+    const presetsForClient = Object.fromEntries(
+      Object.entries(questionPresets).map(([id, data]) => [id, { category: data.category, name: data.name }])
+    );
+    socket.emit('presets_for_upload', presetsForClient);
+  });  
   socket.on('request_new_player_id', () => {
     const playerId = uuidv4();
     players[playerId] = { playerId, socketId: socket.id, name: "未設定", isHost: false };
