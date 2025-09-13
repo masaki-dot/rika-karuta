@@ -1,4 +1,4 @@
-// server.js (ファイルパス修正版 - 全文)
+// server.js (プリセット読み込み修正版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -11,10 +11,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// ★修正: __dirname を使ってpublicフォルダへの絶対パスを指定
 app.use(express.static(path.join(__dirname, "public")));
 
-// ★修正: __dirname を使って各データディレクトリへの絶対パスを定義
 const DATA_DIR = path.join(__dirname, 'data');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
@@ -50,34 +48,36 @@ function initializeDirectories() {
 initializeDirectories();
 
 function loadPresets() {
+  questionPresets = {};
   try {
-    // ★修正: __dirname を使ってquestions.jsonへの絶対パスを指定
     const defaultPresetPath = path.join(__dirname, 'data', 'questions.json');
     if (fs.existsSync(defaultPresetPath)) {
         const data = fs.readFileSync(defaultPresetPath, 'utf8');
-        questionPresets = JSON.parse(data);
+        const defaultPresets = JSON.parse(data);
+        Object.assign(questionPresets, defaultPresets);
         console.log('✅ デフォルト問題プリセットを読み込みました。');
     } else {
         console.warn(`⚠️ デフォルト問題プリセットファイルが見つかりません: ${defaultPresetPath}`);
     }
-  } catch (err) {
+  } catch (err) { 
     console.error('⚠️ デフォルト問題プリセットの読み込みに失敗しました:', err);
-    questionPresets = {};
   }
   
   try {
-    if (!fs.existsSync(USER_PRESETS_DIR)) return;
-    const userFiles = fs.readdirSync(USER_PRESETS_DIR).filter(file => file.endsWith('.json'));
-    userFiles.forEach(file => {
-        const filePath = path.join(USER_PRESETS_DIR, file);
-        const data = fs.readFileSync(filePath, 'utf8');
-        const presetId = `user_${path.basename(file, '.json')}`;
-        questionPresets[presetId] = JSON.parse(data);
-    });
-    if (userFiles.length > 0) console.log(`✅ ユーザー作成プリセットを ${userFiles.length} 件読み込みました。`);
-  } catch(err) {
+    if (fs.existsSync(USER_PRESETS_DIR)) {
+        const userFiles = fs.readdirSync(USER_PRESETS_DIR).filter(file => file.endsWith('.json'));
+        userFiles.forEach(file => {
+            const filePath = path.join(USER_PRESETS_DIR, file);
+            const data = fs.readFileSync(filePath, 'utf8');
+            const presetId = `user_${path.basename(file, '.json')}`;
+            questionPresets[presetId] = JSON.parse(data);
+        });
+        if (userFiles.length > 0) console.log(`✅ ユーザー作成プリセットを ${userFiles.length} 件読み込みました。`);
+    }
+  } catch(err) { 
       console.error('⚠️ ユーザー作成プリセットの読み込みに失敗しました:', err);
   }
+  console.log(`👍 合計 ${Object.keys(questionPresets).length} 件の問題プリセットを読み込みました。`);
 }
 loadPresets();
 
@@ -414,6 +414,7 @@ io.on("connection", (socket) => {
     }
     socket.emit('host_setup_done');
   });
+
   socket.on("set_cards_and_settings", ({ rawData, settings, presetInfo, isNextGame, saveAction, presetId }) => {
     if (socket.id !== hostSocketId) return;
     try {
@@ -452,6 +453,7 @@ io.on("connection", (socket) => {
         socket.emit('host_setup_done');
     }
   });
+
   socket.on("join", ({ groupId, playerId }) => {
     const player = players[playerId];
     if (!player) return;
@@ -465,6 +467,7 @@ io.on("connection", (socket) => {
     }
     notifyHostStateChanged();
   });
+
   socket.on("rejoin_game", ({ playerId }) => {
     const groupEntry = Object.entries(groups).find(([, g]) => g.players.some(p => p.playerId === playerId));
     if (groupEntry) {
@@ -478,6 +481,7 @@ io.on("connection", (socket) => {
     }
     // TODO: 新UIフロー用の再接続処理
   });
+
   socket.on("set_name", ({ groupId, playerId, name }) => {
     if (players[playerId]) players[playerId].name = name;
     const gPlayer = groups[groupId]?.players.find(p => p.playerId === playerId);
@@ -487,6 +491,7 @@ io.on("connection", (socket) => {
     if (states[groupId]) io.to(groupId).emit("state", sanitizeState(states[groupId]));
     notifyHostStateChanged();
   });
+
   socket.on("read_done", (groupId) => {
     const player = getPlayerBySocketId(socket.id);
     if (!player) return;
@@ -502,11 +507,14 @@ io.on("connection", (socket) => {
         }, 30000);
     }
   });
+
   socket.on("host_request_state", () => { if (socket.id === hostSocketId) socket.emit("host_state", getHostState()); });
+  
   socket.on("request_global_ranking", () => {
       const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定" && typeof p.totalScore === 'number');
       socket.emit("global_ranking", allPlayers.sort((a, b) => b.totalScore - a.totalScore));
   });
+
   socket.on("host_start", () => {
     if (socket.id !== hostSocketId) return;
     console.log("▶ ホストが全体スタートを実行");
@@ -522,6 +530,7 @@ io.on("connection", (socket) => {
     }
     notifyHostStateChanged();
   });
+
   socket.on("host_assign_groups", ({ groupCount, topGroupCount, groupSizes }) => {
     if (socket.id !== hostSocketId) return;
     const allPlayers = Object.values(groups).flatMap(g => g.players).filter(p => p.name !== "未設定");
@@ -567,6 +576,7 @@ io.on("connection", (socket) => {
     });
     notifyHostStateChanged();
   });
+
   socket.on("answer", ({ groupId, playerId, name, id }) => {
     if (!socket.rooms.has(groupId)) return;
     const state = states[groupId];
@@ -576,6 +586,7 @@ io.on("connection", (socket) => {
     const activePlayers = state.players.filter(p => p.hp > 0);
     if (state.answersThisRound.length >= activePlayers.length) processRoundResults(groupId);
   });
+
   socket.on('host_preparing_next_game', () => {
     if (socket.id !== hostSocketId) return;
     Object.keys(states).forEach(key => delete states[key]); 
@@ -583,13 +594,14 @@ io.on("connection", (socket) => {
     Object.values(groups).forEach(group => group.players.forEach(p => p.currentScore = 0));
     io.emit("multiplayer_status_changed", gamePhase);
     socket.broadcast.emit('wait_for_next_game');
-    // TODO: 新UIフロー用の処理
   });
+
   socket.on('host_full_reset', () => {
     if (socket.id !== hostSocketId) return;
     resetAllGameData();
     io.emit('force_reload', 'ホストによってゲームがリセットされました。ページをリロードします。');
   });
+  
   socket.on('host_set_group_mode', ({ groupId, gameMode }) => {
     if (socket.id !== hostSocketId) return;
     if (!states[groupId]) states[groupId] = initState(groupId);
@@ -598,9 +610,11 @@ io.on("connection", (socket) => {
       notifyHostStateChanged();
     }
   });
+
   socket.on('host_export_data', () => { /* ... */ });
   socket.on('host_import_data', (data) => { /* ... */ });
   socket.on('host_delete_preset', ({ presetId }) => { /* ... */ });
+
   socket.on('start_single_play', ({ name, playerId, difficulty, presetId }) => {
     if (players[playerId]) players[playerId].name = name;
     const presetData = questionPresets[presetId];
@@ -619,6 +633,7 @@ io.on("connection", (socket) => {
     io.to(socket.id).emit('single_game_start', singlePlayStates[socket.id]);
     nextSingleQuestion(socket.id);
   });
+
   socket.on('single_answer', ({ id }) => {
     const state = singlePlayStates[socket.id];
     if (!state || state.answered) return;
@@ -637,6 +652,7 @@ io.on("connection", (socket) => {
     io.to(socket.id).emit('single_game_state', state);
     setTimeout(() => nextSingleQuestion(socket.id), 1500);
   });
+
   socket.on('single_game_timeup', () => {
     const state = singlePlayStates[socket.id];
     if (!state) return;
@@ -661,6 +677,7 @@ io.on("connection", (socket) => {
     socket.emit('single_game_end', { score, personalBest, globalRanking, presetName });
     delete singlePlayStates[socket.id];
   });
+  
   socket.on("disconnect", () => {
     console.log(`🔌 プレイヤーが切断しました: ${socket.id}`);
     if (socket.id === hostSocketId) {
