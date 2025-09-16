@@ -1,4 +1,4 @@
-// client.js (ポイント表示追加版 - 全文)
+// client.js (新ルール対応 & UI改善版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -381,13 +381,17 @@ function showEndScreen(ranking) {
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
   const container = getContainer();
+  // ★★★修正: 生存ボーナスを表示するように変更★★★
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
       <div style="flex:2; min-width: 300px;">
         <h3>今回のランキング (獲得スコア)</h3>
         <ol id="end-screen-ranking" style="font-size: 1.2em;">
-          ${ranking.map(p => `<li>${p.name}（スコア: ${p.finalScore}）</li>`).join("")}
+          ${ranking.map(p => `<li>
+              ${p.name}（スコア: ${p.finalScore}）
+              ${p.bonus > 0 ? `<span style="color: #dd6b20; font-size: 0.8em; margin-left: 10px;">🏆生存ボーナス +${p.bonus}点！</span>` : ''}
+            </li>`).join("")}
         </ol>
         ${isHost ? `<button id="change-settings-btn" class="button-primary">問題・設定を変更する</button>` : `<p>ホストが次のゲームを準備しています。</p>`}
       </div>
@@ -566,14 +570,31 @@ function handleDeletePreset() {
     const presetName = presetSelect.options[presetSelect.selectedIndex].text;
     if (confirm(`本当に「${presetName}」を削除しますか？`)) socket.emit('host_delete_preset', { presetId });
 }
+
+// ★★★修正: 待機画面にルールを表示するように変更★★★
 function fixName() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
   if (!playerName) return alert("名前を入力してください");
   localStorage.setItem('playerName', playerName);
   socket.emit("set_name", { groupId, playerId, name: playerName });
-  getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
+  
+  const container = getContainer();
+  container.innerHTML = `
+    <h2>${groupId}で待機中...</h2>
+    <p>ホストがゲームを開始するのを待っています。</p>
+    <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: left;">
+        <h4 style="text-align: center;">📜 今回のルール</h4>
+        <ul style="list-style-position: inside;">
+            <li><strong>スコア:</strong> 正解で基礎点+10点！1着はさらに+5点！連続正解でボーナス点も！</li>
+            <li><strong>HP:</strong> 1着以外はダメージ！2着はダメージが半分に軽減されます。</li>
+            <li><strong>生存ボーナス:</strong> 最後まで生き残ると+200点、2番目に生き残ると+100点のボーナス！</li>
+            <li>HPが0になると脱落です。生き残りを目指しましょう！</li>
+        </ul>
+    </div>
+  `;
 }
+
 function submitAnswer(id) {
   if (alreadyAnswered) return;
   alreadyAnswered = true;
@@ -604,6 +625,7 @@ function startSinglePlay() {
 }
 
 // --- UI更新関数 ---
+// ★★★修正: ラウンド結果表示とプレイヤー情報表示を新ルールに対応★★★
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
@@ -621,7 +643,6 @@ function updateGameUI(state) {
     hasAnimated = true;
   }
   
-  // ★変更: 結果表示にポイント情報を追加
   const resultDisplay = document.getElementById('round-result-display');
   if (resultDisplay) {
     if (state.answered && state.current?.roundResults) {
@@ -629,12 +650,12 @@ function updateGameUI(state) {
         const point = state.current.point;
         let resultText = '';
         
-        if (first) resultText += `🥇 1着: ${first} (+10点)<br>`;
-        if (second) resultText += `🥈 2着: ${second} (+10点)<br>`;
+        if (first) resultText += `🥇 1着: ${first}<br>`;
+        if (second) resultText += `🥈 2着: ${second}<br>`;
 
-        if(point > 0 && !first) resultText += '正解者なし... ';
-        if(point > 0 && (state.players.length > 1 || !first)) {
-            resultText += `<span style="color: var(--incorrect-color); font-size: 0.8em;">(1着以外 HP-${point})</span>`;
+        if (point > 0 && !first) resultText += '正解者なし... ';
+        if (point > 0) {
+            resultText += `<span style="color: var(--incorrect-color); font-size: 0.8em;">(1着以外 HP-${point}ダメージ)</span>`;
         }
 
         resultDisplay.innerHTML = resultText;
@@ -684,13 +705,15 @@ function updateGameUI(state) {
   const otherPlayers = state.players.filter(p => p.playerId !== playerId);
   const myInfoDiv = document.getElementById('my-info');
   if(myPlayer && myInfoDiv) {
-    myInfoDiv.innerHTML = `<h4>自分: ${myPlayer.name} (正解: ${myPlayer.correctCount ?? 0})</h4>${renderHpBar(myPlayer.hp)}`;
+    const streakText = myPlayer.streak > 1 ? `<span style="color: #dd6b20; font-weight: bold;">🔥${myPlayer.streak}連続!</span>` : '';
+    myInfoDiv.innerHTML = `<h4>自分: ${myPlayer.name} (正解: ${myPlayer.correctCount ?? 0}) ${streakText}</h4>${renderHpBar(myPlayer.hp)}`;
   }
   const othersInfoDiv = document.getElementById('others-info');
   if (othersInfoDiv) {
       othersInfoDiv.innerHTML = '<h4>他のプレイヤー</h4>';
       otherPlayers.forEach(p => {
-        othersInfoDiv.innerHTML += `<div><strong>${p.name} (正解: ${p.correctCount ?? 0})</strong>${renderHpBar(p.hp)}</div>`;
+        const streakText = p.streak > 1 ? `<span style="color: #dd6b20; font-size: 0.8em; font-weight: bold;">🔥${p.streak}連続</span>` : '';
+        othersInfoDiv.innerHTML += `<div><strong>${p.name} (正解: ${p.correctCount ?? 0}) ${streakText}</strong>${renderHpBar(p.hp)}</div>`;
       });
   }
 }
@@ -837,9 +860,10 @@ socket.on("end", (ranking) => { if (gameMode === 'multi') showEndScreen(ranking)
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
+  // ★★★修正: ホスト画面にStreak情報を表示★★★
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
-    const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount})<br><small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`).join("");
+    const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount}, 🔥:${p.streak})<br><small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`).join("");
     const modeSelector = `<label>モード: <select class="group-mode-selector" data-groupid="${gId}"><option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option><option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option></select></label>`;
     return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;"><strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong> ${modeSelector}<ul>${members}</ul></div>`;
   }).join("");
