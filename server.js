@@ -1,4 +1,4 @@
-// server.js (生存ボーナス判定強化 & スコア・HP新ルール版 - 全文)
+// server.js (グループ別時間設定 & 40点山分けスコア版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -13,7 +13,7 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = process.env.RENDER_DISK_PATH || path.join(__dirname, 'data'); // RenderのPersistent Diskに対応
+const DATA_DIR = process.env.RENDER_DISK_PATH || path.join(__dirname, 'data');
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
@@ -49,7 +49,7 @@ initializeDirectories();
 
 function loadPresets() {
   try {
-    const defaultPresetPath = path.join(__dirname, 'data', 'questions.json'); // デフォルトはプロジェクト内から読み込む
+    const defaultPresetPath = path.join(__dirname, 'data', 'questions.json');
     if (fs.existsSync(defaultPresetPath)) {
         questionPresets = JSON.parse(fs.readFileSync(defaultPresetPath, 'utf8'));
         console.log('✅ デフォルト問題プリセットを読み込みました。');
@@ -127,6 +127,7 @@ function initState(groupId) {
     numCards: globalSettings.numCards || 5,
     showSpeed: globalSettings.showSpeed || 1000,
     gameMode: globalSettings.gameMode || 'normal',
+    timeLimit: 10, // ★★★ グループごとのデフォルト制限時間を設定
     current: null, answered: false, waitingNext: false,
     misClicks: [], usedQuestions: [], readDone: new Set(),
     readTimer: null, eliminatedOrder: [], locked: false,
@@ -142,7 +143,7 @@ function sanitizeState(state) {
   } : null;
   return {
     groupId: state.groupId, 
-    players: state.players, // streak情報なども含めて全て送信する
+    players: state.players,
     questionCount: state.questionCount,
     maxQuestions: state.maxQuestions, 
     gameMode: state.gameMode, 
@@ -159,6 +160,7 @@ function getHostState() {
     result[groupId] = {
       locked: state?.locked ?? false,
       gameMode: state?.gameMode ?? globalSettings.gameMode ?? 'normal',
+      timeLimit: state?.timeLimit ?? 10, // ★★★ ホスト画面用に制限時間を追加
       players: group.players.map(p => {
         const statePlayer = state?.players.find(sp => sp.playerId === p.playerId);
         return {
@@ -175,7 +177,6 @@ function getHostState() {
   return result;
 }
 
-// ★★★修正: 生存ボーナスと脱落順位判定を強化した finalizeGame 関数★★★
 function finalizeGame(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -186,7 +187,6 @@ function finalizeGame(groupId) {
     
     console.log(`[${groupId}] ゲーム終了処理を開始します。`);
 
-    // --- 最終順位の決定ロジック ---
     const finalPlayerStates = state.players.map(pState => {
         const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === pState.playerId);
         return {
@@ -202,21 +202,17 @@ function finalizeGame(groupId) {
         return (b.currentScore || 0) - (a.currentScore || 0);
     });
 
-    // --- 生存ボーナスの加算 ---
     const bonusRecipients = [];
 
-    // 1位ボーナス (+200点)
     if (finalPlayerStates[0]) {
         const firstPlayerId = finalPlayerStates[0].playerId;
         const gPlayer = groups[groupId]?.players.find(p => p.playerId === firstPlayerId);
         if (gPlayer) {
             gPlayer.currentScore += 200;
             bonusRecipients.push({ name: gPlayer.name, bonus: 200 });
-            console.log(`[${groupId}] ${gPlayer.name}に1位生存ボーナス+200点`);
         }
     }
 
-    // 2位ボーナス (+100点)
     if (finalPlayerStates[1]) {
         const p1 = finalPlayerStates[0];
         const p2 = finalPlayerStates[1];
@@ -226,12 +222,10 @@ function finalizeGame(groupId) {
             if (gPlayer) {
                 gPlayer.currentScore += 100;
                 bonusRecipients.push({ name: gPlayer.name, bonus: 100 });
-                console.log(`[${groupId}] ${gPlayer.name}に2位生存ボーナス+100点`);
             }
         }
     }
     
-    // --- 最終ランキングデータの作成 ---
     const finalRanking = state.players.map(pState => {
         const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === pState.playerId);
         const finalScore = gPlayer?.currentScore || 0;
@@ -256,8 +250,6 @@ function finalizeGame(groupId) {
     notifyHostStateChanged();
 }
 
-
-// ★★★修正: 同時脱落時のボーナス判定を追加した checkGameEnd 関数★★★
 function checkGameEnd(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -290,8 +282,7 @@ function checkGameEnd(groupId) {
     }
 }
 
-
-// ★★★修正: 新しいスコア・HPルールを実装した processRoundResults 関数★★★
+// ★★★修正: 40点山分け式スコアルールを実装した processRoundResults 関数★★★
 function processRoundResults(groupId) {
     const state = states[groupId];
     if (!state || state.answered) return; 
@@ -316,25 +307,38 @@ function processRoundResults(groupId) {
     const secondPlace = correctAnswers[1] || null;
     const correctAnswerPlayerIds = new Set(correctAnswers.map(ans => ans.playerId));
     
-    correctAnswerPlayerIds.forEach(playerId => {
+    // --- スコア計算 (40点山分け式) ---
+    const baseScoreToShare = 40;
+    const individualBaseScore = correctAnswers.length > 0 ? Math.round(baseScoreToShare / correctAnswers.length) : 0;
+
+    correctAnswers.forEach(answer => {
+        const playerId = answer.playerId;
         const pState = state.players.find(p => p.playerId === playerId);
         const gPlayer = groups[groupId]?.players.find(p => p.playerId === playerId);
         
         if (pState && gPlayer) {
             pState.correctCount = (pState.correctCount || 0) + 1;
             pState.streak = (pState.streak || 0) + 1;
+
             let scoreThisRound = 0;
-            scoreThisRound += 10;
+            // 1. 山分け基礎点
+            scoreThisRound += individualBaseScore;
+
+            // 2. n回連続正解ボーナス
             if (pState.streak > 1) {
                 scoreThisRound += 2 * (pState.streak - 1);
             }
+            
+            // 3. 1着ボーナス
             if (firstPlace && pState.playerId === firstPlace.playerId) {
                 scoreThisRound += 5;
             }
+            
             gPlayer.currentScore += scoreThisRound;
         }
     });
 
+    // --- HP計算とStreakリセット ---
     state.players.forEach(p => {
         if (p.hp <= 0) return;
 
@@ -378,7 +382,6 @@ function processRoundResults(groupId) {
     checkGameEnd(groupId);
     if (!state.locked) setTimeout(() => nextQuestion(groupId), 5000);
 }
-
 
 function nextQuestion(groupId) {
     const state = states[groupId];
@@ -576,10 +579,12 @@ io.on("connection", (socket) => {
     const activePlayersCount = state.players.filter(p => p.hp > 0).length;
     if (state.readDone.size >= Math.ceil(activePlayersCount / 2)) {
         if (state.readTimer) return;
-        io.to(groupId).emit("timer_start", { seconds: 30 });
+        // ★★★ グループごとの制限時間をtimer_startに渡す ★★★
+        const timeLimit = state.timeLimit || 10;
+        io.to(groupId).emit("timer_start", { seconds: timeLimit });
         state.readTimer = setTimeout(() => {
             if (state && !state.answered) processRoundResults(groupId);
-        }, 30000);
+        }, timeLimit * 1000);
     }
   });
   socket.on("host_join", ({ playerId }) => {
@@ -600,17 +605,17 @@ io.on("connection", (socket) => {
     gamePhase = 'GAME_IN_PROGRESS';
     for (const [groupId, group] of Object.entries(groups)) {
         if (group.players.length === 0) continue;
-        const currentGroupMode = states[groupId]?.gameMode || globalSettings.gameMode;
+        const currentState = states[groupId] || initState(groupId);
+        const currentGroupMode = currentState.gameMode;
+        const currentTimeLimit = currentState.timeLimit;
+        
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
+        states[groupId].timeLimit = currentTimeLimit;
+        
         group.players.forEach(p => p.currentScore = 0); 
-        // ★★★ 修正: プレイヤー状態にstreakを追加
         states[groupId].players = group.players.map(p => ({ 
-            playerId: p.playerId, 
-            name: p.name, 
-            hp: 20, 
-            correctCount: 0,
-            streak: 0
+            playerId: p.playerId, name: p.name, hp: 20, correctCount: 0, streak: 0
         }));
         nextQuestion(groupId);
     }
@@ -689,6 +694,16 @@ io.on("connection", (socket) => {
     if (!states[groupId]) states[groupId] = initState(groupId);
     if (states[groupId] && ['normal', 'mask'].includes(gameMode)) {
       states[groupId].gameMode = gameMode;
+      notifyHostStateChanged();
+    }
+  });
+  // ★★★ 追加: グループごとの制限時間設定イベント ★★★
+  socket.on('host_set_group_time_limit', ({ groupId, timeLimit }) => {
+    if (socket.id !== hostSocketId) return;
+    if (!states[groupId]) states[groupId] = initState(groupId);
+    const limit = parseInt(timeLimit, 10);
+    if (states[groupId] && !isNaN(limit) && limit >= 5 && limit <= 60) {
+      states[groupId].timeLimit = limit;
       notifyHostStateChanged();
     }
   });
