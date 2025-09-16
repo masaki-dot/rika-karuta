@@ -1,4 +1,4 @@
-// server.js (生存ボーナス機能 復活版 - 全文)
+// server.js (生存ボーナス判定強化 & スコア・HP新ルール版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -13,7 +13,7 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.RENDER_DISK_PATH || path.join(__dirname, 'data'); // RenderのPersistent Diskに対応
 const USER_PRESETS_DIR = path.join(DATA_DIR, 'user_presets');
 const RANKINGS_DIR = path.join(DATA_DIR, 'rankings');
 
@@ -49,7 +49,7 @@ initializeDirectories();
 
 function loadPresets() {
   try {
-    const defaultPresetPath = path.join(DATA_DIR, 'questions.json');
+    const defaultPresetPath = path.join(__dirname, 'data', 'questions.json'); // デフォルトはプロジェクト内から読み込む
     if (fs.existsSync(defaultPresetPath)) {
         questionPresets = JSON.parse(fs.readFileSync(defaultPresetPath, 'utf8'));
         console.log('✅ デフォルト問題プリセットを読み込みました。');
@@ -141,9 +141,15 @@ function sanitizeState(state) {
       roundResults: state.current.roundResults 
   } : null;
   return {
-    groupId: state.groupId, players: state.players, questionCount: state.questionCount,
-    maxQuestions: state.maxQuestions, gameMode: state.gameMode, showSpeed: state.showSpeed,
-    current: currentWithDetails, locked: state.locked, answered: state.answered,
+    groupId: state.groupId, 
+    players: state.players, // streak情報なども含めて全て送信する
+    questionCount: state.questionCount,
+    maxQuestions: state.maxQuestions, 
+    gameMode: state.gameMode, 
+    showSpeed: state.showSpeed,
+    current: currentWithDetails, 
+    locked: state.locked, 
+    answered: state.answered,
   };
 }
 function getHostState() {
@@ -156,8 +162,12 @@ function getHostState() {
       players: group.players.map(p => {
         const statePlayer = state?.players.find(sp => sp.playerId === p.playerId);
         return {
-          name: p.name, hp: statePlayer?.hp ?? 20, correctCount: statePlayer?.correctCount ?? 0,
-          currentScore: p.currentScore ?? 0, totalScore: p.totalScore ?? 0
+          name: p.name, 
+          hp: statePlayer?.hp ?? 20, 
+          correctCount: statePlayer?.correctCount ?? 0,
+          streak: statePlayer?.streak ?? 0,
+          currentScore: p.currentScore ?? 0, 
+          totalScore: p.totalScore ?? 0
         };
       })
     };
@@ -165,7 +175,7 @@ function getHostState() {
   return result;
 }
 
-// ★★★修正: 生存ボーナス機能を追加した finalizeGame 関数★★★
+// ★★★修正: 生存ボーナスと脱落順位判定を強化した finalizeGame 関数★★★
 function finalizeGame(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -176,49 +186,70 @@ function finalizeGame(groupId) {
     
     console.log(`[${groupId}] ゲーム終了処理を開始します。`);
 
-    // プレイヤーをHPと正解数でソートして、生存順位を決定
-    const sortedPlayersByRank = [...state.players].sort((a, b) => {
-        if (b.hp !== a.hp) return b.hp - a.hp; // 1. HPが高い順
-        return (b.correctCount || 0) - (a.correctCount || 0); // 2. 正解数が多い順
+    // --- 最終順位の決定ロジック ---
+    const finalPlayerStates = state.players.map(pState => {
+        const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === pState.playerId);
+        return {
+            ...pState,
+            currentScore: gPlayer?.currentScore || 0,
+        };
     });
 
-    // 1位と2位のプレイヤーにボーナスポイントを加算
-    if (sortedPlayersByRank[0]) {
-        const firstPlayerId = sortedPlayersByRank[0].playerId;
+    finalPlayerStates.sort((a, b) => {
+        if (a.hp > 0 && b.hp <= 0) return -1;
+        if (b.hp > 0 && a.hp <= 0) return 1;
+        if (b.hp !== a.hp) return b.hp - a.hp;
+        return (b.currentScore || 0) - (a.currentScore || 0);
+    });
+
+    // --- 生存ボーナスの加算 ---
+    const bonusRecipients = [];
+
+    // 1位ボーナス (+200点)
+    if (finalPlayerStates[0]) {
+        const firstPlayerId = finalPlayerStates[0].playerId;
         const gPlayer = groups[groupId]?.players.find(p => p.playerId === firstPlayerId);
         if (gPlayer) {
-            gPlayer.currentScore = (gPlayer.currentScore || 0) + 200;
-            console.log(`[${groupId}] ${gPlayer.name}に1位ボーナス+200点`);
+            gPlayer.currentScore += 200;
+            bonusRecipients.push({ name: gPlayer.name, bonus: 200 });
+            console.log(`[${groupId}] ${gPlayer.name}に1位生存ボーナス+200点`);
         }
     }
-    if (sortedPlayersByRank[1]) {
-        const secondPlayerId = sortedPlayersByRank[1].playerId;
-        const gPlayer = groups[groupId]?.players.find(p => p.playerId === secondPlayerId);
-        if (gPlayer) {
-            gPlayer.currentScore = (gPlayer.currentScore || 0) + 100;
-            console.log(`[${groupId}] ${gPlayer.name}に2位ボーナス+100点`);
+
+    // 2位ボーナス (+100点)
+    if (finalPlayerStates[1]) {
+        const p1 = finalPlayerStates[0];
+        const p2 = finalPlayerStates[1];
+        if (p1.hp !== p2.hp || p1.currentScore !== p2.currentScore) {
+            const secondPlayerId = finalPlayerStates[1].playerId;
+            const gPlayer = groups[groupId]?.players.find(p => p.playerId === secondPlayerId);
+            if (gPlayer) {
+                gPlayer.currentScore += 100;
+                bonusRecipients.push({ name: gPlayer.name, bonus: 100 });
+                console.log(`[${groupId}] ${gPlayer.name}に2位生存ボーナス+100点`);
+            }
         }
     }
     
-    // 最終的なランキングデータを作成
+    // --- 最終ランキングデータの作成 ---
     const finalRanking = state.players.map(pState => {
         const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === pState.playerId);
         const finalScore = gPlayer?.currentScore || 0;
         
-        // 累計スコアを更新
         if (gPlayer) {
             gPlayer.totalScore = (gPlayer.totalScore || 0) + finalScore;
         }
+        
+        const bonusInfo = bonusRecipients.find(b => b.name === gPlayer.name);
 
-        // クライアントに送るデータ
         return {
             ...pState,
             finalScore: finalScore,
-            totalScore: gPlayer?.totalScore || finalScore
+            totalScore: gPlayer?.totalScore || finalScore,
+            bonus: bonusInfo ? bonusInfo.bonus : 0,
         };
     });
 
-    // 最終スコアでランキングをソート
     finalRanking.sort((a, b) => b.finalScore - a.finalScore);
 
     io.to(groupId).emit("end", finalRanking);
@@ -226,14 +257,41 @@ function finalizeGame(groupId) {
 }
 
 
+// ★★★修正: 同時脱落時のボーナス判定を追加した checkGameEnd 関数★★★
 function checkGameEnd(groupId) {
-  const state = states[groupId];
-  if (!state || state.locked) return;
-  const survivors = state.players.filter(p => p.hp > 0);
-  if (survivors.length <= 1) {
-    finalizeGame(groupId);
-  }
+    const state = states[groupId];
+    if (!state || state.locked) return;
+    
+    const survivors = state.players.filter(p => p.hp > 0);
+    
+    if (survivors.length <= 1) {
+        if (survivors.length === 0) {
+            const lastRoundEliminated = state.players.filter(p => !state.eliminatedOrder.includes(p.playerId) && p.hp <= 0);
+            if (lastRoundEliminated.length > 1) {
+                const finalScores = lastRoundEliminated.map(pState => {
+                    const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === pState.playerId);
+                    return { ...pState, currentScore: gPlayer?.currentScore || 0 };
+                });
+
+                finalScores.sort((a, b) => b.currentScore - a.currentScore);
+                const topScore = finalScores[0].currentScore;
+                const topPlayers = finalScores.filter(p => p.currentScore === topScore);
+
+                if (topPlayers.length > 1) {
+                    console.log(`[${groupId}] 同時脱落、同点のため特別ボーナス+50点`);
+                    topPlayers.forEach(pState => {
+                        const gPlayer = groups[groupId]?.players.find(gp => gp.playerId === pState.playerId);
+                        if (gPlayer) gPlayer.currentScore += 50;
+                    });
+                }
+            }
+        }
+        finalizeGame(groupId);
+    }
 }
+
+
+// ★★★修正: 新しいスコア・HPルールを実装した processRoundResults 関数★★★
 function processRoundResults(groupId) {
     const state = states[groupId];
     if (!state || state.answered) return; 
@@ -242,31 +300,72 @@ function processRoundResults(groupId) {
     state.readTimer = null;
     const point = state.current.point;
     const correctCard = globalTorifudas.find(t => t.term === state.current.answer);
+    
     if (!correctCard) {
         console.error(`[CRITICAL] 正解の取り札が見つかりません: ${state.current.answer}`);
+        state.players.forEach(p => p.streak = 0);
         setTimeout(() => nextQuestion(groupId), 3000);
         return;
     }
+
     const sortedAnswers = state.answersThisRound.sort((a, b) => a.timestamp - b.timestamp);
     const correctAnswers = sortedAnswers.filter(ans => ans.id === correctCard.id);
     const incorrectPlayerIds = new Set(sortedAnswers.filter(ans => ans.id !== correctCard.id).map(ans => ans.playerId));
+
     const firstPlace = correctAnswers[0] || null;
     const secondPlace = correctAnswers[1] || null;
-    [firstPlace, secondPlace].forEach(winner => {
-        if (!winner) return;
-        const pState = state.players.find(p => p.playerId === winner.playerId);
-        if (pState) pState.correctCount = (pState.correctCount || 0) + 1;
-        const gPlayer = groups[groupId]?.players.find(p => p.playerId === winner.playerId);
-        if (gPlayer) gPlayer.currentScore = (gPlayer.currentScore || 0) + 10;
+    const correctAnswerPlayerIds = new Set(correctAnswers.map(ans => ans.playerId));
+    
+    correctAnswerPlayerIds.forEach(playerId => {
+        const pState = state.players.find(p => p.playerId === playerId);
+        const gPlayer = groups[groupId]?.players.find(p => p.playerId === playerId);
+        
+        if (pState && gPlayer) {
+            pState.correctCount = (pState.correctCount || 0) + 1;
+            pState.streak = (pState.streak || 0) + 1;
+            let scoreThisRound = 0;
+            scoreThisRound += 10;
+            if (pState.streak > 1) {
+                scoreThisRound += 2 * (pState.streak - 1);
+            }
+            if (firstPlace && pState.playerId === firstPlace.playerId) {
+                scoreThisRound += 5;
+            }
+            gPlayer.currentScore += scoreThisRound;
+        }
     });
+
     state.players.forEach(p => {
         if (p.hp <= 0) return;
+
+        if (!correctAnswerPlayerIds.has(p.playerId)) {
+            p.streak = 0;
+        }
+
         let totalDamage = 0;
-        if (p.playerId !== firstPlace?.playerId) totalDamage += point;
-        if (incorrectPlayerIds.has(p.playerId)) totalDamage += point;
+        
+        if (incorrectPlayerIds.has(p.playerId)) {
+            totalDamage += point;
+        }
+
+        if (p.playerId !== firstPlace?.playerId) {
+            if (!correctAnswerPlayerIds.has(p.playerId)) {
+                totalDamage += point;
+            } else {
+                if (secondPlace && p.playerId === secondPlace.playerId) {
+                    totalDamage += Math.round(point * 0.5);
+                } else {
+                    totalDamage += point;
+                }
+            }
+        }
+        
         p.hp = Math.max(0, p.hp - totalDamage);
-        if (p.hp <= 0 && !state.eliminatedOrder.includes(p.playerId)) state.eliminatedOrder.push(p.playerId);
+        if (p.hp <= 0 && !state.eliminatedOrder.includes(p.playerId)) {
+            state.eliminatedOrder.push(p.playerId);
+        }
     });
+
     state.current.roundResults = { first: firstPlace?.name || null, second: secondPlace?.name || null };
     state.current.cards.forEach(card => {
         const choosers = sortedAnswers.filter(ans => ans.id === card.id).map(ans => ans.name);
@@ -274,10 +373,13 @@ function processRoundResults(groupId) {
         if (card.id === correctCard.id) card.correctAnswer = true;
         else if (choosers.length > 0) card.incorrect = true;
     });
+
     io.to(groupId).emit("state", sanitizeState(state));
     checkGameEnd(groupId);
     if (!state.locked) setTimeout(() => nextQuestion(groupId), 5000);
 }
+
+
 function nextQuestion(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -502,7 +604,14 @@ io.on("connection", (socket) => {
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
         group.players.forEach(p => p.currentScore = 0); 
-        states[groupId].players = group.players.map(p => ({ playerId: p.playerId, name: p.name, hp: 20, correctCount: 0 }));
+        // ★★★ 修正: プレイヤー状態にstreakを追加
+        states[groupId].players = group.players.map(p => ({ 
+            playerId: p.playerId, 
+            name: p.name, 
+            hp: 20, 
+            correctCount: 0,
+            streak: 0
+        }));
         nextQuestion(groupId);
     }
     notifyHostStateChanged();
