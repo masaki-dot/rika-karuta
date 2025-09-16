@@ -1,4 +1,4 @@
-// client.js (新ルール対応 & UI改善版 - 全文)
+// client.js (グループ別時間設定 & 40点山分けスコア対応版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -381,7 +381,6 @@ function showEndScreen(ranking) {
   updateNavBar(isHost ? showHostUI : () => showPlayerMenuUI('WAITING_FOR_NEXT_GAME'));
 
   const container = getContainer();
-  // ★★★修正: 生存ボーナスを表示するように変更★★★
   container.innerHTML = `
     <h2>🎉 ゲーム終了！</h2>
     <div style="display:flex; flex-wrap: wrap; gap: 20px;">
@@ -571,7 +570,6 @@ function handleDeletePreset() {
     if (confirm(`本当に「${presetName}」を削除しますか？`)) socket.emit('host_delete_preset', { presetId });
 }
 
-// ★★★修正: 待機画面にルールを表示するように変更★★★
 function fixName() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
@@ -586,9 +584,9 @@ function fixName() {
     <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: left;">
         <h4 style="text-align: center;">📜 今回のルール</h4>
         <ul style="list-style-position: inside;">
-            <li><strong>スコア:</strong> 正解で基礎点+10点！1着はさらに+5点！連続正解でボーナス点も！</li>
+            <li><strong>スコア:</strong> 正解で基礎点(40点)を正解者で山分け！1着(+5点)や連続正解で差をつけよう！</li>
             <li><strong>HP:</strong> 1着以外はダメージ！2着はダメージが半分に軽減されます。</li>
-            <li><strong>生存ボーナス:</strong> 最後まで生き残ると+200点、2番目に生き残ると+100点のボーナス！</li>
+            <li><strong>生存ボーナス:</strong> 最後まで生き残ると+200点、2番目なら+100点のボーナス！</li>
             <li>HPが0になると脱落です。生き残りを目指しましょう！</li>
         </ul>
     </div>
@@ -625,7 +623,6 @@ function startSinglePlay() {
 }
 
 // --- UI更新関数 ---
-// ★★★修正: ラウンド結果表示とプレイヤー情報表示を新ルールに対応★★★
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
@@ -857,20 +854,34 @@ socket.on("rejoin_game", (state) => {
     showGameScreen(state);
 });
 socket.on("end", (ranking) => { if (gameMode === 'multi') showEndScreen(ranking); });
+
+// ★★★修正: ホスト画面にグループ別時間設定UIを追加★★★
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
-  // ★★★修正: ホスト画面にStreak情報を表示★★★
   div.innerHTML = `<h3>各グループの状況</h3>` + Object.entries(allGroups).map(([gId, data]) => {
     if (data.players.length === 0) return '';
     const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount}, 🔥:${p.streak})<br><small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`).join("");
+    
     const modeSelector = `<label>モード: <select class="group-mode-selector" data-groupid="${gId}"><option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option><option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option></select></label>`;
-    return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;"><strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong> ${modeSelector}<ul>${members}</ul></div>`;
+    
+    const timeLimitSelector = `<label>制限時間: <input type="number" class="group-time-limit-input" data-groupid="${gId}" value="${data.timeLimit}" min="5" max="60" style="width: 60px;"> 秒</label>`;
+
+    return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">
+                <strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong>
+                <div style="display: flex; gap: 15px; margin-top: 5px;">${modeSelector}${timeLimitSelector}</div>
+                <ul>${members}</ul>
+            </div>`;
   }).join("");
+
   document.querySelectorAll('.group-mode-selector').forEach(selector => {
     selector.onchange = (e) => socket.emit('host_set_group_mode', { groupId: e.target.dataset.groupid, gameMode: e.target.value });
   });
+  document.querySelectorAll('.group-time-limit-input').forEach(input => {
+    input.onchange = (e) => socket.emit('host_set_group_time_limit', { groupId: e.target.dataset.groupid, timeLimit: e.target.value });
+  });
 });
+
 socket.on("global_ranking", (ranking) => {
     const div = document.getElementById("globalRanking");
     if (!div) return;
