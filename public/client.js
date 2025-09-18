@@ -1,4 +1,4 @@
-// client.js (グループ別時間設定 & 40点山分けスコア対応版 - 全文)
+// client.js (個人戦改良フェーズ1対応版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -221,7 +221,7 @@ function showCSVUploadUI(presets = {}, fromEndScreen = false) {
     <hr/>
     <fieldset>
       <legend>ゲーム設定</legend>
-      <label>取り札の数: <input type="number" id="numCards" value="5" min="5" max="10" /></label><br/>
+      <label>デフォルトの取り札の数: <input type="number" id="numCards" value="5" min="3" max="20" /></label><br/>
       <label>読み上げ速度(ms/5文字): <input type="number" id="speed" value="1000" min="100" /></label><br/>
     </fieldset>
     <hr/>
@@ -570,6 +570,7 @@ function handleDeletePreset() {
     if (confirm(`本当に「${presetName}」を削除しますか？`)) socket.emit('host_delete_preset', { presetId });
 }
 
+// ★★★修正: 待機画面のルール説明を最新版に更新★★★
 function fixName() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
@@ -584,9 +585,9 @@ function fixName() {
     <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: left;">
         <h4 style="text-align: center;">📜 今回のルール</h4>
         <ul style="list-style-position: inside;">
-            <li><strong>スコア:</strong> 正解で基礎点(40点)を正解者で山分け！1着(+5点)や連続正解で差をつけよう！</li>
-            <li><strong>HP:</strong> 1着以外はダメージ！2着はダメージが半分に軽減されます。</li>
-            <li><strong>生存ボーナス:</strong> 最後まで生き残ると+200点、2番目なら+100点のボーナス！</li>
+            <li><strong>スコア:</strong> 基礎点(参加人数×10点)を正解者で山分け！1着(+5点)や連続正解で差をつけよう！</li>
+            <li><strong>HPダメージ:</strong> 1着は0, 2着は-2, 3着以降は-3, お手つきは-5の固定ダメージ！</li>
+            <li><strong>生存ボーナス:</strong> 1位は+100点と残りHPボーナス(HP×10点)！2位は+100点！</li>
             <li>HPが0になると脱落です。生き残りを目指しましょう！</li>
         </ul>
     </div>
@@ -644,17 +645,10 @@ function updateGameUI(state) {
   if (resultDisplay) {
     if (state.answered && state.current?.roundResults) {
         const { first, second } = state.current.roundResults;
-        const point = state.current.point;
         let resultText = '';
-        
         if (first) resultText += `🥇 1着: ${first}<br>`;
         if (second) resultText += `🥈 2着: ${second}<br>`;
-
-        if (point > 0 && !first) resultText += '正解者なし... ';
-        if (point > 0) {
-            resultText += `<span style="color: var(--incorrect-color); font-size: 0.8em;">(1着以外 HP-${point}ダメージ)</span>`;
-        }
-
+        if (!first) resultText += '正解者なし... ';
         resultDisplay.innerHTML = resultText;
     } else {
         resultDisplay.innerHTML = '';
@@ -855,7 +849,7 @@ socket.on("rejoin_game", (state) => {
 });
 socket.on("end", (ranking) => { if (gameMode === 'multi') showEndScreen(ranking); });
 
-// ★★★修正: ホスト画面にグループ別時間設定UIを追加★★★
+// ★★★修正: ホスト画面にグループ別選択肢の数UIを追加★★★
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
@@ -864,12 +858,12 @@ socket.on("host_state", (allGroups) => {
     const members = data.players.map(p => `<li>${p.name} (HP: ${p.hp}, 正解: ${p.correctCount}, 🔥:${p.streak})<br><small>今回のスコア: ${p.currentScore} | 累計スコア: ${p.totalScore}</small></li>`).join("");
     
     const modeSelector = `<label>モード: <select class="group-mode-selector" data-groupid="${gId}"><option value="normal" ${data.gameMode === 'normal' ? 'selected' : ''}>通常</option><option value="mask" ${data.gameMode === 'mask' ? 'selected' : ''}>応用</option></select></label>`;
-    
     const timeLimitSelector = `<label>制限時間: <input type="number" class="group-time-limit-input" data-groupid="${gId}" value="${data.timeLimit}" min="5" max="60" style="width: 60px;"> 秒</label>`;
+    const numCardsSelector = `<label>選択肢: <input type="number" class="group-num-cards-input" data-groupid="${gId}" value="${data.numCards}" min="3" max="20" style="width: 60px;"> 枚</label>`;
 
     return `<div style="margin-bottom:15px; padding: 10px; border: 1px solid #eee; border-radius: 4px;">
                 <strong style="color:${data.locked ? 'red' : 'green'};">${gId} (${data.players.length}人)</strong>
-                <div style="display: flex; gap: 15px; margin-top: 5px;">${modeSelector}${timeLimitSelector}</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 5px;">${modeSelector}${timeLimitSelector}${numCardsSelector}</div>
                 <ul>${members}</ul>
             </div>`;
   }).join("");
@@ -879,6 +873,9 @@ socket.on("host_state", (allGroups) => {
   });
   document.querySelectorAll('.group-time-limit-input').forEach(input => {
     input.onchange = (e) => socket.emit('host_set_group_time_limit', { groupId: e.target.dataset.groupid, timeLimit: e.target.value });
+  });
+  document.querySelectorAll('.group-num-cards-input').forEach(input => {
+    input.onchange = (e) => socket.emit('host_set_group_num_cards', { groupId: e.target.dataset.groupid, numCards: e.target.value });
   });
 });
 
