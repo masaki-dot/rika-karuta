@@ -1,4 +1,4 @@
-// server.js (個人戦改良フェーズ1版 - 全文)
+// server.js (乗っ取りバグ修正 & 個人戦改良フェーズ1版 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -124,7 +124,7 @@ function initState(groupId) {
   return {
     groupId, players: [], questionCount: 0,
     maxQuestions: globalSettings.maxQuestions || 10,
-    numCards: globalSettings.numCards || 5, // ★★★ グループ別設定のデフォルト値
+    numCards: globalSettings.numCards || 5,
     showSpeed: globalSettings.showSpeed || 1000,
     gameMode: globalSettings.gameMode || 'normal',
     timeLimit: 10,
@@ -160,7 +160,7 @@ function getHostState() {
       locked: state?.locked ?? false,
       gameMode: state?.gameMode ?? globalSettings.gameMode ?? 'normal',
       timeLimit: state?.timeLimit ?? 10,
-      numCards: state?.numCards ?? globalSettings.numCards ?? 5, // ★★★ ホスト画面用に選択肢の数を追加
+      numCards: state?.numCards ?? globalSettings.numCards ?? 5,
       players: group.players.map(p => {
         const statePlayer = state?.players.find(sp => sp.playerId === p.playerId);
         return {
@@ -177,7 +177,6 @@ function getHostState() {
   return result;
 }
 
-// ★★★修正: 新しい生存ボーナスと、脱落ラウンドを考慮した順位決定ロジック★★★
 function finalizeGame(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -197,24 +196,20 @@ function finalizeGame(groupId) {
     });
 
     finalPlayerStates.sort((a, b) => {
-        // 1. HPがプラス（生存者）が最優先
         if (a.hp > 0 && b.hp <= 0) return -1;
         if (b.hp > 0 && a.hp <= 0) return 1;
-        // 2. 脱落者同士の場合、脱落ラウンドが遅い方が上位
         if (a.eliminatedRound && b.eliminatedRound && b.eliminatedRound !== a.eliminatedRound) {
             return b.eliminatedRound - a.eliminatedRound;
         }
-        // 3. 同じラウンドで脱落した場合、または生存者同士の場合、スコアが高い方が上位
         return (b.currentScore || 0) - (a.currentScore || 0);
     });
 
     const bonusRecipients = [];
 
-    // 1位ボーナス (100 + 残りHP*10)
     if (finalPlayerStates[0]) {
         const p1 = finalPlayerStates[0];
         const gPlayer = groups[groupId]?.players.find(p => p.playerId === p1.playerId);
-        if (gPlayer && p1.hp > 0) { // 生存している場合のみ
+        if (gPlayer && p1.hp > 0) {
             const hpBonus = p1.hp * 10;
             const totalBonus = 100 + hpBonus;
             gPlayer.currentScore += totalBonus;
@@ -222,7 +217,6 @@ function finalizeGame(groupId) {
         }
     }
 
-    // 2位ボーナス (+100)
     if (finalPlayerStates[1]) {
         const p2 = finalPlayerStates[1];
         const gPlayer = groups[groupId]?.players.find(p => p.playerId === p2.playerId);
@@ -264,7 +258,6 @@ function checkGameEnd(groupId) {
     }
 }
 
-// ★★★修正: 新スコア(参加人数*10山分け)と固定HPダメージのロジック★★★
 function processRoundResults(groupId) {
     const state = states[groupId];
     if (!state || state.answered) return; 
@@ -289,7 +282,6 @@ function processRoundResults(groupId) {
     const secondPlace = correctAnswers[1] || null;
     const correctAnswerPlayerIds = new Set(correctAnswers.map(ans => ans.playerId));
     
-    // --- スコア計算 (参加人数*10 山分け式) ---
     const activePlayersCount = state.players.filter(p => p.hp > 0).length;
     const baseScoreToShare = 10 * activePlayersCount;
     const individualBaseScore = correctAnswers.length > 0 ? Math.round(baseScoreToShare / correctAnswers.length) : 0;
@@ -312,7 +304,6 @@ function processRoundResults(groupId) {
         }
     });
 
-    // --- HP計算(固定ダメージ)とStreakリセット ---
     state.players.forEach(p => {
         if (p.hp <= 0) return;
 
@@ -320,23 +311,19 @@ function processRoundResults(groupId) {
 
         let totalDamage = 0;
         
-        // お手つきダメージ
         if (incorrectPlayerIds.has(p.playerId)) {
             totalDamage += 5;
-        }
-        // 1着以外ダメージ
-        else if (p.playerId !== firstPlace?.playerId) {
+        } else if (p.playerId !== firstPlace?.playerId) {
             if (secondPlace && p.playerId === secondPlace.playerId) {
-                totalDamage += 2; // 2着
+                totalDamage += 2;
             } else {
-                totalDamage += 3; // 3着以降 or 無回答
+                totalDamage += 3;
             }
         }
         
         const oldHp = p.hp;
         p.hp = Math.max(0, p.hp - totalDamage);
         
-        // ★★★バグ②修正: 脱落ラウンドを記録★★★
         if (oldHp > 0 && p.hp <= 0) {
             p.eliminatedRound = state.questionCount;
             if (!state.eliminatedOrder.includes(p.playerId)) {
@@ -358,7 +345,6 @@ function processRoundResults(groupId) {
     if (!state.locked) setTimeout(() => nextQuestion(groupId), 5000);
 }
 
-// ★★★修正: グループ別の選択肢の数を反映★★★
 function nextQuestion(groupId) {
     const state = states[groupId];
     if (!state || state.locked) return;
@@ -375,7 +361,7 @@ function nextQuestion(groupId) {
         return;
     }
 
-    const numCardsForGroup = state.numCards || 5; // グループ設定値を取得、なければ5
+    const numCardsForGroup = state.numCards || 5;
     const distractors = shuffle([...globalTorifudas.filter(t => t.id !== correctTorifuda.id)]).slice(0, numCardsForGroup - 1);
     
     const cards = shuffle([...distractors, correctTorifuda]);
@@ -584,16 +570,16 @@ io.on("connection", (socket) => {
         const currentState = states[groupId] || initState(groupId);
         const currentGroupMode = currentState.gameMode;
         const currentTimeLimit = currentState.timeLimit;
-        const currentNumCards = currentState.numCards; // ★★★
+        const currentNumCards = currentState.numCards;
         
         states[groupId] = initState(groupId);
         states[groupId].gameMode = currentGroupMode;
         states[groupId].timeLimit = currentTimeLimit;
-        states[groupId].numCards = currentNumCards; // ★★★
+        states[groupId].numCards = currentNumCards;
         
         group.players.forEach(p => p.currentScore = 0); 
         states[groupId].players = group.players.map(p => ({ 
-            playerId: p.playerId, name: p.name, hp: 20, correctCount: 0, streak: 0, eliminatedRound: null // ★★★
+            playerId: p.playerId, name: p.name, hp: 20, correctCount: 0, streak: 0, eliminatedRound: null
         }));
         nextQuestion(groupId);
     }
@@ -644,15 +630,27 @@ io.on("connection", (socket) => {
     });
     notifyHostStateChanged();
   });
+  
+  // ★★★修正: 脱落者からの回答をブロックする検証ロジックを追加★★★
   socket.on("answer", ({ groupId, playerId, name, id }) => {
     if (!socket.rooms.has(groupId)) return;
     const state = states[groupId];
     if (!state || !state.current || state.answered || state.locked) return;
+
+    // --- サーバー側検証 ---
+    const pState = state.players.find(p => p.playerId === playerId);
+    if (!pState || pState.hp <= 0) {
+        console.warn(`[不正な回答] 脱落したプレイヤー(${playerId})からの回答をブロックしました。`);
+        return;
+    }
+    // --- ここまで ---
+    
     if (state.answersThisRound.some(ans => ans.playerId === playerId)) return;
     state.answersThisRound.push({ playerId, name, id, timestamp: Date.now() });
     const activePlayers = state.players.filter(p => p.hp > 0);
     if (state.answersThisRound.length >= activePlayers.length) processRoundResults(groupId);
   });
+
   socket.on('host_preparing_next_game', () => {
     if (socket.id !== hostSocketId) return;
     Object.keys(states).forEach(key => delete states[key]); 
@@ -684,7 +682,6 @@ io.on("connection", (socket) => {
       notifyHostStateChanged();
     }
   });
-  // ★★★ 追加: グループごとの選択肢の数設定イベント ★★★
   socket.on('host_set_group_num_cards', ({ groupId, numCards }) => {
     if (socket.id !== hostSocketId) return;
     if (!states[groupId]) states[groupId] = initState(groupId);
