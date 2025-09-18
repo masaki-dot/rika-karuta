@@ -1,4 +1,4 @@
-// client.js (個人戦改良フェーズ1対応版 - 全文)
+// client.js (乗っ取りバグ修正 & 個人戦改良フェーズ1対応版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -624,6 +624,7 @@ function startSinglePlay() {
 }
 
 // --- UI更新関数 ---
+// ★★★修正: 脱落者がクリックできないようにUI制御を追加★★★
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
@@ -657,6 +658,8 @@ function updateGameUI(state) {
 
   const cardsGrid = document.getElementById('cards-grid');
   cardsGrid.innerHTML = '';
+  const myPlayer = state.players.find(p => p.playerId === playerId);
+
   state.current?.cards.forEach(card => {
     const div = document.createElement("div");
     div.className = "card";
@@ -678,7 +681,8 @@ function updateGameUI(state) {
     
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     
-    if (!state.answered && !alreadyAnswered) {
+    // --- クリックイベント設定の修正 ---
+    if (!state.answered && !alreadyAnswered && myPlayer && myPlayer.hp > 0) {
         div.onclick = () => {
             submitAnswer(card.id);
             div.style.outline = '3px solid var(--primary-color)';
@@ -687,12 +691,14 @@ function updateGameUI(state) {
         };
     } else {
         div.style.cursor = 'default';
+        if (myPlayer && myPlayer.hp <= 0) {
+            div.style.opacity = '0.5'; // 脱落者はカードを半透明にする
+        }
         div.onclick = null;
     }
     cardsGrid.appendChild(div);
   });
   
-  const myPlayer = state.players.find(p => p.playerId === playerId);
   const otherPlayers = state.players.filter(p => p.playerId !== playerId);
   const myInfoDiv = document.getElementById('my-info');
   if(myPlayer && myInfoDiv) {
