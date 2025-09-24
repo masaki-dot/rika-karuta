@@ -1,4 +1,4 @@
-// client.js (学習モードのイベントリスナー修正版 - 全文)
+// client.js (学習モードのalertデバッグ版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -504,7 +504,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
-// ★★★ ここから学習モード専用のUIとロジック (全文) ★★★
+// ★★★ ここから学習モード専用のUIとロジック (デバッグメッセージ付き) ★★★
 
 function showLearningPresetSelectionUI() {
     clearAllTimers();
@@ -527,10 +527,13 @@ function showLearningPresetSelectionUI() {
             <button id="learning-start-btn" class="button-primary">学習を開始</button>
         </div>
     `;
+    alert("デバッグA: 選択画面が表示されました。これから問題リストを要求します。");
     socket.emit('request_presets');
 }
 
 function startLearningMode() {
+    alert("デバッグC: startLearningMode関数が実行されました！");
+
     const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
     if (!presetId) {
         return alert('問題を選んでください');
@@ -541,18 +544,28 @@ function startLearningMode() {
     startBtn.disabled = true;
     startBtn.textContent = '問題準備中...';
 
+    getContainer().innerHTML = `<p>デバッグ1: サーバーに問題データを要求します... (presetId: ${presetId})</p>`;
+
     socket.emit('get_full_preset_data', { presetId }, (presetData) => {
         if (!presetData) {
             alert('問題データの取得に失敗しました。');
             startBtn.disabled = false;
             startBtn.textContent = '学習を開始';
+            getContainer().innerHTML = `<p>デバッグ2-エラー: サーバーからデータを受け取れませんでした。</p>`;
             return;
         }
-        setupLearningSession(presetId, presetData, learningType);
+        
+        getContainer().innerHTML = `<p>デバッグ3: サーバーからデータを受け取りました。学習セッションを開始します...</p>`;
+        
+        setTimeout(() => {
+            setupLearningSession(presetId, presetData, learningType);
+        }, 1500);
     });
 }
 
 function setupLearningSession(presetId, presetData, learningType) {
+    getContainer().innerHTML = `<p>デバッグ4: setupLearningSession関数が開始されました。</p>`;
+
     let allTorifudas = [];
     let allYomifudas = [];
 
@@ -566,6 +579,8 @@ function setupLearningSession(presetId, presetData, learningType) {
         }
     });
 
+    getContainer().innerHTML = `<p>デバッグ5: 問題データの解析が完了しました。 (読み札: ${allYomifudas.length}枚, 取り札: ${allTorifudas.length}枚)</p>`;
+
     let questionPool = [...allYomifudas];
 
     if (learningType === 'weak') {
@@ -577,6 +592,8 @@ function setupLearningSession(presetId, presetData, learningType) {
             return false;
         });
     }
+
+    getContainer().innerHTML = `<p>デバッグ6: 問題プールの準備が完了しました。(問題数: ${questionPool.length})</p>`;
 
     if (questionPool.length === 0) {
         alert(learningType === 'weak' ? 'おめでとうございます！苦手な問題はありません。' : 'このセットには問題がありません。');
@@ -593,7 +610,11 @@ function setupLearningSession(presetId, presetData, learningType) {
         current: null
     };
 
-    showNextLearningQuestion();
+    getContainer().innerHTML = `<p>デバッグ7: 全て準備完了。最初の問題を表示します...</p>`;
+
+    setTimeout(() => {
+        showNextLearningQuestion();
+    }, 1500);
 }
 
 
@@ -1133,6 +1154,7 @@ socket.on('import_data_response', ({ success, message }) => {
 });
 
 socket.on('presets_list', (presets) => {
+  alert("デバッグB: サーバーから問題リストを受け取りました。画面を描画します。");
   const container = document.getElementById('preset-list-container');
   if (!container) return;
 
@@ -1143,14 +1165,18 @@ socket.on('presets_list', (presets) => {
           return `<div><input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${isChecked}><label for="preset-${id}">${data.category} - ${data.name}</label></div>`;
       }).join('');
       
-      // ★★★ 修正: HTML描画後にイベントリスナーを設定 ★★★
       container.innerHTML = html;
       
       if (gameMode === 'learning') {
         const learningOptions = document.getElementById('learning-options');
         if (learningOptions) learningOptions.style.display = 'block';
         const startBtn = document.getElementById('learning-start-btn');
-        if(startBtn) startBtn.onclick = startLearningMode;
+        if(startBtn) {
+            startBtn.onclick = startLearningMode;
+            alert("デバッグB-2: 「学習を開始」ボタンにクリックイベントを設定しました。");
+        } else {
+            alert("デバッグB-3 エラー: 「学習を開始」ボタンが見つかりませんでした！");
+        }
       }
   } else {
       container.innerHTML = html;
