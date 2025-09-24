@@ -1,4 +1,4 @@
-// server.js (学習モード対応 - 全文)
+// server.js (学習モードのバグ修正版 - 全文)
 
 const express = require("express");
 const http = require("http");
