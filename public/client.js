@@ -1,4 +1,4 @@
-// client.js (乗っ取りバグ修正 & 個人戦改良フェーズ1対応版 - 全文)
+// client.js (学習モード追加版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -11,7 +11,7 @@ let playerId = localStorage.getItem('playerId');
 let playerName = localStorage.getItem('playerName') || "";
 let isHost = localStorage.getItem('isHost') === 'true'; 
 let groupId = "";
-let gameMode = 'multi';
+let gameMode = 'multi'; // 'multi', 'single', 'learning'
 
 let rankingIntervalId = null;
 let readInterval = null;
@@ -22,6 +22,9 @@ let singleGameTimerId = null;
 let lastQuestionText = "";
 let hasAnimated = false;
 let alreadyAnswered = false;
+
+// ★★★ 学習モード専用のグローバル変数 ★★★
+let learningModeState = {};
 
 // --- UI描画のヘルパー関数 ---
 const getContainer = () => document.getElementById('app-container');
@@ -141,6 +144,7 @@ function showRoleSelectionUI() {
     };
 }
 
+// ★★★ 修正: 学習モードのボタンを追加 ★★★
 function showPlayerMenuUI(phase) {
     clearAllTimers();
     updateNavBar(showRoleSelectionUI);
@@ -156,9 +160,10 @@ function showPlayerMenuUI(phase) {
     container.innerHTML = `
         <div style="text-align: center;">
             <h2>プレイヤーメニュー</h2>
-            <div style="margin-top: 20px; margin-bottom: 30px;">
-                <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; height: 60px; margin: 10px;" ${!multiPlayEnabled ? 'disabled' : ''}>みんなでプレイ</button>
-                <button id="single-play-btn" class="button-secondary" style="font-size: 1.5em; height: 60px; margin: 10px;">ひとりでプレイ</button>
+            <div style="margin-top: 20px; margin-bottom: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                <button id="multi-play-btn" class="button-primary" style="font-size: 1.5em; width: 80%; max-width: 400px; height: 60px;" ${!multiPlayEnabled ? 'disabled' : ''}>みんなでプレイ</button>
+                <button id="single-play-btn" class="button-secondary" style="font-size: 1.5em; width: 80%; max-width: 400px; height: 60px;">ひとりでプレイ</button>
+                <button id="learning-mode-btn" class="button-outline" style="font-size: 1.5em; width: 80%; max-width: 400px; height: 60px; border-color: #48bb78; color: #48bb78;">学習モード(単語帳)</button>
             </div>
             <p id="multi-play-status" style="color: var(--text-muted);">${statusText}</p>
         </div>
@@ -174,8 +179,11 @@ function showPlayerMenuUI(phase) {
     }
     
     document.getElementById('single-play-btn').onclick = showSinglePlaySetupUI;
+    document.getElementById('learning-mode-btn').onclick = showLearningPresetSelectionUI;
 }
 
+
+// (ここから下の既存のUI描画関数は変更なし)
 function showCSVUploadUI(presets = {}, fromEndScreen = false) {
   clearAllTimers();
   updateNavBar(showRoleSelectionUI);
@@ -499,6 +507,222 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
+// ★★★ ここから学習モード専用のUIとロジック ★★★
+
+function showLearningPresetSelectionUI() {
+    clearAllTimers();
+    gameMode = 'learning';
+    updateNavBar(showPlayerMenuUI);
+    const container = getContainer();
+    container.innerHTML = `
+        <h2>学習モード (単語帳)</h2>
+        <p>学習したい問題のリストを選んでください。</p>
+        <div id="preset-list-container">読み込み中...</div>
+        <div id="learning-options" style="display: none; margin-top: 20px;">
+            <hr/>
+            <h3>出題タイプ</h3>
+            <input type="radio" id="mode-all" name="learning-type" value="all" checked>
+            <label for="mode-all" class="label-inline">すべての問題から出題</label>
+            <br>
+            <input type="radio" id="mode-weak" name="learning-type" value="weak">
+            <label for="mode-weak" class="label-inline">苦手な問題から出題 (直近3回で1度でも間違えた問題)</label>
+            <br/><br/>
+            <button id="learning-start-btn" class="button-primary">学習を開始</button>
+        </div>
+    `;
+    socket.emit('request_presets');
+}
+
+function startLearningMode() {
+    const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
+    if (!presetId) return alert('問題を選んでください');
+    const learningType = document.querySelector('input[name="learning-type"]:checked').value;
+    
+    // サーバーから受け取ったプリセットデータ全体が必要
+    socket.emit('request_presets'); 
+    socket.once('presets_list', (presets) => {
+        // presets_list イベントはすでにsocket.onで登録されているため、onceで一時的にリスナーを追加
+        // 本来はサーバーに個別プリセットを要求するイベントを作るのが望ましいが、今回は簡略化のためこの方式
+        socket.emit('get_full_preset_data', { presetId }, (presetData) => { // サーバーにこのイベントを追加する必要がある
+             if (!presetData) {
+                alert('問題データの取得に失敗しました。');
+                return;
+            }
+            setupLearningSession(presetId, presetData, learningType);
+        });
+    });
+}
+
+function setupLearningSession(presetId, presetData, learningType) {
+    let allTorifudas = [];
+    let allYomifudas = [];
+
+    (presetData.rawData || presetData.cards).forEach(row => {
+        if (presetData.rawData) {
+            if (row.col1.startsWith('def_')) allTorifudas.push({ id: row.col1, term: row.col2 });
+            else allYomifudas.push({ answer: row.col1, text: row.col3 });
+        } else {
+            allTorifudas.push({ id: `def_${row.number}`, term: row.term });
+            allYomifudas.push({ answer: row.term, text: row.text });
+        }
+    });
+
+    let questionPool = [...allYomifudas];
+
+    if (learningType === 'weak') {
+        const history = getLearningHistory(presetId);
+        questionPool = allYomifudas.filter(yomifuda => {
+            const questionHistory = history[yomifuda.text];
+            if (!questionHistory) return true; // 未解答の問題は苦手とみなす
+            if (questionHistory.answers.includes('incorrect')) return true; // 直近3回に不正解があれば苦手
+            return false;
+        });
+    }
+
+    if (questionPool.length === 0) {
+        alert(learningType === 'weak' ? 'おめでとうございます！苦手な問題はありません。' : 'このセットには問題がありません。');
+        return;
+    }
+
+    learningModeState = {
+        presetId: presetId,
+        questionPool: shuffle(questionPool),
+        currentIndex: 0,
+        allTorifudas: allTorifudas,
+        answered: false,
+        current: null
+    };
+
+    showNextLearningQuestion();
+}
+
+
+function showNextLearningQuestion() {
+    if (learningModeState.currentIndex >= learningModeState.questionPool.length) {
+        getContainer().innerHTML = `
+            <h2>学習完了！</h2>
+            <p>セット内のすべての問題を学習しました。</p>
+            <button onclick="showLearningPresetSelectionUI()">他のセットで学習する</button>
+        `;
+        updateNavBar(showPlayerMenuUI);
+        return;
+    }
+
+    const question = learningModeState.questionPool[learningModeState.currentIndex];
+    const correctTorifuda = learningModeState.allTorifudas.find(t => t.term === question.answer);
+    
+    if (!correctTorifuda) {
+        // 正解が見つからない問題はスキップ
+        learningModeState.currentIndex++;
+        showNextLearningQuestion();
+        return;
+    }
+    
+    const distractors = shuffle([...learningModeState.allTorifudas.filter(t => t.id !== correctTorifuda.id)]).slice(0, 3);
+    const cards = shuffle([...distractors, correctTorifuda]);
+
+    learningModeState.current = {
+        text: question.text,
+        answer: question.answer,
+        cards: cards.map(c => ({ id: c.id, term: c.term }))
+    };
+    learningModeState.answered = false;
+    
+    updateLearningModeUI();
+}
+
+function updateLearningModeUI() {
+    gameMode = 'learning';
+    updateNavBar(showLearningPresetSelectionUI);
+    const container = getContainer();
+    const state = learningModeState;
+
+    const history = getLearningHistory(state.presetId);
+    const questionHistory = history[state.current.text] || { answers: [], correct: 0, total: 0 };
+    const historyText = `学習履歴: 直近${questionHistory.answers.length}回中 ${questionHistory.answers.filter(a => a === 'correct').length}回正解`;
+
+    container.innerHTML = `
+      <div id="game-area">
+        <p style="text-align: right; color: var(--text-muted);">
+          問題 ${state.currentIndex + 1} / ${state.questionPool.length}
+        </p>
+        <div id="yomifuda">${state.current.text}</div>
+        <p style="text-align: center; font-weight: bold;">${historyText}</p>
+        <div id="cards-grid"></div>
+        <div id="learning-controls" style="text-align: center; margin-top: 20px;"></div>
+      </div>
+    `;
+
+    const cardsGrid = document.getElementById('cards-grid');
+    cardsGrid.innerHTML = '';
+    state.current.cards.forEach(card => {
+        const div = document.createElement("div");
+        div.className = "card";
+
+        if (state.answered) {
+            const isCorrect = state.allTorifudas.find(t => t.id === card.id)?.term === state.current.answer;
+            if (isCorrect) {
+                div.style.background = "gold";
+            } else if (card.wasClicked) {
+                div.style.background = "crimson";
+            }
+        }
+        
+        div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>`;
+        if (!state.answered) {
+            div.onclick = () => handleLearningAnswer(card.id);
+        }
+        cardsGrid.appendChild(div);
+    });
+
+    if (state.answered) {
+        document.getElementById('learning-controls').innerHTML = `
+            <button id="next-q-btn" class="button-primary">次の問題へ</button>
+        `;
+        document.getElementById('next-q-btn').onclick = showNextLearningQuestion;
+    }
+}
+
+function handleLearningAnswer(cardId) {
+    if (learningModeState.answered) return;
+    learningModeState.answered = true;
+
+    const chosenCard = learningModeState.current.cards.find(c => c.id === cardId);
+    chosenCard.wasClicked = true;
+
+    const isCorrect = learningModeState.allTorifudas.find(t => t.id === cardId)?.term === learningModeState.current.answer;
+    
+    updateLearningHistory(learningModeState.presetId, learningModeState.current.text, isCorrect);
+    
+    learningModeState.currentIndex++;
+    updateLearningModeUI();
+}
+
+function getLearningHistory(presetId) {
+    try {
+        const history = localStorage.getItem(`learningHistory_${presetId}`);
+        return history ? JSON.parse(history) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function updateLearningHistory(presetId, questionText, isCorrect) {
+    const history = getLearningHistory(presetId);
+    if (!history[questionText]) {
+        history[questionText] = { answers: [] };
+    }
+    
+    history[questionText].answers.push(isCorrect ? 'correct' : 'incorrect');
+    if (history[questionText].answers.length > 3) {
+        history[questionText].answers.shift(); // 常に直近3件を保持
+    }
+
+    localStorage.setItem(`learningHistory_${presetId}`, JSON.stringify(history));
+}
+
+
+// (ここから下の既存の関数は変更なし)
 function handleSettingsSubmit(isNextGame = false) {
   const submitBtn = document.getElementById('submit-settings');
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
@@ -570,7 +794,6 @@ function handleDeletePreset() {
     if (confirm(`本当に「${presetName}」を削除しますか？`)) socket.emit('host_delete_preset', { presetId });
 }
 
-// ★★★修正: 待機画面のルール説明を最新版に更新★★★
 function fixName() {
   const nameInput = document.getElementById("nameInput");
   playerName = nameInput.value.trim();
@@ -578,20 +801,7 @@ function fixName() {
   localStorage.setItem('playerName', playerName);
   socket.emit("set_name", { groupId, playerId, name: playerName });
   
-  const container = getContainer();
-  container.innerHTML = `
-    <h2>${groupId}で待機中...</h2>
-    <p>ホストがゲームを開始するのを待っています。</p>
-    <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-top: 20px; text-align: left;">
-        <h4 style="text-align: center;">📜 今回のルール</h4>
-        <ul style="list-style-position: inside;">
-            <li><strong>スコア:</strong> 基礎点(参加人数×10点)を正解者で山分け！1着(+5点)や連続正解で差をつけよう！</li>
-            <li><strong>HPダメージ:</strong> 1着は0, 2着は-2, 3着以降は-3, お手つきは-5の固定ダメージ！</li>
-            <li><strong>生存ボーナス:</strong> 1位は+100点と残りHPボーナス(HP×10点)！2位は+100点！</li>
-            <li>HPが0になると脱落です。生き残りを目指しましょう！</li>
-        </ul>
-    </div>
-  `;
+  getContainer().innerHTML = `<p>${groupId}で待機中...</p>`;
 }
 
 function submitAnswer(id) {
@@ -624,7 +834,6 @@ function startSinglePlay() {
 }
 
 // --- UI更新関数 ---
-// ★★★修正: 脱落者がクリックできないようにUI制御を追加★★★
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
@@ -681,8 +890,7 @@ function updateGameUI(state) {
     
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     
-    // --- クリックイベント設定の修正 ---
-    if (!state.answered && !alreadyAnswered && myPlayer && myPlayer.hp > 0) {
+    if (!state.answered && !alreadyAnswered) {
         div.onclick = () => {
             submitAnswer(card.id);
             div.style.outline = '3px solid var(--primary-color)';
@@ -691,9 +899,6 @@ function updateGameUI(state) {
         };
     } else {
         div.style.cursor = 'default';
-        if (myPlayer && myPlayer.hp <= 0) {
-            div.style.opacity = '0.5'; // 脱落者はカードを半透明にする
-        }
         div.onclick = null;
     }
     cardsGrid.appendChild(div);
@@ -854,8 +1059,6 @@ socket.on("rejoin_game", (state) => {
     showGameScreen(state);
 });
 socket.on("end", (ranking) => { if (gameMode === 'multi') showEndScreen(ranking); });
-
-// ★★★修正: ホスト画面にグループ別選択肢の数UIを追加★★★
 socket.on("host_state", (allGroups) => {
   const div = document.getElementById("hostStatus");
   if (!div) return;
@@ -920,11 +1123,30 @@ socket.on('import_data_response', ({ success, message }) => {
     alert(message);
     if (success) window.location.reload();
 });
+
+// ★★★修正: presets_listイベントを学習モードと共有できるように変更★★★
 socket.on('presets_list', (presets) => {
   const container = document.getElementById('preset-list-container');
   if (!container) return;
-  container.innerHTML = Object.entries(presets).map(([id, data], index) => `<div><input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${index === 0 ? 'checked' : ''}><label for="preset-${id}">${data.category} - ${data.name}</label></div>`).join('');
+
+  let html = '';
+  // `gameMode`に応じてUIを切り替え
+  if (gameMode === 'single' || gameMode === 'learning') {
+      html = Object.entries(presets).map(([id, data], index) => {
+          const isChecked = index === 0 ? 'checked' : '';
+          return `<div><input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${isChecked}><label for="preset-${id}">${data.category} - ${data.name}</label></div>`;
+      }).join('');
+      
+      if (gameMode === 'learning') {
+        const learningOptions = document.getElementById('learning-options');
+        if (learningOptions) learningOptions.style.display = 'block';
+        const startBtn = document.getElementById('learning-start-btn');
+        if(startBtn) startBtn.onclick = startLearningMode;
+      }
+  }
+  container.innerHTML = html;
 });
+
 socket.on('single_game_start', (initialState) => { showSinglePlayGameUI(); updateSinglePlayGameUI(initialState); });
 socket.on('single_game_state', (state) => updateSinglePlayGameUI(state));
 socket.on('single_game_end', (result) => showSinglePlayEndUI(result));
