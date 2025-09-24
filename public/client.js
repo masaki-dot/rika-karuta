@@ -1,4 +1,4 @@
-// client.js (学習モードのalertデバッグ版 - 全文)
+// client.js (学習モード完成版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -30,6 +30,15 @@ const getContainer = () => document.getElementById('app-container');
 const getNavBar = () => document.getElementById('nav-bar');
 const getNavBackBtn = () => document.getElementById('nav-back-btn');
 const getNavTopBtn = () => document.getElementById('nav-top-btn');
+
+// ★★★ 不足していたshuffle関数を追加 ★★★
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
 
 function clearAllTimers() {
     if (rankingIntervalId) clearInterval(rankingIntervalId);
@@ -504,7 +513,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
-// ★★★ ここから学習モード専用のUIとロジック (デバッグメッセージ付き) ★★★
+// ★★★ ここから学習モード専用のUIとロジック (全文) ★★★
 
 function showLearningPresetSelectionUI() {
     clearAllTimers();
@@ -527,13 +536,10 @@ function showLearningPresetSelectionUI() {
             <button id="learning-start-btn" class="button-primary">学習を開始</button>
         </div>
     `;
-    alert("デバッグA: 選択画面が表示されました。これから問題リストを要求します。");
     socket.emit('request_presets');
 }
 
 function startLearningMode() {
-    alert("デバッグC: startLearningMode関数が実行されました！");
-
     const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
     if (!presetId) {
         return alert('問題を選んでください');
@@ -544,28 +550,18 @@ function startLearningMode() {
     startBtn.disabled = true;
     startBtn.textContent = '問題準備中...';
 
-    getContainer().innerHTML = `<p>デバッグ1: サーバーに問題データを要求します... (presetId: ${presetId})</p>`;
-
     socket.emit('get_full_preset_data', { presetId }, (presetData) => {
         if (!presetData) {
             alert('問題データの取得に失敗しました。');
             startBtn.disabled = false;
             startBtn.textContent = '学習を開始';
-            getContainer().innerHTML = `<p>デバッグ2-エラー: サーバーからデータを受け取れませんでした。</p>`;
             return;
         }
-        
-        getContainer().innerHTML = `<p>デバッグ3: サーバーからデータを受け取りました。学習セッションを開始します...</p>`;
-        
-        setTimeout(() => {
-            setupLearningSession(presetId, presetData, learningType);
-        }, 1500);
+        setupLearningSession(presetId, presetData, learningType);
     });
 }
 
 function setupLearningSession(presetId, presetData, learningType) {
-    getContainer().innerHTML = `<p>デバッグ4: setupLearningSession関数が開始されました。</p>`;
-
     let allTorifudas = [];
     let allYomifudas = [];
 
@@ -579,8 +575,6 @@ function setupLearningSession(presetId, presetData, learningType) {
         }
     });
 
-    getContainer().innerHTML = `<p>デバッグ5: 問題データの解析が完了しました。 (読み札: ${allYomifudas.length}枚, 取り札: ${allTorifudas.length}枚)</p>`;
-
     let questionPool = [...allYomifudas];
 
     if (learningType === 'weak') {
@@ -592,8 +586,6 @@ function setupLearningSession(presetId, presetData, learningType) {
             return false;
         });
     }
-
-    getContainer().innerHTML = `<p>デバッグ6: 問題プールの準備が完了しました。(問題数: ${questionPool.length})</p>`;
 
     if (questionPool.length === 0) {
         alert(learningType === 'weak' ? 'おめでとうございます！苦手な問題はありません。' : 'このセットには問題がありません。');
@@ -610,11 +602,7 @@ function setupLearningSession(presetId, presetData, learningType) {
         current: null
     };
 
-    getContainer().innerHTML = `<p>デバッグ7: 全て準備完了。最初の問題を表示します...</p>`;
-
-    setTimeout(() => {
-        showNextLearningQuestion();
-    }, 1500);
+    showNextLearningQuestion();
 }
 
 
