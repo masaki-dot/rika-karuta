@@ -1,4 +1,4 @@
-// client.js (学習モード完成版 - 全文)
+// client.js (学習モードのイベントリスナー修正版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -1143,14 +1143,18 @@ socket.on('presets_list', (presets) => {
           return `<div><input type="radio" id="preset-${id}" name="preset-radio" value="${id}" ${isChecked}><label for="preset-${id}">${data.category} - ${data.name}</label></div>`;
       }).join('');
       
+      // ★★★ 修正: HTML描画後にイベントリスナーを設定 ★★★
+      container.innerHTML = html;
+      
       if (gameMode === 'learning') {
         const learningOptions = document.getElementById('learning-options');
         if (learningOptions) learningOptions.style.display = 'block';
         const startBtn = document.getElementById('learning-start-btn');
         if(startBtn) startBtn.onclick = startLearningMode;
       }
+  } else {
+      container.innerHTML = html;
   }
-  container.innerHTML = html;
 });
 
 socket.on('single_game_start', (initialState) => { showSinglePlayGameUI(); updateSinglePlayGameUI(initialState); });
