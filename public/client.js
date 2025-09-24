@@ -1,4 +1,4 @@
-// client.js (学習モード完成版 - 全文)
+// client.js (学習完了後フロー改善版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -31,7 +31,6 @@ const getNavBar = () => document.getElementById('nav-bar');
 const getNavBackBtn = () => document.getElementById('nav-back-btn');
 const getNavTopBtn = () => document.getElementById('nav-top-btn');
 
-// ★★★ 不足していたshuffle関数を追加 ★★★
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -513,7 +512,7 @@ function showSinglePlayEndUI({ score, personalBest, globalRanking, presetName })
   document.getElementById('retry-btn').onclick = showSinglePlaySetupUI;
 }
 
-// ★★★ ここから学習モード専用のUIとロジック (全文) ★★★
+// ★★★ ここから学習モード専用のUIとロジック (完成版) ★★★
 
 function showLearningPresetSelectionUI() {
     clearAllTimers();
@@ -595,6 +594,7 @@ function setupLearningSession(presetId, presetData, learningType) {
 
     learningModeState = {
         presetId: presetId,
+        allYomifudas: allYomifudas, // 全問題リストを保持
         questionPool: shuffle(questionPool),
         currentIndex: 0,
         allTorifudas: allTorifudas,
@@ -605,15 +605,23 @@ function setupLearningSession(presetId, presetData, learningType) {
     showNextLearningQuestion();
 }
 
-
 function showNextLearningQuestion() {
     if (learningModeState.currentIndex >= learningModeState.questionPool.length) {
-        getContainer().innerHTML = `
+        const container = getContainer();
+        container.innerHTML = `
             <h2>学習完了！</h2>
-            <p>セット内のすべての問題を学習しました。</p>
-            <button onclick="showLearningPresetSelectionUI()" class="button-primary">他のセットで学習する</button>
-            <button onclick="showPlayerMenuUI()" class="button">トップメニューに戻る</button>
+            <p>セット内のすべての問題を学習しました。次は何をしますか？</p>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 20px;">
+                <button id="restart-all-btn" class="button-primary" style="width: 80%; max-width: 400px;">もう一周 全問解く</button>
+                <button id="restart-weak-btn" class="button" style="width: 80%; max-width: 400px;">もう一周 苦手な問題のみ解く</button>
+                <button id="change-preset-btn" class="button-outline" style="width: 80%; max-width: 400px;">別の問題セットを解く</button>
+                <button id="back-to-top-btn" class="button-outline" style="width: 80%; max-width: 400px;">トップメニューに戻る</button>
+            </div>
         `;
+        document.getElementById('restart-all-btn').onclick = () => restartLearningMode('all');
+        document.getElementById('restart-weak-btn').onclick = () => restartLearningMode('weak');
+        document.getElementById('change-preset-btn').onclick = showLearningPresetSelectionUI;
+        document.getElementById('back-to-top-btn').onclick = showPlayerMenuUI;
         updateNavBar(showPlayerMenuUI);
         return;
     }
@@ -641,9 +649,33 @@ function showNextLearningQuestion() {
     updateLearningModeUI();
 }
 
+// ★★★ 学習完了後にもう一度学習するためのヘルパー関数 ★★★
+function restartLearningMode(learningType) {
+    let questionPool = [...learningModeState.allYomifudas];
+
+    if (learningType === 'weak') {
+        const history = getLearningHistory(learningModeState.presetId);
+        questionPool = learningModeState.allYomifudas.filter(yomifuda => {
+            const questionHistory = history[yomifuda.text];
+            if (!questionHistory) return true;
+            if (questionHistory.answers.includes('incorrect')) return true;
+            return false;
+        });
+    }
+
+    if (questionPool.length === 0) {
+        alert(learningType === 'weak' ? 'おめでとうございます！苦手な問題はありません。' : 'このセットには問題がありません。');
+        return;
+    }
+    
+    learningModeState.questionPool = shuffle(questionPool);
+    learningModeState.currentIndex = 0;
+    showNextLearningQuestion();
+}
+
 function updateLearningModeUI() {
     gameMode = 'learning';
-    updateNavBar(showLearningPresetSelectionUI);
+    updateNavBar(showLearningPresetSelectionUI, false); // トップに戻るボタンを非表示
     const container = getContainer();
     const state = learningModeState;
 
@@ -907,7 +939,7 @@ function updateGameUI(state) {
     
     div.innerHTML = `<div style="font-weight:bold; font-size:1.1em;">${card.term}</div>${chosenByHtml}`;
     
-    if (!state.answered && !alreadyAnswered) {
+    if (!state.answered && !alreadyAnswered && myPlayer && myPlayer.hp > 0) {
         div.onclick = () => {
             submitAnswer(card.id);
             div.style.outline = '3px solid var(--primary-color)';
@@ -916,6 +948,9 @@ function updateGameUI(state) {
         };
     } else {
         div.style.cursor = 'default';
+        if (myPlayer && myPlayer.hp <= 0) {
+            div.style.opacity = '0.5';
+        }
         div.onclick = null;
     }
     cardsGrid.appendChild(div);
@@ -1142,7 +1177,6 @@ socket.on('import_data_response', ({ success, message }) => {
 });
 
 socket.on('presets_list', (presets) => {
-  alert("デバッグB: サーバーから問題リストを受け取りました。画面を描画します。");
   const container = document.getElementById('preset-list-container');
   if (!container) return;
 
@@ -1161,9 +1195,6 @@ socket.on('presets_list', (presets) => {
         const startBtn = document.getElementById('learning-start-btn');
         if(startBtn) {
             startBtn.onclick = startLearningMode;
-            alert("デバッグB-2: 「学習を開始」ボタンにクリックイベントを設定しました。");
-        } else {
-            alert("デバッグB-3 エラー: 「学習を開始」ボタンが見つかりませんでした！");
         }
       }
   } else {
