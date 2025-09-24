@@ -1,4 +1,4 @@
-// client.js (学習モードのバグ修正版 - 全文)
+// client.js (学習モード完成版 - 全文)
 
 // --- グローバル変数 ---
 let socket = io({
@@ -530,7 +530,6 @@ function showLearningPresetSelectionUI() {
     socket.emit('request_presets');
 }
 
-// ★★★修正: バグを修正し、ロジックを簡潔にしたstartLearningMode関数★★★
 function startLearningMode() {
     const presetId = document.querySelector('input[name="preset-radio"]:checked')?.value;
     if (!presetId) {
@@ -581,7 +580,7 @@ function setupLearningSession(presetId, presetData, learningType) {
 
     if (questionPool.length === 0) {
         alert(learningType === 'weak' ? 'おめでとうございます！苦手な問題はありません。' : 'このセットには問題がありません。');
-        showLearningPresetSelectionUI(); // 設定画面に戻す
+        showLearningPresetSelectionUI();
         return;
     }
 
@@ -686,7 +685,7 @@ function updateLearningModeUI() {
             <button id="next-q-btn" class="button-primary">次の問題へ</button>
         `;
         document.getElementById('next-q-btn').onclick = showNextLearningQuestion;
-        document.getElementById('next-q-btn').focus(); // 自動でフォーカス
+        document.getElementById('next-q-btn').focus();
     }
 }
 
@@ -733,7 +732,6 @@ function updateLearningHistory(presetId, questionText, isCorrect) {
     }
 }
 
-// (ここから下は既存の関数。変更なし)
 function handleSettingsSubmit(isNextGame = false) {
   const submitBtn = document.getElementById('submit-settings');
   const sourceType = document.querySelector('input[name="source-type"]:checked').value;
@@ -844,7 +842,6 @@ function startSinglePlay() {
   getContainer().innerHTML = `<p>ゲーム準備中...</p>`;
 }
 
-// --- UI更新関数 ---
 function updateGameUI(state) {
   if (state.current?.text !== lastQuestionText) {
     hasAnimated = false;
