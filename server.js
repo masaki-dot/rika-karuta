@@ -1,4 +1,4 @@
-// server.js (乗っ取りバグ修正 & 個人戦改良フェーズ1版 - 全文)
+// server.js (学習モード対応 - 全文)
 
 const express = require("express");
 const http = require("http");
@@ -631,19 +631,16 @@ io.on("connection", (socket) => {
     notifyHostStateChanged();
   });
   
-  // ★★★修正: 脱落者からの回答をブロックする検証ロジックを追加★★★
   socket.on("answer", ({ groupId, playerId, name, id }) => {
     if (!socket.rooms.has(groupId)) return;
     const state = states[groupId];
     if (!state || !state.current || state.answered || state.locked) return;
 
-    // --- サーバー側検証 ---
     const pState = state.players.find(p => p.playerId === playerId);
     if (!pState || pState.hp <= 0) {
         console.warn(`[不正な回答] 脱落したプレイヤー(${playerId})からの回答をブロックしました。`);
         return;
     }
-    // --- ここまで ---
     
     if (state.answersThisRound.some(ans => ans.playerId === playerId)) return;
     state.answersThisRound.push({ playerId, name, id, timestamp: Date.now() });
@@ -724,6 +721,16 @@ io.on("connection", (socket) => {
     const presetsForClient = Object.fromEntries(Object.entries(questionPresets).map(([id, data]) => [id, { category: data.category, name: data.name }]));
     socket.emit('presets_list', presetsForClient);
   });
+  
+  // ★★★ 追加: 学習モード用の、プリセット全データ要求イベント ★★★
+  socket.on('get_full_preset_data', ({ presetId }, callback) => {
+    if (questionPresets[presetId]) {
+      callback(questionPresets[presetId]);
+    } else {
+      callback(null);
+    }
+  });
+
   socket.on('start_single_play', ({ name, playerId, difficulty, presetId }) => {
     if (players[playerId]) players[playerId].name = name;
     const presetData = questionPresets[presetId];
